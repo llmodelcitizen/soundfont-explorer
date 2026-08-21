@@ -1,4 +1,4 @@
-"""variants.py: stable ids, counts, canonical order, twin aliasing, ADL passes, review.md."""
+"""variants.py: stable ids, counts, canonical order, twin aliasing, ADL passes, M2b engine variants, overrides, review.md."""
 
 import copy
 import datetime as dt
@@ -26,12 +26,40 @@ ENGINES = {
                           "-o", "synth.polyphony=256", "-o", "synth.cpu-cores=1"],
             "dynamic_sample_loading_above_bytes": 134217728,
         },
+        "opnmidi": {"base_args": ["-f32", "-vm", "0", "--gain", "2.0"], "chips": 2, "chips_flag": "--chips"},
+        "edmidi": {"base_args": ["-r", "48000", "-n", "8", "-f", "f32"]},
+        "timidity": {"base_args": ["-c", "/etc/timidity/freepats.cfg", "-Ow2", "-s", "48000", "-EFreverb=d", "-EFchorus=d",
+                                   "-A", "25", "--preserve-silence"]},
+        "sc55": {"base_args": ["-f", "f32", "--end", "release", "-n", "1"],
+                 "romset_flag": {f"sc55-{f}": f for f in ("mk2", "st", "mk1", "cm300", "jv880", "scb55", "rlp3237", "sc155", "sc155mk2")}},
+        "munt": {"base_args": ["--quiet", "-f", "--src-quality", "3", "--record-max-start-silence", "-1"]},
     }
 }
 
 
+
 def _sha(seed: str) -> str:
     return hashlib.sha256(seed.encode()).hexdigest()
+
+
+N_BUILTIN = 3 + 1 + 9 + 2   # edm-* + gus-freepats + sc55-* + mt32/cm32l, always emitted
+
+
+def opn_bank(slug, *, enabled=True, license="MIT", image=True, dup=None, **extra):
+    b = {"slug": slug, "name": f"Bank {slug}", "enabled": enabled, "variant_ids": [f"opn-{slug}", f"opn-{slug}-opna"],
+         "file": f"{slug}.wopn", "image_path": f"/opt/banks/wopn/{slug}.wopn" if image else None,
+         "source": {"repo": "r", "commit": "c", "path": f"fm_banks/{slug}.wopn", "url": f"https://x/{slug}.wopn", "readme": None},
+         "bytes": 1000, "sha256": _sha(slug), "license": license, "license_note": "note", "duplicate_of": dup, "notes": None}
+    b.update(extra)
+    return b
+
+
+OPN = {"schema": 1, "count": 4, "distinct_sha256": 3, "enabled_count": 2, "banks": [
+    opn_bank("xg", bank_map="xg"),
+    opn_bank("nineko", license="unknown"),
+    opn_bank("ed-xg", enabled=False, image=False),
+    opn_bank("ed-gm", enabled=False, dup="xg"),
+]}
 
 
 def scan_font(file, melodic=128, drums=True, banks=None, sha=None, nbytes=5_000_000, **info):
@@ -91,7 +119,7 @@ class SyntheticBuild(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.facets = build.build(SCAN, OVERRIDES, now=NOW)
-        cls.doc = variants.build(cls.facets, SCAN, _small_banks_doc(), PASSES, None, ENGINES, None, now=NOW)
+        cls.doc = variants.build(cls.facets, SCAN, _small_banks_doc(), PASSES, OPN, ENGINES, None, now=NOW)
         cls.by_id = {v["id"]: v for v in cls.doc["variants"]}
 
     def test_counts(self):
@@ -101,9 +129,12 @@ class SyntheticBuild(unittest.TestCase):
         self.assertEqual(c["adl"], 5)
         self.assertEqual(c["adl_opl2"], 2)
         self.assertEqual(c["adl_esfmu"], 1)
-        self.assertEqual(c["total"], 6 + 5 + 2 + 1)
-        self.assertEqual(c["by_engine"], {"adlmidi": 8, "fluidsynth": 6})
-        self.assertEqual(c["by_chip"], {"esfm": 1, "opl2": 2, "opl3": 5, "sf2": 6})
+        self.assertEqual((c["opn"], c["opn_opna"], c["opn_banks"]), (2, 2, 2))
+        self.assertEqual((c["edm"], c["gus"], c["sc55"], c["munt"], c["requires_rom"]), (3, 1, 9, 2, 11))
+        self.assertEqual(c["total"], 6 + 5 + 2 + 1 + 4 + N_BUILTIN)
+        self.assertEqual(c["by_engine"], {"adlmidi": 8, "edmidi": 3, "fluidsynth": 6, "munt": 2, "opnmidi": 4, "sc55": 9, "timidity": 1})
+        self.assertEqual(c["by_chip"], {"esfm": 1, "gus": 1, "la": 2, "opl2": 2, "opl3": 5, "opll": 2, "opn2": 2, "opna": 2,
+                                        "pcm_rom": 9, "scc": 1, "sf2": 6})
 
     def test_sf2_ids_are_sha_prefixed(self):
         v = self.by_id["sf2-" + _sha("Zeta GM.sf2")[:10]]
@@ -204,9 +235,15 @@ class SyntheticBuild(unittest.TestCase):
 
     def test_canonical_order(self):
         ids = [v["id"] for v in self.doc["variants"]]
-        # engine block: all adlmidi first, then fluidsynth
+        # engine blocks in ORDER: adlmidi, opnmidi, edmidi, timidity, sc55, munt, fluidsynth
         engines = [v["engine"] for v in self.doc["variants"]]
         self.assertEqual(engines, sorted(engines, key=variants.ORDER["engine"].index))
+        self.assertEqual([e for i, e in enumerate(engines) if i == 0 or engines[i - 1] != e],
+                         ["adlmidi", "opnmidi", "edmidi", "timidity", "sc55", "munt", "fluidsynth"])
+        # inside opnmidi: opn2 block then opna block; inside edmidi: opll (edm-opll, edm-all) then scc
+        self.assertEqual([v["id"] for v in self.doc["variants"] if v["engine"] == "opnmidi"],
+                         ["opn-nineko", "opn-xg", "opn-nineko-opna", "opn-xg-opna"])
+        self.assertEqual([v["id"] for v in self.doc["variants"] if v["engine"] == "edmidi"], ["edm-opll", "edm-all", "edm-scc"])
         # chip blocks inside adlmidi: opl3, then opl2, then esfm
         chips = [v["chip_family"] for v in self.doc["variants"] if v["engine"] == "adlmidi"]
         self.assertEqual(chips, ["opl3"] * 5 + ["opl2"] * 2 + ["esfm"])
@@ -223,7 +260,7 @@ class SyntheticBuild(unittest.TestCase):
             scan = copy.deepcopy(SCAN)
             rnd.shuffle(scan["fonts"])
             facets = build.build(scan, OVERRIDES, now=NOW)
-            doc = variants.build(facets, scan, _small_banks_doc(), PASSES, None, ENGINES, None, now=NOW)
+            doc = variants.build(facets, scan, _small_banks_doc(), PASSES, OPN, ENGINES, None, now=NOW)
             self.assertEqual([v["id"] for v in doc["variants"]], [v["id"] for v in self.doc["variants"]])
             self.assertEqual(doc["variants"], self.doc["variants"])
 
@@ -234,9 +271,15 @@ class SyntheticBuild(unittest.TestCase):
         self.assertEqual(len(slugs), len(set(slugs)))
 
     def test_facet_counts(self):
-        self.assertEqual(self.doc["facets"]["engine"], {"adlmidi": 8, "fluidsynth": 6})
-        self.assertEqual(self.doc["facets"]["quality"]["non_gm"], 2)  # adl-b3 + adl-b3-opl2
-        self.assertEqual(self.doc["facets"]["lineage"]["fm_bank"], 8)
+        self.assertEqual(self.doc["facets"]["engine"]["adlmidi"], 8)
+        self.assertEqual(self.doc["facets"]["engine"]["fluidsynth"], 6)
+        self.assertEqual(self.doc["facets"]["quality"]["non_gm"], 3)  # adl-b3 + adl-b3-opl2 + sc55-jv880
+        self.assertEqual(self.doc["facets"]["quality"]["mt32"], 3)    # adl-b24 + mt32 + cm32l
+        self.assertEqual(self.doc["facets"]["lineage"]["fm_bank"], 8 + 4 + 3)
+        self.assertEqual(self.doc["facets"]["lineage"]["roland"], 1 + 9 + 2)
+        self.assertEqual(self.doc["facets"]["lineage"]["gravis"], 1)
+        self.assertEqual(self.doc["facets"]["chip"]["scc"], 2)        # edm-scc + edm-all (list-valued facet)
+        self.assertEqual(self.doc["facets"]["chip"]["opll"], 2)
 
     def test_unknown_pass_bank_raises(self):
         bad = copy.deepcopy(PASSES)
@@ -270,15 +313,199 @@ class SyntheticBuild(unittest.TestCase):
         self.assertTrue(any(s.startswith("zeta-gm-") for s in slugs))
 
     def test_review_markdown_sections(self):
-        md = variants.review_markdown(self.doc, self.facets, _small_banks_doc(), None)
+        md = variants.review_markdown(self.doc, self.facets, _small_banks_doc(), OPN)
         for heading in ("## Summary", "## Roland copyright fonts (1)", "## Regex-only lineage", "## Low-confidence years",
                         "## Byte-identical duplicates (1 groups)", "## libADLMIDI embedded banks and issue #301",
-                        "## ROM-engine variants (M2b placeholder)", "## libOPNMIDI banks (M2b placeholder)"):
+                        "## libOPNMIDI WOPN banks (2 banks -> 4 variants)", "## libEDMIDI and TiMidity/FreePats (4 variants)",
+                        "## Per-variant overrides in effect (0)", "## ROM-engine variants (11, all `requires_rom`)"):
             self.assertIn(heading, md)
         self.assertIn("SC-55 Thing.sf2", md)
         self.assertIn("Twin B.sf2", md)
         self.assertIn(variants.ISSUE_301_URL, md)
         self.assertIn("| 3 | adl-b3, adl-b3-opl2 |", md)
+        self.assertIn("`nineko`", md)                      # unknown-licence WOPN bank flagged
+        self.assertIn("| ed-xg | Bank ed-xg | MIT | no | - |", md)
+        self.assertIn("| sc55-mk2 | Roland SC-55mk2 (Nuked-SC55) | sc55 | roms/sc55-mk2/ | mk2 |", md)
+        self.assertIn("| mt32 | Roland MT-32 (Munt) | munt | roms/mt32/ | mt32 |", md)
+        self.assertIn("non-commercial", md)
+        self.assertIn("`edm-psg`", md)
+        self.assertIn("11 variants need owner-supplied ROMs", md)
+
+
+class M2bEngineVariants(unittest.TestCase):
+    """opn-<slug>[-opna], edm-*, gus-freepats, sc55-<family>, mt32/cm32l: ids, facets, render templates, rom fields."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.facets = build.build(SCAN, OVERRIDES, now=NOW)
+        cls.doc = variants.build(cls.facets, SCAN, _small_banks_doc(), PASSES, OPN, ENGINES, None, now=NOW)
+        cls.by_id = {v["id"]: v for v in cls.doc["variants"]}
+
+    def test_opn_variants(self):
+        v = self.by_id["opn-xg"]
+        self.assertEqual((v["engine"], v["core"], v["chip_family"], v["type"]), ("opnmidi", "nuked-3438", "opn2", "fm"))
+        self.assertEqual(v["slug"], "xg-opn2")
+        self.assertEqual(v["label"], "Bank xg")
+        self.assertEqual(v["bank"], {"kind": "file", "dir": "wopn", "file": "xg.wopn", "sha256": _sha("xg"), "bytes": 1000,
+                                     "name": "Bank xg", "slug": "xg", "pass": None})
+        self.assertEqual(v["render"]["cmd"], "opnmidiplay -f32 -vm 0 --gain 2.0 --chips 2 --emu-nuked-3438 /opt/banks/wopn/xg.wopn <song>.mid")
+        self.assertEqual(v["facets"]["bank_map"], "xg")
+        self.assertEqual((v["facets"]["completeness"], v["facets"]["lineage"], v["facets"]["decade"], v["facets"]["size"]),
+                         ("full_gm", "fm_bank", "1980s", "<2MB"))
+        self.assertEqual(v["source"]["license_flag"], "free")
+        self.assertEqual(v["source"]["sha256"], _sha("xg"))
+        self.assertIsNone(v["legal_note"])
+        self.assertFalse(v["requires_rom"])
+        o = self.by_id["opn-xg-opna"]
+        self.assertEqual((o["core"], o["chip_family"], o["slug"], o["label"], o["bank"]["pass"]), ("mame-opna", "opna", "xg-opna", "Bank xg [OPNA]", "opna"))
+        self.assertIn("--emu-mame-opna /opt/banks/wopn/xg.wopn <song>.mid", o["render"]["cmd"])
+        self.assertEqual(o["facets"]["chip"], "opna")
+        # unknown licence -> flagged, still published; disabled / duplicate / not-in-image entries -> no variant
+        n = self.by_id["opn-nineko"]
+        self.assertEqual(n["source"]["license_flag"], "unknown")
+        self.assertIn("no licence stated", n["legal_note"])
+        self.assertTrue(n["publish"])
+        for vid in ("opn-ed-xg", "opn-ed-xg-opna", "opn-ed-gm", "opn-gm"):
+            self.assertNotIn(vid, self.by_id)
+        self.assertEqual(self.doc["pending"]["opnmidi_disabled"]["slugs"], ["ed-gm", "ed-xg"])
+
+    def test_opn_bank_options_and_errors(self):
+        opn = copy.deepcopy(OPN)
+        opn["banks"][0].update({"publish": False, "completeness": "melodic_only", "quality": ["broken_drums"], "publish_note": "why"})
+        doc = variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, opn, ENGINES, None, now=NOW)
+        by = {v["id"]: v for v in doc["variants"]}
+        self.assertFalse(by["opn-xg"]["publish"])
+        self.assertFalse(by["opn-xg-opna"]["publish"])
+        self.assertEqual(by["opn-xg"]["facets"]["completeness"], "melodic_only")
+        self.assertEqual(by["opn-xg"]["facets"]["quality"], ["broken_drums"])
+        self.assertEqual(by["opn-xg"]["legal_note"], "why")
+        self.assertEqual(doc["counts"]["unpublished"], 2)
+        bad = copy.deepcopy(OPN)
+        bad["banks"][2]["enabled"] = True          # enabled but not in the image
+        with self.assertRaises(ValueError):
+            variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, bad, ENGINES, None, now=NOW)
+        bad = copy.deepcopy(OPN)
+        bad["banks"][0]["variant_ids"] = ["opn-something-else"]
+        with self.assertRaises(ValueError):
+            variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, bad, ENGINES, None, now=NOW)
+        # no opn doc at all -> no opn variants, everything else unchanged
+        doc = variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, None, ENGINES, None, now=NOW)
+        self.assertEqual(doc["counts"]["opn"], 0)
+        self.assertEqual(doc["counts"]["total"], self.doc["counts"]["total"] - 4)
+
+    def test_edm_variants(self):
+        opll, scc, both = self.by_id["edm-opll"], self.by_id["edm-scc"], self.by_id["edm-all"]
+        for v, module in ((opll, "opll"), (scc, "scc"), (both, "all")):
+            self.assertEqual(v["engine"], "edmidi")
+            self.assertEqual(v["module"], module)
+            self.assertEqual(v["render"]["module"], module)
+            self.assertEqual(v["render"]["cmd"], f"edmidi-render -r 48000 -n 8 -f f32 -m {module} -o raw.wav <song>.mid")
+            self.assertEqual((v["type"], v["facets"]["lineage"], v["facets"]["decade"]), ("fm", "fm_bank", "1980s"))
+            self.assertIsNone(v["bank"])
+            self.assertFalse(v["requires_rom"])
+        self.assertEqual((opll["chip_family"], opll["core"], opll["facets"]["completeness"]), ("opll", "emu2413", "full_gm"))
+        self.assertEqual((scc["chip_family"], scc["core"], scc["facets"]["completeness"], scc["facets"]["bank_map"]),
+                         ("scc", "emu2212", "melodic_only", "melodic_only"))
+        self.assertEqual((both["chip_family"], both["facets"]["chip"], both["core"]), ("opll", ["opll", "scc"], "emu2413+emu2212"))
+        self.assertNotIn("edm-psg", self.by_id)
+        self.assertEqual(self.doc["pending"]["edmidi_dropped"]["ids"], ["edm-psg"])
+
+    def test_gus_variant(self):
+        v = self.by_id["gus-freepats"]
+        self.assertEqual((v["engine"], v["core"], v["chip_family"], v["type"]), ("timidity", "timidity", "gus", "sampled"))
+        self.assertEqual((v["facets"]["completeness"], v["facets"]["bank_map"], v["facets"]["lineage"], v["facets"]["decade"], v["facets"]["quality"]),
+                         ("partial", "gm", "gravis", "1990s", ["miss_ins"]))
+        self.assertEqual(v["render"]["cmd"], "timidity -c /etc/timidity/freepats.cfg -Ow2 -s 48000 -EFreverb=d -EFchorus=d -A 25 "
+                                             "--preserve-silence -o raw.wav <song>.mid")
+        self.assertEqual(v["source"]["license_flag"], "gpl")
+
+    def test_sc55_variants(self):
+        ids = sorted(v["id"] for v in self.doc["variants"] if v["engine"] == "sc55")
+        self.assertEqual(ids, sorted(f"sc55-{f}" for f in ("mk2", "st", "mk1", "cm300", "jv880", "scb55", "rlp3237", "sc155", "sc155mk2")))
+        v = self.by_id["sc55-mk2"]
+        self.assertTrue(v["requires_rom"])
+        self.assertEqual(v["romset"], "sc55-mk2")
+        self.assertEqual(v["rom"], {"family": "mk2", "dir": "sc55-mk2", "engine": "sc55"})
+        self.assertEqual((v["core"], v["chip_family"], v["type"]), ("nuked-sc55", "pcm_rom", "sampled"))
+        self.assertEqual((v["facets"]["completeness"], v["facets"]["bank_map"], v["facets"]["lineage"], v["facets"]["decade"]),
+                         ("full_gm", "gs_var", "roland", "1990s"))
+        self.assertEqual(v["render"]["cmd"], "nuked-sc55-render -f f32 --end release -n 1 -d /roms/sc55-mk2 --romset mk2 -o raw.wav <song>.mid")
+        self.assertEqual(v["source"]["license_flag"], "roland_copyright")
+        self.assertIn("non-commercial", v["legal_note"])
+        self.assertTrue(v["publish"])
+        jv = self.by_id["sc55-jv880"]
+        self.assertEqual((jv["facets"]["completeness"], jv["facets"]["bank_map"], jv["facets"]["quality"]), ("partial", "non_gm", ["non_gm"]))
+        for v in self.doc["variants"]:
+            if v["requires_rom"]:
+                self.assertEqual(v["romset"], v.get("rom", {}).get("dir"))
+                self.assertNotIn("/", v["romset"])
+
+    def test_munt_variants(self):
+        mt, cm = self.by_id["mt32"], self.by_id["cm32l"]
+        for v, model in ((mt, "mt32"), (cm, "cm32l")):
+            self.assertEqual((v["engine"], v["core"], v["chip_family"], v["type"]), ("munt", "mt32emu", "la", "la"))
+            self.assertTrue(v["requires_rom"])
+            self.assertEqual((v["romset"], v["model"]), (model, model))
+            self.assertEqual(v["slug"], f"munt-{model}")
+            self.assertEqual(v["render"]["cmd"], f"mt32emu-smf2wav --quiet -f --src-quality 3 --record-max-start-silence -1 "
+                                                 f"-m /roms/{model} -i {model} -o raw.wav <song>.mid")
+            self.assertEqual((v["facets"]["completeness"], v["facets"]["bank_map"], v["facets"]["quality"], v["facets"]["lineage"]),
+                             ("full_gm", "non_gm", ["mt32"], "roland"))
+            self.assertEqual(v["facets"]["decade"], "1980s")
+            self.assertEqual(v["source"]["license_flag"], "roland_copyright")
+        self.assertEqual(mt["year"], 1987)
+        self.assertEqual(cm["year"], 1989)
+
+    def test_builtin_engines_without_engines_json(self):
+        doc = variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, OPN, None, None, now=NOW)
+        by = {v["id"]: v for v in doc["variants"]}
+        self.assertIn("--chips 2 --emu-nuked-3438", by["opn-xg"]["render"]["cmd"])
+        self.assertIn("--preserve-silence", by["gus-freepats"]["render"]["cmd"])
+        self.assertIn("--record-max-start-silence -1", by["mt32"]["render"]["cmd"])
+        self.assertEqual(doc["counts"]["sc55"], 9)
+        bad = {"engines": {"sc55": {"romset_flag": {"sc55-x": "x"}}}}
+        with self.assertRaises(ValueError):
+            variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, OPN, bad, None, now=NOW)
+
+    def test_variant_overrides(self):
+        ov = {"variants": {"adl-b0-esfmu": {"publish": False, "notes": "null test > 0.99"},
+                           "sc55-jv880": {"publish": False, "label": "JV-880 (withdrawn)"},
+                           "_comment": "ignored"}}
+        doc = variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, OPN, ENGINES, ov, now=NOW)
+        by = {v["id"]: v for v in doc["variants"]}
+        self.assertFalse(by["adl-b0-esfmu"]["publish"])
+        self.assertTrue(by["adl-b0"]["publish"])                     # only the one id, not the whole bank
+        self.assertIn("null test > 0.99", by["adl-b0-esfmu"]["legal_note"])
+        self.assertEqual(by["adl-b0-esfmu"]["override"], {"publish": False, "notes": "null test > 0.99"})
+        self.assertFalse(by["sc55-jv880"]["publish"])
+        self.assertEqual(by["sc55-jv880"]["label"], "JV-880 (withdrawn)")
+        self.assertIn("non-commercial", by["sc55-jv880"]["legal_note"])   # original note kept
+        self.assertEqual(doc["counts"]["unpublished"], 2)
+        md = variants.review_markdown(doc, self.facets, _small_banks_doc(), OPN)
+        self.assertIn("## Per-variant overrides in effect (2)", md)
+        self.assertIn("| adl-b0-esfmu | NO |  | null test > 0.99 |", md)
+        for bad in ({"variants": {"nope-1": {"publish": False}}}, {"variants": {"adl-b0": {"bogus": 1}}}, {"variants": {"adl-b0": 5}}):
+            with self.assertRaises(ValueError):
+                variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, OPN, ENGINES, bad, now=NOW)
+
+    def test_ids_slugs_unique_and_shape(self):
+        ids = [v["id"] for v in self.doc["variants"]]
+        slugs = [v["slug"] for v in self.doc["variants"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(len(slugs), len(set(slugs)))
+        required = {"id", "slug", "label", "engine", "core", "chip_family", "type", "facets", "publish", "source", "requires_rom",
+                    "render", "legal_note", "aliases", "bank", "year", "year_confidence"}
+        for v in self.doc["variants"]:
+            self.assertTrue(required <= set(v), v["id"])
+            self.assertIn(v["chip_family"], variants.ORDER["chip"], v["id"])
+            self.assertIn(v["engine"], variants.ORDER["engine"], v["id"])
+            self.assertIn(v["facets"]["completeness"], variants.ORDER["completeness"], v["id"])
+            self.assertIn(v["facets"]["lineage"], variants.ORDER["lineage"], v["id"])
+            self.assertIn(v["facets"]["size"], variants.ORDER["size"], v["id"])
+            self.assertIn("<song>.mid", v["render"]["cmd"])
+
+
+ID_RE = r"^(sf2-[0-9a-f]{10}|adl-b\d+(-opl2|-esfmu|-cqm)?|opn-[a-z0-9-]+?(-opna)?|edm-(opll|scc|all)|gus-freepats|sc55-[a-z0-9]+|mt32|cm32l)$"
 
 
 @unittest.skipUnless(os.path.exists(LEGACY), "legacy listing missing")
@@ -298,7 +525,7 @@ class AllBanksWithRepoPasses(unittest.TestCase):
         doc = variants.build(empty_facets, None, _banks_doc(), passes, None, ENGINES, None, now=NOW)
         c = doc["counts"]
         self.assertEqual((c["adl"], c["adl_opl2"], c["adl_esfmu"], c["adl_cqm"], c["sf2"]), (79, 27, 10, 10, 0))
-        self.assertEqual(c["total"], 126)
+        self.assertEqual(c["total"], 126 + N_BUILTIN)
         # no 4-op bank in the OPL2 pass
         by = {v["id"]: v for v in doc["variants"]}
         for n in by_id["opl2"]["banks"]:
@@ -355,11 +582,21 @@ class CommittedVariantsConsistent(unittest.TestCase):
             self.assertIn("core", v["render"])
             for k in ("engine", "chip", "type", "completeness", "bank_map", "size", "lineage", "decade", "quality"):
                 self.assertIn(k, v["facets"], v["id"])
+            self.assertRegex(v["id"], ID_RE)
             if v["engine"] == "fluidsynth":
                 self.assertRegex(v["id"], r"^sf2-[0-9a-f]{10}$")
                 self.assertEqual(v["id"], "sf2-" + v["source"]["sha256"][:10])
-            else:
+            elif v["engine"] == "adlmidi":
                 self.assertRegex(v["id"], r"^adl-b\d+(-opl2|-esfmu|-cqm)?$")
+            elif v["engine"] == "opnmidi":
+                self.assertEqual(v["bank"]["kind"], "file")
+                self.assertTrue(v["bank"]["file"].endswith(".wopn"))
+                self.assertEqual(len(v["bank"]["sha256"]), 64)
+            if v["requires_rom"]:
+                self.assertIn(v["engine"], ("sc55", "munt"))
+                self.assertEqual(v["romset"], v["rom"]["dir"])
+            else:
+                self.assertNotIn(v["engine"], ("sc55", "munt"))
         alias_targets = {a["variant_id"] for a in doc["aliases"]}
         self.assertTrue(alias_targets <= set(ids))
 
@@ -375,8 +612,12 @@ class RealCollectionVariantCounts(unittest.TestCase):
         self.assertEqual(c["adl_opl2"], 27)
         self.assertEqual(c["adl_esfmu"], 10)
         self.assertEqual(c["adl_cqm"], 10)
-        self.assertEqual(c["total"], 621)
-        self.assertEqual(c["by_chip"], {"cqm": 10, "esfm": 10, "opl2": 27, "opl3": 79, "sf2": 495})
+        self.assertEqual((c["opn"], c["opn_opna"], c["opn_banks"]), (7, 7, 7))
+        self.assertEqual((c["edm"], c["gus"], c["sc55"], c["munt"], c["requires_rom"]), (3, 1, 9, 2, 11))
+        self.assertEqual(c["total"], 650)
+        self.assertEqual(c["by_chip"], {"cqm": 10, "esfm": 10, "gus": 1, "la": 2, "opl2": 27, "opl3": 79, "opll": 2,
+                                        "opn2": 7, "opna": 7, "pcm_rom": 9, "scc": 1, "sf2": 495})
+        self.assertEqual(c["by_engine"], {"adlmidi": 126, "edmidi": 3, "fluidsynth": 495, "munt": 2, "opnmidi": 14, "sc55": 9, "timidity": 1})
 
     def test_cli_round_trip(self):
         with tempfile.TemporaryDirectory() as td:
@@ -386,7 +627,7 @@ class RealCollectionVariantCounts(unittest.TestCase):
                                   cwd=REPO, capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             with open(out, encoding="utf-8") as fh:
-                self.assertEqual(json.load(fh)["counts"]["total"], 621)
+                self.assertEqual(json.load(fh)["counts"]["total"], 650)
             with open(rev, encoding="utf-8") as fh:
                 self.assertIn("## Roland copyright fonts (38)", fh.read())
 

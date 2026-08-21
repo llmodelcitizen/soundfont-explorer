@@ -72,10 +72,11 @@ def validate_environment(paths: Paths, jobs) -> None:
     """Startup checks (plan §8.2): tools present, --emu-X flags known, free disk ≥ 100 GB."""
     engines_needed = {j.engine for j in jobs}
     tools = {"ffmpeg", "opusenc"}
-    if "adlmidi" in engines_needed:
-        tools.add("adlmidiplay")
-    if "fluidsynth" in engines_needed:
-        tools.add("fluidsynth")
+    ej_engines = load_engines(paths)["engines"]
+    for e in engines_needed:
+        b = (ej_engines.get(e) or {}).get("binary")
+        if b:
+            tools.add(b)
     missing = [t for t in sorted(tools) if shutil.which(t) is None]
     if missing:
         raise SystemExit(f"missing tools: {', '.join(missing)} (run inside the sfr-render image)")

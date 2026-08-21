@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "note": "Single source of truth for engine versions, flags and calibration. Values marked null are filled in at the milestone that adds the engine (M2b for OPN/EDM/GUS/SC-55/MT-32). Calibration offsets (start_offset_s, drift_ppm) come from render/calib/ at M2a/M2b.",
+  "note": "Single source of truth for engine versions, flags and calibration. Every engine binary lives only in the sfr-render image (render/Dockerfile); 'commit' is the git commit the image builds (ARG *_COMMIT). base_args is the argv the sfr adapter inserts between the binary and the positional arguments (see each 'invocation'). Calibration offsets (start_offset_s, drift_ppm) come from `sfr calibrate` (render/sfr/calibrate.py) and are null until measured (M2a for adlmidi/fluidsynth, M2b part 2 for the rest).",
   "render": {
     "sample_rate": 48000,
     "channels": 2,
@@ -37,10 +37,17 @@
         "esfmu": "--emu-esfmu",
         "nuked-cqm": "--emu-nuked-cqm"
       },
-      "base_args": ["-f32", "-vm", "0", "--gain", "2.0"],
+      "base_args": [
+        "-f32",
+        "-vm",
+        "0",
+        "--gain",
+        "2.0"
+      ],
       "chips": 1,
-      "start_offset_s": null,
-      "drift_ppm": null
+      "start_offset_s": -0.00094,
+      "drift_ppm": 0,
+      "invocation": "cd <tmp> && adlmidiplay <song>.mid <base_args> <core_flag> <bank|wopl_path> <chips>   -> <tmp>/<song>.mid.wav (44100 Hz, f32)"
     },
     "fluidsynth": {
       "label": "FluidSynth",
@@ -50,21 +57,247 @@
       "license": "LGPL-2.1-or-later",
       "binary": "fluidsynth",
       "native_rate": 48000,
-      "base_args": ["-ni", "-T", "wav", "-O", "float", "-r", "48000", "-g", "0.5", "-R", "0", "-C", "0",
-                    "-o", "synth.polyphony=256", "-o", "synth.cpu-cores=1"],
+      "base_args": [
+        "-ni",
+        "-T",
+        "wav",
+        "-O",
+        "float",
+        "-r",
+        "48000",
+        "-g",
+        "0.5",
+        "-R",
+        "0",
+        "-C",
+        "0",
+        "-o",
+        "synth.polyphony=256",
+        "-o",
+        "synth.cpu-cores=1"
+      ],
       "dynamic_sample_loading_above_bytes": 134217728,
       "start_offset_s": 0.0,
       "drift_ppm": 0,
       "reference": true
     },
-    "opnmidi": { "label": "libOPNMIDI", "version": null, "commit": null, "binary": "opnmidiplay", "native_rate": null, "start_offset_s": null, "drift_ppm": null },
-    "edmidi":  { "label": "libEDMIDI",  "version": null, "commit": null, "binary": "edmidi-render", "native_rate": 48000, "start_offset_s": null, "drift_ppm": null },
-    "timidity": { "label": "TiMidity++ / FreePats", "version": null, "binary": "timidity", "native_rate": 48000, "start_offset_s": null, "drift_ppm": null },
-    "sc55":    { "label": "Nuked-SC55", "version": null, "commit": null, "binary": "nuked-sc55-render", "requires_rom": true, "start_offset_s": null, "drift_ppm": null },
-    "munt":    { "label": "Munt (mt32emu)", "version": null, "commit": null, "binary": "mt32emu-smf2wav", "requires_rom": true, "start_offset_s": null, "drift_ppm": null }
+    "opnmidi": {
+      "label": "libOPNMIDI",
+      "version": "1.6.1",
+      "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+      "url": "https://github.com/Wohlstand/libOPNMIDI",
+      "license": "LGPL-2.1+ / GPL-2+ / GPL-3+ / MIT by part (README 'License'); Nuked OPN2 LGPL-2.1+, MAME YM2612/YM2608 GPL-2+, GENS LGPL-2.1+, YMFM BSD-3, NP2 fmgen MIT-like; opnmidiplay GPL-3; banks: see /opt/banks/wopn/*.readme.txt and catalog/opn_banks.json",
+      "binary": "opnmidiplay",
+      "native_rate": 44100,
+      "build_notes": "MIDIPLAY_WAVE_ONLY=ON: no -w/-nl flags (always writes <input>.wav next to the input, never loops; the sequencer's loop flag defaults to off). Output rate fixed at 44100 Hz (opn2_init(44100), no CLI flag). Links libasound2. Built with MAME, Nuked, GENS, YMFM, NP2 and MAME-2608 cores; LLE cores off.",
+      "invocation": "cd <tmp> && opnmidiplay <base_args> <chips_flag> <chips> <core_flag> <bank_path> <song>.mid   -> <tmp>/<song>.mid.wav. Options FIRST, then the bank path, then the MIDI (both positional, in that order). The parser stops at the first unknown token and treats it as the bank path, so an unknown --emu-X fails with 'Custom bank: Invalid data stream!' (exit 2) - validate core flags against this table before running.",
+      "output": "<input>.wav next to the input file; symlink the song into the job scratch dir (same trick as adlmidi). Stereo, f32 with -f32. Exit 0 and 'Completed!' on stdout when done; progress spinner on stdout.",
+      "cores": {
+        "nuked-3438": "--emu-nuked-3438",
+        "nuked-2612": "--emu-nuked-2612",
+        "mame": "--emu-mame",
+        "gens": "--emu-gens",
+        "ymfm-opn2": "--emu-ymfm-opn2",
+        "np2": "--emu-np2",
+        "mame-opna": "--emu-mame-opna",
+        "ymfm-opna": "--emu-ymfm-opna"
+      },
+      "core_chip_family": {
+        "nuked-3438": "opn2",
+        "nuked-2612": "opn2",
+        "mame": "opn2",
+        "gens": "opn2",
+        "ymfm-opn2": "opn2",
+        "np2": "opna",
+        "mame-opna": "opna",
+        "ymfm-opna": "opna"
+      },
+      "base_args": [
+        "-f32",
+        "-vm",
+        "0",
+        "--gain",
+        "2.0"
+      ],
+      "chips": 2,
+      "chips_note": "One OPN2/OPNA chip = 6 FM voices; E1M1 peaks at 11 simultaneous melodic notes, so 1 chip drops ~half of them. 2 chips (12 voices) costs 2x CPU on Nuked (21.6 s vs 11.2 s for E1M1); MAME OPNA 2.6 s. opnmidiplay's own default is 3 chips for Nuked and 8 otherwise.",
+      "banks_dir": "/opt/banks/wopn",
+      "bank_arg": "positional path, e.g. /opt/banks/wopn/<slug>.wopn (slugs from catalog/opn_banks.json: xg gm-old fmmidi gs-dmxopn2 gems-fmlib-gmize nineko tomsoft)",
+      "measured_e1m1": {
+        "nuked-3438 chips=2": "21.6 s wall, 190.18 s, peak -5.5 dBFS, RMS -21.2 dB",
+        "mame-opna chips=2": "2.6 s wall, 190.18 s, peak -6.5 dBFS, RMS -21.0 dB"
+      },
+      "start_offset_s": -0.00138,
+      "drift_ppm": 0,
+      "chips_flag": "--chips"
+    },
+    "edmidi": {
+      "label": "libEDMIDI (Emu De MIDI: OPLL + SCC)",
+      "version": "1.0.0",
+      "commit": "be48aebad667b0de538e81df8a986c10b76fd365",
+      "url": "https://github.com/Wohlstand/libEDMIDI",
+      "license": "zlib-style (LICENSE.txt, Mitsutaka Okazaki 2004); emu2413/emu2212/emu2149 by Okazaki; MIDI sequencer MIT; edmidi-render (render/edmidi-render/) is part of this repo",
+      "binary": "edmidi-render",
+      "native_rate": 48000,
+      "build_notes": "libEDMIDI.a (static) + render/edmidi-render/{main.c,modsel.cpp} compiled against the library's src/ tree. edmidi_initEx(rate, modules) takes an even module COUNT (2..16), not a mask: even modules are OPLL (YM2413), odd modules are SCC; every melodic note plays on one OPLL and one SCC module at once, percussion on the OPLL rhythm section only. No public chip-selection API exists, so modsel.cpp swaps unwanted modules for a silent device. PSG (emu2149/CPSGDrum) is compiled but never attached to any module (same upstream) -> no PSG voice.",
+      "invocation": "edmidi-render <base_args> -m <mode> -o <tmp>/raw.wav <song.mid>   (-o and input are absolute paths; no cwd dependence)",
+      "output": "RIFF WAV at -r rate, stereo, f32 with '-f f32' (s16 saturating otherwise); whole song once, loop disabled; exit 0 / 1 engine-IO / 2 bad args; a summary line with frames written goes to stderr.",
+      "modes": {
+        "all": "-m all (OPLL+SCC layered, the library's own wiring)",
+        "opll": "-m opll (OPLL melodic + OPLL rhythm; SCC silenced)",
+        "scc": "-m scc (SCC melodic only - no percussion; OPLL silenced)"
+      },
+      "unsupported_modes": {
+        "psg": "rejected with exit 2: libEDMIDI never routes anything to the PSG; drop the edm-psg variant"
+      },
+      "base_args": [
+        "-r",
+        "48000",
+        "-n",
+        "8",
+        "-f",
+        "f32"
+      ],
+      "modules": 8,
+      "modules_note": "8 = 4 OPLL + 4 SCC (the library's edmidi_init default); OPLL emulation dominates CPU (all 9.6 s, opll 8.7 s, scc 0.75 s for E1M1).",
+      "measured_e1m1": {
+        "all": "9.6 s wall, 190.153 s, peak -7.3 dBFS, RMS -22.8 dB",
+        "opll": "8.7 s, peak -10.0 dBFS, RMS -27.2 dB",
+        "scc": "0.75 s, peak -9.5 dBFS, RMS -24.4 dB",
+        "null_test": "max |all - opll - scc| = 6e-8 (exact sum)"
+      },
+      "start_offset_s": 0.00123,
+      "drift_ppm": 0
+    },
+    "timidity": {
+      "label": "TiMidity++ / FreePats (GUS patches)",
+      "version": "2.14.0-8.3+b1 (debian trixie) + freepats 20060219-4",
+      "source": "debian trixie packages timidity, freepats",
+      "url": "https://timidity.sourceforge.net/ ; https://freepats.zenvoid.org/",
+      "license": "TiMidity++ GPL-2+; FreePats 2006 patch set GPL-2+ with the FreePats exception (see /usr/share/doc/freepats/copyright in the image)",
+      "binary": "timidity",
+      "native_rate": 48000,
+      "config": "/etc/timidity/freepats.cfg (must be passed with -c: trixie's /etc/timidity/timidity.cfg sources the absent fluidr3_gm.cfg, which only prints a warning)",
+      "build_notes": "No float output (-Ow formats: 1=16-bit, 2=24-bit); -Ow2 gives pcm_s24le. --preserve-silence is REQUIRED: by default TiMidity drops initial silence, which would break inter-engine start calibration. -A 70 (the default amplification) clips E1M1 (peak 0.0 dBFS); -A 25 leaves ~6.5 dB headroom (peak -6.5 dBFS). FreePats lacks several GM programs (E1M1: 49, 51, 52, 86, 99 'will not be heard') - expected, not an error.",
+      "invocation": "timidity <base_args> -o <tmp>/raw.wav <song.mid>   (absolute paths; no cwd dependence; stdout/stderr are chatty, exit 0)",
+      "output": "RIFF WAV pcm_s24le stereo 48000 Hz at -o path; E1M1 -> 188.19 s (last note + release, shorter than D; sfr pads to D).",
+      "base_args": [
+        "-c",
+        "/etc/timidity/freepats.cfg",
+        "-Ow2",
+        "-s",
+        "48000",
+        "-EFreverb=d",
+        "-EFchorus=d",
+        "-A",
+        "25",
+        "--preserve-silence"
+      ],
+      "measured_e1m1": {
+        "A=25": "2.2 s wall, 188.19 s, peak -6.5 dBFS, RMS -23.6 dB",
+        "A=50": "peak -0.5 dBFS",
+        "A=70": "peak 0.0 dBFS (clipped)"
+      },
+      "start_offset_s": -0.00135,
+      "drift_ppm": 0
+    },
+    "sc55": {
+      "label": "Nuked-SC55 (jcmoyer fork)",
+      "version": "0.7.0",
+      "commit": "a48ef92e4bb85355a57a6ff2250d942f835f3503",
+      "url": "https://github.com/jcmoyer/Nuked-SC55",
+      "license": "MAME-style non-commercial licence (LICENSE): redistributions may not be sold or used commercially; see catalog/review.md",
+      "binary": "nuked-sc55-render",
+      "requires_rom": true,
+      "built_only_with": "--build-arg WITH_ROM_ENGINES=1 (absent from the default image; sfr doctor shows '-')",
+      "native_rate": {
+        "mk2": 66207,
+        "st": 66207,
+        "cm300": 66207,
+        "scb55": 66207,
+        "rlp3237": 66207,
+        "sc155": 64000,
+        "sc155mk2": 66207,
+        "mk1": 64000,
+        "jv880": 64000
+      },
+      "native_rate_note": "PCM_GetOutputFrequency: 64000 Hz for mk1/jv880 (sc155 is an mk1-family board), 66207 Hz otherwise; halved with --disable-oversampling. Read the actual rate from the WAV header.",
+      "build_notes": "Renderer frontend only (no SDL2 GUI); librtmidi-dev is a configure-time requirement on Linux even though the renderer does not link it. Static backend; runtime needs only libstdc++.",
+      "invocation": "nuked-sc55-render <base_args> -d /roms/<romset_dir> --romset <family> -o <tmp>/raw.wav <song.mid>",
+      "output": "WAV at -o (f32 with -f f32), rate per romset; '--end release' renders until 100 ms of silence after the last event (default 'cut' stops at the last event). Exit 1 + 'No complete romsets for <family> found.' when ROMs are missing (no file written).",
+      "base_args": [
+        "-f",
+        "f32",
+        "--end",
+        "release",
+        "-n",
+        "1"
+      ],
+      "romset_dirs": "roms/sc55-<family>/ with the ROM files of ONE set (any file names; detected by SHA256). Variant id sc55-<family> == romset == directory name. Families: mk2 st mk1 cm300 jv880 scb55 rlp3237 sc155 sc155mk2; versions can be pinned with --romset <family>-<version> (e.g. mk2-v1.01).",
+      "romset_flag": {
+        "sc55-mk2": "mk2",
+        "sc55-st": "st",
+        "sc55-mk1": "mk1",
+        "sc55-cm300": "cm300",
+        "sc55-jv880": "jv880",
+        "sc55-scb55": "scb55",
+        "sc55-rlp3237": "rlp3237",
+        "sc55-sc155": "sc155",
+        "sc55-sc155mk2": "sc155mk2"
+      },
+      "notes": "-r gs is applied automatically for mk2 romsets (firmware pitch workaround); -n 2 doubles polyphony at 2x CPU. Untested: no ROMs on bimmer (roms/ empty).",
+      "start_offset_s": null,
+      "drift_ppm": null
+    },
+    "munt": {
+      "label": "Munt mt32emu (MT-32 / CM-32L)",
+      "version": "libmt32emu 2.8.3, mt32emu-smf2wav 1.9.3",
+      "commit": "6e7c01fba7e1d50c8fa705834889fd0eac136075",
+      "url": "https://github.com/munt/munt",
+      "license": "libmt32emu LGPL-2.1+; mt32emu-smf2wav GPL-3+; libsmf BSD",
+      "binary": "mt32emu-smf2wav",
+      "requires_rom": true,
+      "built_only_with": "--build-arg WITH_ROM_ENGINES=1 (runtime dependency libglib2.0-0t64 is already in the default image via fluidsynth/ffmpeg)",
+      "native_rate": 32000,
+      "native_rate_note": "MT32EMU_SAMPLE_RATE 32000 with --analog-output-mode 0 (default); mode 2 ACCURATE outputs 48000, mode 3 OVERSAMPLED 96000. Let ffmpeg/soxr resample (one resampler for every engine) rather than -p 48000 + the internal resampler.",
+      "build_notes": "Static libmt32emu (internal resampler, no soxr), C interface; smf2wav links GLib. ROMs are identified by SHA1 content, not by name (mt32emu/src/ROMInfo.cpp); the directory is scanned non-recursively.",
+      "invocation": "mt32emu-smf2wav <base_args> -m /roms/<romset_dir> -i <machine> -o <tmp>/raw.wav <song.mid>",
+      "output": "WAV at -o (f32 with --output-sample-format 1 + -r 1), 32000 Hz stereo. Exit 1 + 'ROMs not found for machine configuration.' when ROMs are missing (no file written).",
+      "base_args": [
+        "--quiet",
+        "-f",
+        "--src-quality",
+        "3",
+        "--renderer-type",
+        "1",
+        "--output-sample-format",
+        "1",
+        "--record-max-start-silence",
+        "-1",
+        "--record-max-end-silence",
+        "-1"
+      ],
+      "flags_note": "--record-max-start-silence -1 is REQUIRED: the default (0) trims leading silence and would break start calibration. Use the LONG option --src-quality: the short -q is claimed twice in smf2wav (quiet and src-quality), so '-q 3' means quiet + a MIDI file named '3'. -f overwrites an existing output.",
+      "machines": {
+        "mt32": "-i mt32 (any complete MT-32 set, highest control ROM version wins; mt32_1_07 / mt32_2_04 ... pin a version)",
+        "cm32l": "-i cm32l (cm32l_1_00 / cm32l_1_02 / cm32ln_1_00 pin a version)"
+      },
+      "romset_dirs": "roms/mt32/ = MT-32 control ROM (64 KiB v1.xx or 128 KiB v2.xx, or the two 32 KiB halves) + MT32_PCM.ROM (512 KiB); roms/cm32l/ = CM-32L control ROM (64 KiB) + CM32L_PCM.ROM (1 MiB). Any file names. Variant id == romset == directory name (mt32, cm32l).",
+      "notes": "Untested: no ROMs on bimmer (roms/ empty).",
+      "start_offset_s": null,
+      "drift_ppm": null
+    }
   },
   "tools": {
     "ffmpeg": "7.1.5 (debian trixie, libsoxr enabled)",
-    "opus-tools": "0.2 (libopus 1.5.2)"
+    "opus-tools": "0.2 (libopus 1.5.2)",
+    "timidity": "2.14.0-8.3+b1 (debian trixie) with freepats 20060219-4; see engines.timidity"
+  },
+  "image": {
+    "default_tag": "sfr-render",
+    "rom_engines_tag": "sfr-render:m2b-rom (docker build --build-arg WITH_ROM_ENGINES=1)",
+    "content_size_mb": 255,
+    "banks": "/opt/banks/{wopl,wopn}",
+    "licenses": "/opt/licenses/<project>/ (+ COMMIT files)"
   }
 }

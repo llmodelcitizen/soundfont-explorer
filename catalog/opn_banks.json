@@ -2,11 +2,12 @@
  "schema": 1,
  "milestone": "M2b",
  "_comment": [
-  "Placeholder for the libOPNMIDI (YM2612 OPN2 / YM2608 OPNA) bank list; every entry is enabled:false until M2b builds opnmidiplay into the image and verifies each file renders.",
-  "Plan §6 counted 8 fm_banks/*.wopn + 6 OPN2BankEditor banks = 14 -> 28 variants (opn-<slug>, opn-<slug>-opna). Measured 2026-08-21: the 8th fm_banks file (gm.wopn) is a symlink to xg.wopn and two OPN2BankEditor files are byte-identical to libOPNMIDI copies, so there are 11 distinct banks -> at most 22 variants; two more (ed-xg, ed-gems-fmlib-gmize, ed-gm-old) are older revisions that may not be worth a variant.",
+  "libOPNMIDI (YM2612 OPN2 / YM2608 OPNA) bank list. Every bank with enabled:true AND an image_path becomes two variants in variants.json: opn-<slug> (--emu-nuked-3438) and opn-<slug>-opna (--emu-mame-opna). Hand-edited; re-run python3 -m catalog.variants after changes.",
+  "M2b decision (2026-08-21): the 7 distinct fm_banks/*.wopn shipped in the pinned libOPNMIDI commit are installed in the image at /opt/banks/wopn/<slug>.wopn with their readme files and are enabled - including the three without a licence statement (gems-fmlib-gmize, nineko, tomsoft), which get a legal_note and a row in review.md (same treatment as the libADLMIDI embedded banks, issue #301). Set enabled:false (or publish:false) here to withdraw one.",
+  "OPN2BankEditor-only files (ed-xg, tomsoft-orig, ed-gems-fmlib-gmize, ed-gm-old) are NOT in the image (licence review pending; render/banks/README.md explains how to add a bank with a licence file) and stay enabled:false; gm, ed-tomsoft and ed-gm are byte-identical duplicates of shipped banks.",
+  "Per-bank optional keys read by variants.py: publish (default true), completeness (default full_gm), bank_map (default gm), quality (list), publish_note (appended to legal_note).",
   "OPN2BankEditor's Bank_Examples/ also holds GEMS .bnk, GYB, Mucom88, BambooTracker and Y12 instrument sets that are not WOPN files; opnmidiplay loads WOPN only, so they would need conversion in the editor first (not planned).",
-  "Files were downloaded to work/catalog/opn/ (gitignored) to measure bytes/sha256; the image copies them to /opt/banks/wopn/<slug>.wopn only when a license file is present (plan §8.1).",
-  "Render template (M2b, verify flags): opnmidiplay <song>.mid -w -nl -b /opt/banks/wopn/<slug>.wopn --chips 1 --emu-nuked-3438  (OPNA pass: --emu-mame-opna)."
+  "Render template (verified M2b, WAVE_ONLY build): cd <tmp> && ln -s /songs/<id>.mid <id>.mid && opnmidiplay -f32 -vm 0 --gain 2.0 --chips 2 --emu-nuked-3438 /opt/banks/wopn/<slug>.wopn <id>.mid  -> <id>.mid.wav (44100 Hz). Options first, then the bank (positional, no -b), then the MIDI."
  ],
  "engine": {
   "id": "opnmidi",
@@ -22,7 +23,7 @@
  },
  "count": 14,
  "distinct_sha256": 11,
- "enabled_count": 0,
+ "enabled_count": 7,
  "duplicates": [
   {
    "sha256": "da6f2ba73368c9338fafaf914e240cd7df7483edbef65ceba6abf820402f46a6",
@@ -43,7 +44,7 @@
   {
    "slug": "xg",
    "name": "Wohlstand XG bank (libOPNMIDI default)",
-   "enabled": false,
+   "enabled": true,
    "variant_ids": [
     "opn-xg",
     "opn-xg-opna"
@@ -63,12 +64,15 @@
    "license_note": "fm_banks/readme.txt: 'This bank (gm.wopn and xg.wopn) is made by me ... License for this bank - MIT' (Vitaliy Novichkov, 2017-2018)",
    "duplicate_of": null,
    "notes": "Default bank compiled into libOPNMIDI; GS/XG-style multi-bank.",
-   "todo": null
+   "todo": null,
+   "bank_map": "xg",
+   "publish": true,
+   "bank_year": 2018
   },
   {
    "slug": "gm-old",
    "name": "Wohlstand GM bank (old)",
-   "enabled": false,
+   "enabled": true,
    "variant_ids": [
     "opn-gm-old",
     "opn-gm-old-opna"
@@ -88,12 +92,15 @@
    "license_note": "Earlier revision of Wohlstand's own bank; same author/readme as xg.wopn.",
    "duplicate_of": null,
    "notes": null,
-   "todo": null
+   "todo": null,
+   "bank_map": "gm",
+   "publish": true,
+   "bank_year": 2017
   },
   {
    "slug": "fmmidi",
    "name": "fmmidi hardcoded instruments",
-   "enabled": false,
+   "enabled": true,
    "variant_ids": [
     "opn-fmmidi",
     "opn-fmmidi-opna"
@@ -113,12 +120,14 @@
    "license_note": "fm_banks/fmmidi-readme.txt: extracted from the fmmidi project (http://unhaut.x10host.com/fmmidi/), 'three clauses BSD license'.",
    "duplicate_of": null,
    "notes": null,
-   "todo": null
+   "todo": null,
+   "bank_map": "gm",
+   "publish": true
   },
   {
    "slug": "gems-fmlib-gmize",
    "name": "GEMS FM library, GM-ized",
-   "enabled": false,
+   "enabled": true,
    "variant_ids": [
     "opn-gems-fmlib-gmize",
     "opn-gems-fmlib-gmize-opna"
@@ -138,12 +147,15 @@
    "license_note": "Instruments imported from the standard set shipped with Sega's official GEMS tool, reorganised to GM by Wohlstand with some xg.wopn patches; GEMS' terms are not documented (issue-#301-like provenance).",
    "duplicate_of": null,
    "notes": null,
-   "todo": null
+   "todo": null,
+   "bank_map": "gm",
+   "publish": true,
+   "bank_year": 2018
   },
   {
    "slug": "nineko",
    "name": "Nineko / ValleyBell MIDI2VGM bank",
-   "enabled": false,
+   "enabled": true,
    "variant_ids": [
     "opn-nineko",
     "opn-nineko-opna"
@@ -162,13 +174,15 @@
    "license": "unknown",
    "license_note": "fm_banks/Nineko-readme.txt: melodic bank from the MIDI2VGM utility by ValleyBell and Nineko; percussion copied from the GEMS bank as a placeholder. No license stated.",
    "duplicate_of": null,
-   "notes": null,
-   "todo": null
+   "notes": "Percussion is the GEMS set used as a placeholder.",
+   "todo": null,
+   "bank_map": "gm",
+   "publish": true
   },
   {
    "slug": "tomsoft",
    "name": "Tomsoft SegaMusic bank",
-   "enabled": false,
+   "enabled": true,
    "variant_ids": [
     "opn-tomsoft",
     "opn-tomsoft-opna"
@@ -188,12 +202,15 @@
    "license_note": "fm_banks/Tomsoft-readme.txt: instruments captured from TommyXie's SegaMusic program via a GYM dump (OPN2BankEditor issue #44), tuned by Wohlstand and merged with xg.wopn percussion. No license stated.",
    "duplicate_of": null,
    "notes": null,
-   "todo": null
+   "todo": null,
+   "bank_map": "gm",
+   "publish": true,
+   "bank_year": 2018
   },
   {
    "slug": "gs-dmxopn2",
    "name": "DMXOPN2 GS bank (papiezak & Sneakernets)",
-   "enabled": false,
+   "enabled": true,
    "variant_ids": [
     "opn-gs-dmxopn2",
     "opn-gs-dmxopn2-opna"
@@ -213,7 +230,9 @@
    "license_note": "DMXOPN2 (https://github.com/sneakernets/DMXOPN2, https://github.com/papiezak/DMXOPN2): repository licensed MIT; the readme in fm_banks/ carries no license text of its own.",
    "duplicate_of": null,
    "notes": null,
-   "todo": null
+   "todo": null,
+   "bank_map": "gs_var",
+   "publish": true
   },
   {
    "slug": "gm",
