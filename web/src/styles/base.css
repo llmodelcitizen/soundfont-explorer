@@ -245,12 +245,15 @@ select:focus-visible {
   grid-template-columns: var(--cols, 3.2em 4.6em minmax(0, 1fr));
   gap: 8px;
   align-items: center;
-  padding: 2px 8px;
+  /* extra room on the right so the scrollbar never sits on the last column */
+  padding: 2px 18px 2px 8px;
   border-bottom: 1px solid var(--line-faint);
   cursor: pointer;
   white-space: nowrap;
   height: var(--row-h);
   user-select: none;
+  /* keep scrollIntoView() from parking a row under the sticky header */
+  scroll-margin-top: var(--row-h);
 }
 .row:hover {
   background: var(--row-hover);
@@ -267,9 +270,15 @@ select:focus-visible {
   color: var(--sel-fg);
 }
 .row .idx {
-  text-align: right;
+  text-align: center;
   color: var(--fg-dim);
   font: var(--mono);
+  line-height: 1;
+  align-self: center;
+}
+.hcell {
+  align-self: center;
+  line-height: 1;
 }
 .row.sel .idx {
   color: inherit;
@@ -313,9 +322,14 @@ select:focus-visible {
 .row .fav {
   visibility: hidden;
   color: var(--heart);
-  font-size: 0.95em;
-  line-height: 1;
-  text-align: center;
+  font-size: 13px;
+  line-height: 10px;
+  height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  width: 100%;
 }
 .row.favorite .fav {
   visibility: visible;
@@ -336,11 +350,13 @@ select:focus-visible {
   cursor: not-allowed;
 }
 .row .dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: transparent;
   border: 1px solid var(--line);
+  justify-self: center;
+  box-sizing: border-box;
 }
 .row.cached .dot {
   background: var(--fg-dim);

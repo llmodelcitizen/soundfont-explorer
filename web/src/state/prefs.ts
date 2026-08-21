@@ -12,7 +12,7 @@ export interface Prefs {
   columns: string[];
 }
 
-export const DEFAULT_PREFS: Prefs = { listenedAfterS: 3, preserveTrackPosition: true, columns: ['chip', 'bank', 'size', 'decade', 'gain', 'fav', 'dot'] };
+export const DEFAULT_PREFS: Prefs = { listenedAfterS: 3, preserveTrackPosition: true, columns: ['chip', 'engine', 'decade', 'fav', 'dot'] };
 const PREFS_KEY = 'sfp.prefs.v1';
 const LISTENED_KEY = 'sfp.listened.v1';
 

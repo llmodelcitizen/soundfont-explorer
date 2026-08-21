@@ -16,23 +16,25 @@ export interface ColumnDef {
   /** shown in the compact (mobile) layout */
   compact?: boolean;
   defaultOn: boolean;
+  /** too narrow for a sort arrow: indicate the sort by colour only */
+  noArrow?: boolean;
 }
 
 export const COLUMNS: ColumnDef[] = [
-  { key: 'idx', label: '#', title: 'position in the current list', width: '3.2em', align: 'right', always: true, compact: true, defaultOn: true },
+  { key: 'idx', label: '#', title: 'position in the current list', width: '3.2em', align: 'center', always: true, compact: true, defaultOn: true },
   { key: 'chip', label: 'chip', title: 'sound chip / format', width: '4.6em', compact: true, defaultOn: true },
   { key: 'label', label: 'name', title: 'name', width: 'minmax(0, 1fr)', always: true, compact: true, defaultOn: true },
-  { key: 'engine', label: 'engine', title: 'render engine', width: '7.5em', defaultOn: false },
+  { key: 'engine', label: 'engine', title: 'render engine', width: '7.5em', defaultOn: true },
   { key: 'id', label: 'id', title: 'stable variant id', width: '9em', defaultOn: false },
-  { key: 'bank', label: 'bank', title: 'FM bank family', width: '5.2em', defaultOn: true },
-  { key: 'size', label: 'size', title: 'SoundFont size', width: '5.6em', align: 'right', defaultOn: true },
+  { key: 'bank', label: 'bank', title: 'FM bank family', width: '5.2em', defaultOn: false },
+  { key: 'size', label: 'size', title: 'SoundFont size', width: '5.6em', align: 'right', defaultOn: false },
   { key: 'decade', label: 'decade', title: 'decade of origin', width: '4.4em', defaultOn: true },
   { key: 'lineage', label: 'lineage', title: 'lineage facet', width: '6.4em', defaultOn: false },
   { key: 'coverage', label: 'coverage', title: 'GM coverage', width: '6.4em', defaultOn: false },
   { key: 'lufs', label: 'LUFS', title: 'measured integrated loudness before gain', width: '4.8em', align: 'right', defaultOn: false },
-  { key: 'gain', label: 'gain', title: 'gain applied to reach −16 LUFS', width: '4.8em', align: 'right', defaultOn: true },
-  { key: 'fav', label: '♥', title: 'favourite', width: '1.3em', align: 'center', compact: true, defaultOn: true },
-  { key: 'dot', label: '●', title: 'listened', width: '1em', align: 'center', compact: true, defaultOn: true },
+  { key: 'gain', label: 'gain', title: 'gain applied to reach −16 LUFS', width: '4.8em', align: 'right', defaultOn: false },
+  { key: 'fav', label: '♥', title: 'favourite', width: '1.4em', align: 'center', compact: true, defaultOn: true, noArrow: true },
+  { key: 'dot', label: '●', title: 'listened', width: '1.4em', align: 'center', compact: true, defaultOn: true, noArrow: true },
 ];
 
 export const DEFAULT_COLUMNS: ColKey[] = COLUMNS.filter((c) => c.defaultOn).map((c) => c.key);
