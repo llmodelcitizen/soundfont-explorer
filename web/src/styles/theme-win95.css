@@ -334,3 +334,12 @@
   background: #c0c0c0;
   color: #800000;
 }
+
+/* facet option buttons: 4 px taller, text kept centred, same gaps */
+[data-theme='win95'] .opt {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
+}
