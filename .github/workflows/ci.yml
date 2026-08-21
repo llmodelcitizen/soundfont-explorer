@@ -36,7 +36,6 @@ jobs:
   web:
     name: web unit tests
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('web/package.json') != '' }}
     defaults:
       run:
         working-directory: web
@@ -72,7 +71,6 @@ jobs:
   terraform:
     name: terraform fmt + validate
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('infra/**/*.tf') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
