@@ -72,7 +72,9 @@ export function parseCatalog(raw: unknown): CatalogDoc {
       render: isObj(v.render) ? (v.render as Variant['render']) : null,
       legal_note: typeof v.legal_note === 'string' ? v.legal_note : null,
       requires_rom: Boolean(v.requires_rom),
-      aliases: Array.isArray(v.aliases) ? v.aliases.map(String) : [],
+      aliases: Array.isArray(v.aliases)
+        ? v.aliases.map((a) => (isObj(a) ? [a.file, a.label].filter((x) => typeof x === 'string').join(' ') : String(a)))
+        : [],
     };
   });
   const byId = new Map(variants.map((v) => [v.id, v]));

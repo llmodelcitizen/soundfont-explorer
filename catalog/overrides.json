@@ -1,0 +1,52 @@
+{
+  "_comment": [
+    "Hand-edited facet overrides for catalog/build.py. Keys starting with '_' are ignored.",
+    "lineage_regex: optional; replaces build.py's DEFAULT_LINEAGE_REGEX wholesale (object order = priority).",
+    "ignore_values: optional; replaces DEFAULT_IGNORE_VALUES (tool-default INFO strings skipped by the lineage regexes).",
+    "fonts: keyed by sha256 (rename-proof) or by exact file name; a filename entry is applied on top of a sha256 entry.",
+    "Allowed per-font keys: lineage, completeness, bank_map, instrument, year, decade, license_flag, publish, label, notes (+ file / _comment for humans).",
+    "See catalog/README.md for the vocabularies."
+  ],
+  "_examples": {
+    "<sha256 of the file>": {
+      "file": "Some Font.sf2",
+      "lineage": "roland",
+      "year": 1997,
+      "license_flag": "free",
+      "publish": true,
+      "label": "Some Font (nicer display name)",
+      "notes": "why this override exists"
+    },
+    "Some Other Font.sf2": {
+      "publish": false,
+      "notes": "filename-keyed entry; wins over a sha256 entry for the same file"
+    }
+  },
+  "fonts": {
+    "a129702b9231b7ecf11c7e2cfabad38e4d414c1ed2770d63d2190a03a0b12bdb": {
+      "file": "Eternal Hydrogen II - 3MGMGS.sf2",
+      "lineage": "roland",
+      "notes": "INAM 'GS sound set (16 bit) ++1020', ICOP Roland 1996: the Roland/E-mu GS sound set (plan §6 pre-seed)"
+    },
+    "62309d61e8914932934e303bdf11f0875e86cd128fb47ab09f91c9f1348e805c": {
+      "file": "FF7 SC-55 Hybrid.sf2",
+      "lineage": "roland",
+      "notes": "INAM 'GS sound set (16 bit)', ICOP Roland 1996 (plan §6 pre-seed)"
+    },
+    "e3420bfd064f3f096e83522f743de88830e1487b0564c35d219cb138142361ce": {
+      "file": "SC-55 DJ Tony v1.1.sf2",
+      "lineage": "roland",
+      "notes": "INAM 'GS sound set (16 bit)', ICOP Roland 1996 (plan §6 pre-seed)"
+    },
+    "865f15ed7097d68539c4556ceea629658148e5d8fcc9d15a4eb13144653e9cb8": {
+      "file": "SCC1T2.sf2",
+      "lineage": "roland",
+      "notes": "INAM 'GS sound set (16 bit)', ICOP Roland 1996 (plan §6 pre-seed)"
+    },
+    "632207911cd12eabf2c0952c2a3092eef90b22f5765cfb1f52841080b995981c": {
+      "file": "Windows.sf2",
+      "lineage": "roland",
+      "notes": "INAM 'GS sound set (16 bit)', ICOP Roland 1996 (plan §6 pre-seed)"
+    }
+  }
+}

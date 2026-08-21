@@ -53,9 +53,11 @@ export class FilterIndex {
     this.searchText = order.map((id) => {
       const v = catalog.byId.get(id);
       if (!v) return id.toLowerCase();
-      const info = v.source?.info ?? {};
+      const info = (v.source?.info ?? (v.source as Record<string, unknown> | null)?.['sf2'] ?? {}) as Record<string, string>;
       const bank = v.bank ?? {};
-      return [v.id, v.label, v.slug, v.source?.file, info['INAM'], info['IENG'], info['ICMT'], bank['family'], bank['name'], ...(Array.isArray(bank['tags']) ? bank['tags'] : [])]
+      const tags = bank['tags'];
+      const tagNames = Array.isArray(tags) ? tags.map(String) : tags && typeof tags === 'object' ? Object.entries(tags as Record<string, unknown>).filter(([, on]) => on).map(([k]) => k) : [];
+      return [v.id, v.label, v.slug, v.source?.file, info['INAM'], info['IENG'], info['ICMT'], bank['family'], bank['name'], ...tagNames, ...v.aliases]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();

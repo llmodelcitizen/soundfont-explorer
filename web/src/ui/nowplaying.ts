@@ -45,20 +45,21 @@ export class NowPlaying {
     if (v?.chip) rows.push(['chip', `${v.chip}${v.render?.core ? ' · core ' + v.render.core : ''}`]);
     if (v?.bank) {
       const b = v.bank;
-      const tags = Array.isArray(b['tags']) ? (b['tags'] as string[]) : [];
+      const rawTags = b['tags'];
+      const tags = Array.isArray(rawTags) ? rawTags.map(String) : rawTags && typeof rawTags === 'object' ? Object.entries(rawTags as Record<string, unknown>).filter(([, on]) => on).map(([k]) => k) : [];
       rows.push(['bank', `${b['kind'] === 'embedded' ? '#' + String(b['number']) + ' ' : ''}${String(b['family'] ?? '')} ${String(b['name'] ?? '')}`.trim()]);
       if (tags.length) rows.push(['tags', h('span', null, tags.map((t) => h('span', { class: 'tag', title: tagHelp(t) }, t)))]);
     }
     const src = v?.source;
     if (src?.file) rows.push(['file', h('code', null, src.file)]);
-    const info = (src?.info ?? null) as Record<string, string> | null;
+    const sf2 = (src as Record<string, unknown> | null)?.['sf2'] as Record<string, unknown> | undefined;
+    const info = (src?.info ?? sf2 ?? null) as Record<string, string> | null;
     if (info) {
       for (const k of ['INAM', 'IENG', 'ICRD', 'IPRD', 'ICOP', 'ISFT']) if (info[k]) rows.push([k, info[k]]);
       if (info['ICMT']) rows.push(['ICMT', h('span', { class: 'icmt' }, info['ICMT'].slice(0, 600))]);
     }
     if (src?.bytes) rows.push(['size', fmtBytes(src.bytes)]);
-    const sf = (src as Record<string, unknown> | null)?.['sf2'] as Record<string, unknown> | undefined;
-    if (sf) rows.push(['presets', `${String(sf['preset_count'] ?? '?')} presets · ${String(sf['melodic_bank0'] ?? '?')} melodic in bank 0 · ${sf['has_drums'] ? 'drums' : 'no drums'}`]);
+    if (sf2) rows.push(['presets', `${String(sf2['preset_count'] ?? '?')} presets · ${String(sf2['melodic_bank0'] ?? '?')} melodic in bank 0 · ${sf2['has_drums'] ? 'drums' : 'no drums'}${sf2['ifil'] ? ' · sf ' + String(sf2['ifil']) : ''}`]);
     if (v?.facets) {
       const f = v.facets;
       rows.push(['facets', ['completeness', 'bank_map', 'lineage', 'decade', 'size'].map((k) => (f[k] ? `${k}=${String(f[k])}` : '')).filter(Boolean).join('  ')]);

@@ -1,0 +1,1944 @@
+{
+ "schema": 1,
+ "generated_at": "2026-08-21T04:23:34Z",
+ "source": {
+  "kind": "docker",
+  "image": "sfr-render",
+  "command": "adlmidiplay --list-banks"
+ },
+ "libadlmidi": {
+  "version": "1.6.2",
+  "commit": "c46220909879dc552d7632467be553f4bf2a9e21"
+ },
+ "count": 79,
+ "families": [
+  "AIL",
+  "Bisqwit",
+  "DMX",
+  "EA",
+  "HMI",
+  "OP3",
+  "SB",
+  "TMB",
+  "WOPL"
+ ],
+ "unknown_families": [],
+ "tag_counts": {
+  "non_gm": 6,
+  "mt32": 15,
+  "miss_ins": 5,
+  "broken_drums": 1,
+  "melodic_only": 3,
+  "fourop": 6,
+  "pseudo_fourop": 4
+ },
+ "license_hint_counts": {
+  "ail2_permissive": 9,
+  "game_release": 25,
+  "gpl": 6,
+  "mit": 7,
+  "mit_derived": 19,
+  "proprietary": 1,
+  "sbtimbre_royalty_free": 4,
+  "unknown": 8
+ },
+ "unknown_markers": [],
+ "banks": [
+  {
+   "index": 0,
+   "family": "AIL",
+   "name": "The Fat Man 2op set, default AIL",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "0-ail-the-fat-man-2op-set-default-ail",
+   "raw": "Banks: 0 = AIL (The Fat Man 2op set, default AIL)",
+   "unknown_markers": [],
+   "label": "AIL default (The Fat Man 2-op)",
+   "provenance": {
+    "license_hint": "mit",
+    "year": 1993,
+    "note": "AIL default 2-op bank (star_control_3.opl): The Fat Man tone library, MIT; AIL2 release is permissive",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 1,
+   "family": "Bisqwit",
+   "name": "selection of 4op and 2op",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "1-bisqwit-selection-of-4op-and-2op",
+   "raw": "1 = Bisqwit (selection of 4op and 2op)",
+   "unknown_markers": [],
+   "label": "Bisqwit (adlmidi 4-op/2-op mix)",
+   "provenance": {
+    "license_hint": "gpl",
+    "year": 2010,
+    "note": "Bisqwit's GM bank released with the original adlmidi project (GPLv3+)",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 2,
+   "family": "HMI",
+   "name": "Descent, Asterix",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "2-hmi-descent-asterix",
+   "raw": "2 = HMI (Descent, Asterix)",
+   "unknown_markers": [],
+   "label": "HMI (Descent, Asterix)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1995,
+    "note": "Descent / Asterix & Obelix HMI bank pair; Fat Man + AdLib SDK instruments, shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 3,
+   "family": "HMI",
+   "name": "Descent: Int",
+   "tags": {
+    "non_gm": true,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "3-hmi-descent-int",
+   "raw": "3 = HMI (Descent:: Int) :NON-GM:",
+   "unknown_markers": [],
+   "label": "HMI (Descent: Int)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1995,
+    "note": "Descent 'Int' bank pair shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 4,
+   "family": "HMI",
+   "name": "Descent: Ham",
+   "tags": {
+    "non_gm": true,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "4-hmi-descent-ham",
+   "raw": "4 = HMI (Descent:: Ham) :NON-GM:",
+   "unknown_markers": [],
+   "label": "HMI (Descent: Ham)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1995,
+    "note": "Descent 'Ham' bank pair shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 5,
+   "family": "HMI",
+   "name": "Descent: Rick",
+   "tags": {
+    "non_gm": true,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "5-hmi-descent-rick",
+   "raw": "5 = HMI (Descent:: Rick) :NON-GM:",
+   "unknown_markers": [],
+   "label": "HMI (Descent: Rick)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1995,
+    "note": "Descent 'Rick' bank pair shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 6,
+   "family": "HMI",
+   "name": "Descent 2",
+   "tags": {
+    "non_gm": true,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "6-hmi-descent-2",
+   "raw": "6 = HMI (Descent 2) :NON-GM:",
+   "unknown_markers": [],
+   "label": "HMI (Descent 2)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1996,
+    "note": "Descent 2 bank (Fat Man + AdLib SDK instruments) shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 7,
+   "family": "HMI",
+   "name": "Normality",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "7-hmi-normality",
+   "raw": "7 = HMI (Normality)",
+   "unknown_markers": [],
+   "label": "HMI (Normality)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1996,
+    "note": "Normality: modified Fat Man 2-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 8,
+   "family": "HMI",
+   "name": "Shattered Steel",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "8-hmi-shattered-steel",
+   "raw": "8 = HMI (Shattered Steel)",
+   "unknown_markers": [],
+   "label": "HMI (Shattered Steel)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1996,
+    "note": "Shattered Steel bank shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 9,
+   "family": "HMI",
+   "name": "Theme Park",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "9-hmi-theme-park",
+   "raw": "9 = HMI (Theme Park)",
+   "unknown_markers": [],
+   "label": "HMI (Theme Park)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1994,
+    "note": "Theme Park: MT-32-style bank from AdLib SDK examples + AIL2 default bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 10,
+   "family": "HMI",
+   "name": "MegaPatch by LoudMouth",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "10-hmi-megapatch-by-loudmouth",
+   "raw": "10 = HMI (MegaPatch by LoudMouth)",
+   "unknown_markers": [],
+   "label": "HMI (MegaPatch by LoudMouth)",
+   "provenance": {
+    "license_hint": "unknown",
+    "year": 1995,
+    "note": "'MegaPatch' by LoudMouth Inc. (3D Table Sports); LoudMouth's terms are not documented",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 11,
+   "family": "HMI",
+   "name": "MegaPatch - Aces of the Deep",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "11-hmi-megapatch-aces-of-the-deep",
+   "raw": "11 = HMI (MegaPatch - Aces of the Deep)",
+   "unknown_markers": [],
+   "label": "HMI (MegaPatch - Aces of the Deep)",
+   "provenance": {
+    "license_hint": "unknown",
+    "year": 1994,
+    "note": "Aces of the Deep: mixture of MegaPatch, AdLib SDK and Creative sample-bank instruments",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 12,
+   "family": "HMI",
+   "name": "MegaPatch - Earthsiege",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "12-hmi-megapatch-earthsiege",
+   "raw": "12 = HMI (MegaPatch - Earthsiege)",
+   "unknown_markers": [],
+   "label": "HMI (MegaPatch - Earthsiege)",
+   "provenance": {
+    "license_hint": "unknown",
+    "year": 1994,
+    "note": "Earthsiege: deeply modified LoudMouth MegaPatch",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 13,
+   "family": "HMI",
+   "name": "Anvil of Dawn",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "13-hmi-anvil-of-dawn",
+   "raw": "13 = HMI (Anvil of Dawn)",
+   "unknown_markers": [],
+   "label": "HMI (Anvil of Dawn)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1995,
+    "note": "Anvil of Dawn: modified Fat Man 2-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 14,
+   "family": "DMX",
+   "name": "Bobby Prince v2",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "14-dmx-bobby-prince-v2",
+   "raw": "14 = DMX (Bobby Prince v2)",
+   "unknown_markers": [],
+   "label": "DMX Bobby Prince v2 (Doom II)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1994,
+    "note": "doom2.op2: Paul Radek's DMX bank modified by Bobby Prince, shipped with Doom II",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 15,
+   "family": "DMX",
+   "name": "Cygnus Studios, default DMX",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "15-dmx-cygnus-studios-default-dmx",
+   "raw": "15 = DMX (Cygnus Studios, default DMX)",
+   "unknown_markers": [],
+   "label": "DMX default (Heretic, Hexen)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1994,
+    "note": "heretic.op2: Paul Radek's default DMX bank as shipped with Heretic",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 16,
+   "family": "DMX",
+   "name": "Bobby Prince v1",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "16-dmx-bobby-prince-v1",
+   "raw": "16 = DMX (Bobby Prince v1)",
+   "unknown_markers": [],
+   "label": "DMX Bobby Prince v1 (Doom)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1993,
+    "note": "doom1.op2: Paul Radek's DMX bank modified by Bobby Prince, shipped with Doom",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 17,
+   "family": "AIL",
+   "name": "Discworld, Grandest Fleet, etc.",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "17-ail-discworld-grandest-fleet-etc",
+   "raw": "17 = AIL (Discworld, Grandest Fleet, etc.)",
+   "unknown_markers": [],
+   "label": "AIL (Discworld, Grandest Fleet, etc.)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1995,
+    "note": "Discworld / Grandest Fleet: modified Fat Man 2-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 18,
+   "family": "AIL",
+   "name": "Warcraft 2",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "18-ail-warcraft-2",
+   "raw": "18 = AIL (Warcraft 2)",
+   "unknown_markers": [],
+   "label": "AIL (Warcraft 2)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1995,
+    "note": "Warcraft II: deeply modified Fat Man 2-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 19,
+   "family": "AIL",
+   "name": "Syndicate",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "19-ail-syndicate",
+   "raw": "19 = AIL (Syndicate) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Syndicate)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1993,
+    "note": "Syndicate: modified AIL2 MT-32-style example bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 20,
+   "family": "AIL",
+   "name": "Guilty, Orion Conspiracy, TNSFC",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": true,
+    "pseudo_fourop": false
+   },
+   "slug": "20-ail-guilty-orion-conspiracy-tnsfc",
+   "raw": "20 = AIL (Guilty, Orion Conspiracy, TNSFC ::4op)",
+   "unknown_markers": [],
+   "label": "AIL (Guilty, Orion Conspiracy, TNSFC)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1995,
+    "note": "Guilty / Orion Conspiracy / TNSFC: modified Fat Man bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 21,
+   "family": "AIL",
+   "name": "Magic Carpet 2",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "21-ail-magic-carpet-2",
+   "raw": "21 = AIL (Magic Carpet 2) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Magic Carpet 2)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1995,
+    "note": "Magic Carpet 2: modified AIL2 MT-32-style example bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 22,
+   "family": "AIL",
+   "name": "Eric Heberling - Nemesis",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "22-ail-eric-heberling-nemesis",
+   "raw": "22 = AIL (Eric Heberling - Nemesis)",
+   "unknown_markers": [],
+   "label": "AIL (Eric Heberling - Nemesis)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1996,
+    "note": "Nemesis: The Wizardry Adventure bank shipped with the game (Eric Heberling)",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 23,
+   "family": "AIL",
+   "name": "Jagged Alliance",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "23-ail-jagged-alliance",
+   "raw": "23 = AIL (Jagged Alliance) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Jagged Alliance)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1995,
+    "note": "Jagged Alliance: modified AIL2 MT-32-style example bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 24,
+   "family": "AIL",
+   "name": "When Two Worlds War",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": true,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "24-ail-when-two-worlds-war",
+   "raw": "24 = AIL (When Two Worlds War) :MT-32: :MISS-INS:",
+   "unknown_markers": [],
+   "label": "AIL (When Two Worlds War)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1993,
+    "note": "When Two Worlds War: few-instrument bank shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 25,
+   "family": "AIL",
+   "name": "Bards Tale Construction",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": true,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "25-ail-bards-tale-construction",
+   "raw": "25 = AIL (Bards Tale Construction) :MT-32: :MISS-INS:",
+   "unknown_markers": [],
+   "label": "AIL (Bards Tale Construction)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1991,
+    "note": "Bard's Tale Construction Set: few-instrument bank shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 26,
+   "family": "AIL",
+   "name": "Return to Zork",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "26-ail-return-to-zork",
+   "raw": "26 = AIL (Return to Zork) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Return to Zork)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1993,
+    "note": "Return to Zork: Fat Man 2-op bank turned MT-32 style",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 27,
+   "family": "AIL",
+   "name": "Theme Hospital",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "27-ail-theme-hospital",
+   "raw": "27 = AIL (Theme Hospital)",
+   "unknown_markers": [],
+   "label": "AIL (Theme Hospital)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1997,
+    "note": "Theme Hospital: deeply modified AIL2 example bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 28,
+   "family": "AIL",
+   "name": "MegaPatch - National Hockey League PA",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "28-ail-megapatch-national-hockey-league-pa",
+   "raw": "28 = AIL (MegaPatch - National Hockey League PA)",
+   "unknown_markers": [],
+   "label": "AIL (MegaPatch - National Hockey League PA)",
+   "provenance": {
+    "license_hint": "unknown",
+    "year": 1993,
+    "note": "NHL PA: modified LoudMouth MegaPatch",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 29,
+   "family": "AIL",
+   "name": "Inherit The Earth",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "29-ail-inherit-the-earth",
+   "raw": "29 = AIL (Inherit The Earth) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Inherit The Earth)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1994,
+    "note": "Inherit the Earth: Fat Man 2-op bank turned MT-32 style",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 30,
+   "family": "AIL",
+   "name": "Inherit The Earth, file two",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "30-ail-inherit-the-earth-file-two",
+   "raw": "30 = AIL (Inherit The Earth, file two) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Inherit The Earth, file two)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1994,
+    "note": "Inherit the Earth (second file): Fat Man 2-op bank turned MT-32 style",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 31,
+   "family": "AIL",
+   "name": "Little Big Adventure",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": true,
+    "pseudo_fourop": false
+   },
+   "slug": "31-ail-little-big-adventure",
+   "raw": "31 = AIL (Little Big Adventure) :4op:",
+   "unknown_markers": [],
+   "label": "AIL (Little Big Adventure)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1994,
+    "note": "Little Big Adventure: modified Fat Man 4-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 32,
+   "family": "AIL",
+   "name": "Heroes of Might and Magic II",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "32-ail-heroes-of-might-and-magic-ii",
+   "raw": "32 = AIL (Heroes of Might and Magic II) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Heroes of Might and Magic II)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1996,
+    "note": "Heroes of Might and Magic II: modified AIL2 MT-32-style example bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 33,
+   "family": "AIL",
+   "name": "Eric Heberling - Death Gate",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "33-ail-eric-heberling-death-gate",
+   "raw": "33 = AIL (Eric Heberling - Death Gate)",
+   "unknown_markers": [],
+   "label": "AIL (Eric Heberling - Death Gate)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1994,
+    "note": "Death Gate bank shipped with the game (Eric Heberling)",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 34,
+   "family": "AIL",
+   "name": "FIFA International Soccer",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "34-ail-fifa-international-soccer",
+   "raw": "34 = AIL (FIFA International Soccer)",
+   "unknown_markers": [],
+   "label": "AIL (FIFA International Soccer)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1993,
+    "note": "FIFA International Soccer: modified Fat Man 2-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 35,
+   "family": "AIL",
+   "name": "Starship Invasion",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "35-ail-starship-invasion",
+   "raw": "35 = AIL (Starship Invasion)",
+   "unknown_markers": [],
+   "label": "AIL (Starship Invasion)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": null,
+    "note": "Starship Invasion: modified Fat Man 2-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 36,
+   "family": "AIL",
+   "name": "Super Street Fighter 2",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": true,
+    "pseudo_fourop": false
+   },
+   "slug": "36-ail-super-street-fighter-2",
+   "raw": "36 = AIL (Super Street Fighter 2 :4op:)",
+   "unknown_markers": [],
+   "label": "AIL (Super Street Fighter 2)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1994,
+    "note": "Super Street Fighter II: modified Fat Man 4-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 37,
+   "family": "AIL",
+   "name": "Lords of the Realm",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": true,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "37-ail-lords-of-the-realm",
+   "raw": "37 = AIL (Lords of the Realm) :MISS-INS:",
+   "unknown_markers": [],
+   "label": "AIL (Lords of the Realm)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1994,
+    "note": "Lords of the Realm: few-instrument bank shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 38,
+   "family": "AIL",
+   "name": "SimFarm, SimHealth",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": true,
+    "pseudo_fourop": false
+   },
+   "slug": "38-ail-simfarm-simhealth",
+   "raw": "38 = AIL (SimFarm, SimHealth) :4op:",
+   "unknown_markers": [],
+   "label": "AIL (SimFarm, SimHealth)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1993,
+    "note": "SimFarm / SimHealth: modified Fat Man 4-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 39,
+   "family": "AIL",
+   "name": "SimFarm, Settlers, Serf City",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "39-ail-simfarm-settlers-serf-city",
+   "raw": "39 = AIL (SimFarm, Settlers, Serf City)",
+   "unknown_markers": [],
+   "label": "AIL (SimFarm, Settlers, Serf City)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1993,
+    "note": "SimFarm / The Settlers / Serf City: modified Fat Man 2-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 40,
+   "family": "AIL",
+   "name": "Caesar 2",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": true,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": true
+   },
+   "slug": "40-ail-caesar-2",
+   "raw": "40 = AIL (Caesar 2) :p4op: :MISS-INS:",
+   "unknown_markers": [],
+   "label": "AIL (Caesar 2)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1995,
+    "note": "Caesar II: few-instrument bank shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 41,
+   "family": "AIL",
+   "name": "Syndicate Wars",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "41-ail-syndicate-wars",
+   "raw": "41 = AIL (Syndicate Wars) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Syndicate Wars)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1996,
+    "note": "Syndicate Wars: modified AIL2 MT-32-style example bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 42,
+   "family": "AIL",
+   "name": "MegaPatch mod by Probe Ent.",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "42-ail-megapatch-mod-by-probe-ent",
+   "raw": "42 = AIL (MegaPatch mod by Probe Ent.)",
+   "unknown_markers": [],
+   "label": "AIL (MegaPatch mod by Probe Ent.)",
+   "provenance": {
+    "license_hint": "unknown",
+    "year": null,
+    "note": "LoudMouth MegaPatch modified by Probe Entertainment (Bubble Bobble)",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 43,
+   "family": "AIL",
+   "name": "Warcraft",
+   "tags": {
+    "non_gm": true,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "43-ail-warcraft",
+   "raw": "43 = AIL (Warcraft) :NON-GM:",
+   "unknown_markers": [],
+   "label": "AIL (Warcraft)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1994,
+    "note": "Warcraft: Orcs & Humans bank shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 44,
+   "family": "AIL",
+   "name": "Terra Nova Strike Force Centuri",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": true
+   },
+   "slug": "44-ail-terra-nova-strike-force-centuri",
+   "raw": "44 = AIL (Terra Nova Strike Force Centuri) :p4op:",
+   "unknown_markers": [],
+   "label": "AIL (Terra Nova Strike Force Centuri)",
+   "provenance": {
+    "license_hint": "unknown",
+    "year": 1996,
+    "note": "Terra Nova: Strike Force Centauri; not described in list-of-banks.txt",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 45,
+   "family": "AIL",
+   "name": "System Shock",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": true
+   },
+   "slug": "45-ail-system-shock",
+   "raw": "45 = AIL (System Shock) :p4op:",
+   "unknown_markers": [],
+   "label": "AIL (System Shock)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1994,
+    "note": "System Shock: modified Fat Man 4-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 46,
+   "family": "AIL",
+   "name": "Eric Heberling - Advanced Civilization",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "46-ail-eric-heberling-advanced-civilization",
+   "raw": "46 = AIL (Eric Heberling - Advanced Civilization)",
+   "unknown_markers": [],
+   "label": "AIL (Eric Heberling - Advanced Civilization)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1995,
+    "note": "Advanced Civilization bank shipped with the game (Eric Heberling)",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 47,
+   "family": "AIL",
+   "name": "Battle Chess 4000",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "47-ail-battle-chess-4000",
+   "raw": "47 = AIL (Battle Chess 4000) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Battle Chess 4000)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1992,
+    "note": "Battle Chess 4000: 4-op MT-32-style bank shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 48,
+   "family": "AIL",
+   "name": "Ultimate Soccer Manager",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": true
+   },
+   "slug": "48-ail-ultimate-soccer-manager",
+   "raw": "48 = AIL (Ultimate Soccer Manager :p4op:)",
+   "unknown_markers": [],
+   "label": "AIL (Ultimate Soccer Manager)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1995,
+    "note": "Ultimate Soccer Manager: 'messy' bank from the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 49,
+   "family": "AIL",
+   "name": "Air Bucks, Blue And The Gray, etc",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "49-ail-air-bucks-blue-and-the-gray-etc",
+   "raw": "49 = AIL (Air Bucks, Blue And The Gray, etc) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Air Bucks, Blue And The Gray, etc)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1992,
+    "note": "Air Bucks / The Blue and the Gray: modified AIL2 MT-32-style example bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 50,
+   "family": "AIL",
+   "name": "Ultima Underworld 2",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "50-ail-ultima-underworld-2",
+   "raw": "50 = AIL (Ultima Underworld 2) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (Ultima Underworld 2)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1993,
+    "note": "Ultima Underworld II: Fat Man 2-op bank turned MT-32 style",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 51,
+   "family": "AIL",
+   "name": "FatMan MT32",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "51-ail-fatman-mt32",
+   "raw": "51 = AIL (FatMan MT32) :MT-32:",
+   "unknown_markers": [],
+   "label": "AIL (FatMan MT32)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1993,
+    "note": "Kasparov's Gambit: Fat Man 2-op bank turned MT-32 style",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 52,
+   "family": "AIL",
+   "name": "High Seas Trader",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": true,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "52-ail-high-seas-trader",
+   "raw": "52 = AIL (High Seas Trader) :MISS-INS:",
+   "unknown_markers": [],
+   "label": "AIL (High Seas Trader)",
+   "provenance": {
+    "license_hint": "ail2_permissive",
+    "year": 1995,
+    "note": "High Seas Trader: modified AIL2 MT-32-style example bank (few instruments)",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 53,
+   "family": "AIL",
+   "name": "Master of Magic",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": true,
+    "pseudo_fourop": false
+   },
+   "slug": "53-ail-master-of-magic",
+   "raw": "53 = AIL (Master of Magic) :4op:",
+   "unknown_markers": [],
+   "label": "AIL (Master of Magic)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1994,
+    "note": "Master of Magic: modified Fat Man 4-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 54,
+   "family": "AIL",
+   "name": "Master of Magic, orchestral drums",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": true,
+    "pseudo_fourop": false
+   },
+   "slug": "54-ail-master-of-magic-orchestral-drums",
+   "raw": "54 = AIL (Master of Magic) :4op: orchestral drums",
+   "unknown_markers": [],
+   "label": "AIL (Master of Magic, orchestral drums)",
+   "provenance": {
+    "license_hint": "mit_derived",
+    "year": 1994,
+    "note": "Master of Magic (orchestral drums): modified Fat Man 4-op bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 55,
+   "family": "SB",
+   "name": "Action Soccer",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "55-sb-action-soccer",
+   "raw": "55 = SB (Action Soccer)",
+   "unknown_markers": [],
+   "label": "SB (Action Soccer)",
+   "provenance": {
+    "license_hint": "sbtimbre_royalty_free",
+    "year": 1995,
+    "note": "Action Soccer: assembled from SBTimbre IBK files",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 56,
+   "family": "SB",
+   "name": "3d Cyberpuck",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": true,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "56-sb-3d-cyberpuck",
+   "raw": "56 = SB (3d Cyberpuck :: melodic only)",
+   "unknown_markers": [],
+   "label": "SB (3d Cyberpuck)",
+   "provenance": {
+    "license_hint": "mit",
+    "year": 1995,
+    "note": "3D Cyberpuck: minor mod of FMSynth's internal melodic IBK (MIT)",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 57,
+   "family": "SB",
+   "name": "Simon the Sorcerer",
+   "tags": {
+    "non_gm": false,
+    "mt32": true,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "57-sb-simon-the-sorcerer",
+   "raw": "57 = SB (Simon the Sorcerer) :MT-32:",
+   "unknown_markers": [],
+   "label": "SB (Simon the Sorcerer)",
+   "provenance": {
+    "license_hint": "sbtimbre_royalty_free",
+    "year": 1993,
+    "note": "Simon the Sorcerer: slightly modified SBTimbre mt32.ibk",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 58,
+   "family": "WOPL",
+   "name": "The Fat Man 2op set; Win9x",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "58-wopl-the-fat-man-2op-set-win9x",
+   "raw": "58 = WOPL (The Fat Man 2op set; Win9x)",
+   "unknown_markers": [],
+   "label": "The Fat Man 2-op (Win9x OPL3 driver)",
+   "provenance": {
+    "license_hint": "mit",
+    "year": 1995,
+    "note": "fat2.wopl: The Fat Man 2-op tone library (Win9x drivers), MIT",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 59,
+   "family": "WOPL",
+   "name": "The Fat Man 4op set",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "59-wopl-the-fat-man-4op-set",
+   "raw": "59 = WOPL (The Fat Man 4op set)",
+   "unknown_markers": [],
+   "label": "The Fat Man 4-op",
+   "provenance": {
+    "license_hint": "mit",
+    "year": 1993,
+    "note": "fat4-fixed.wopl: The Fat Man 4-op tone library, MIT",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 60,
+   "family": "OP3",
+   "name": "JungleVision 2op set",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": true,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "60-op3-junglevision-2op-set",
+   "raw": "60 = OP3 (JungleVision 2op set :: melodic only)",
+   "unknown_markers": [],
+   "label": "OP3 (JungleVision 2op set)",
+   "provenance": {
+    "license_hint": "proprietary",
+    "year": 1994,
+    "note": "Junglevision 2-op set: '(c) 1994 Junglevision software. All rights reserved', reverse-engineered from a demo",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 61,
+   "family": "OP3",
+   "name": "Wallace 2op set, Nitemare 3D",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": true,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "61-op3-wallace-2op-set-nitemare-3d",
+   "raw": "61 = OP3 (Wallace 2op set, Nitemare 3D :: melodic only)",
+   "unknown_markers": [],
+   "label": "OP3 (Wallace 2op set, Nitemare 3D)",
+   "provenance": {
+    "license_hint": "unknown",
+    "year": 1994,
+    "note": "Rob Wallace (Wallace Music & Sound) 2-op set, Nitemare 3D; no license documented",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 62,
+   "family": "TMB",
+   "name": "Duke Nukem 3D",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "62-tmb-duke-nukem-3d",
+   "raw": "62 = TMB (Duke Nukem 3D)",
+   "unknown_markers": [],
+   "label": "TMB (Duke Nukem 3D)",
+   "provenance": {
+    "license_hint": "gpl",
+    "year": 1996,
+    "note": "d3dtimbr.tmb: Duke Nukem 3D primary bank, Apogee Sound System GPLv2 source release",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 63,
+   "family": "TMB",
+   "name": "Shadow Warrior",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "63-tmb-shadow-warrior",
+   "raw": "63 = TMB (Shadow Warrior)",
+   "unknown_markers": [],
+   "label": "TMB (Shadow Warrior)",
+   "provenance": {
+    "license_hint": "gpl",
+    "year": 1997,
+    "note": "swtimbr.tmb: Shadow Warrior modification of the Duke Nukem 3D bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 64,
+   "family": "DMX",
+   "name": "Scott Host",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "64-dmx-scott-host",
+   "raw": "64 = DMX (Scott Host)",
+   "unknown_markers": [],
+   "label": "DMX Scott Host (Raptor)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1994,
+    "note": "raptor.op2: Paul Radek's DMX bank modified by Scott Host for Raptor",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 65,
+   "family": "SB",
+   "name": "Modded GMOPL by Wohlstand",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "65-sb-modded-gmopl-by-wohlstand",
+   "raw": "65 = SB (Modded GMOPL by Wohlstand)",
+   "unknown_markers": [],
+   "label": "GMOPL modded by Wohlstand (SB IBK)",
+   "provenance": {
+    "license_hint": "sbtimbre_royalty_free",
+    "year": 2017,
+    "note": "gmopl_wohl_mod.ibk: SBTimbre gmopl.ibk modified by Wohlstand (+ his drum bank)",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 66,
+   "family": "SB",
+   "name": "Jamie O'Connell's bank",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "66-sb-jamie-o-connell-s-bank",
+   "raw": "66 = SB (Jamie O'Connell's bank)",
+   "unknown_markers": [],
+   "label": "Jamie O'Connell's FM Synth bank",
+   "provenance": {
+    "license_hint": "mit",
+    "year": 1993,
+    "note": "JOconnel.IBK: Jamie O'Connell's bank, MIT with the FMSynth source release",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 67,
+   "family": "TMB",
+   "name": "Apogee Sound System Default bank",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": true,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "67-tmb-apogee-sound-system-default-bank",
+   "raw": "67 = TMB (Apogee Sound System Default bank) :broken drums:",
+   "unknown_markers": [],
+   "label": "Apogee Sound System default (TMB)",
+   "provenance": {
+    "license_hint": "mit",
+    "year": 1994,
+    "note": "default.tmb: Apogee Sound System default (GENMIDI/PERCUS.IBK) = slightly damaged Fat Man copy, MIT",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 68,
+   "family": "WOPL",
+   "name": "4op bank by James Alan Nguyen and Wohlstand",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "68-wopl-4op-bank-by-james-alan-nguyen-and-wohlstand",
+   "raw": "68 = WOPL (4op bank by James Alan Nguyen and Wohlstand)",
+   "unknown_markers": [],
+   "label": "WOPL (4op bank by James Alan Nguyen and Wohlstand)",
+   "provenance": {
+    "license_hint": "gpl",
+    "year": 2017,
+    "note": "4-op GM bank by J.A. Nguyen and Wohlstand for the GPL Windows OPL3 driver",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 69,
+   "family": "TMB",
+   "name": "MegaPatch - Blood",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "69-tmb-megapatch-blood",
+   "raw": "69 = TMB (MegaPatch - Blood)",
+   "unknown_markers": [],
+   "label": "TMB (MegaPatch - Blood)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1997,
+    "note": "bloodtmb.tmb: modified LoudMouth bank shipped with Blood",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 70,
+   "family": "TMB",
+   "name": "Rise of the Triad",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "70-tmb-rise-of-the-triad",
+   "raw": "70 = TMB (Rise of the Triad)",
+   "unknown_markers": [],
+   "label": "TMB (Rise of the Triad)",
+   "provenance": {
+    "license_hint": "gpl",
+    "year": 1994,
+    "note": "rott.tmb: LEE.IBK/LEEDRUMS.IBK from the Rise of the Triad GPLv2+ source release",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 71,
+   "family": "TMB",
+   "name": "Nam",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "71-tmb-nam",
+   "raw": "71 = TMB (Nam)",
+   "unknown_markers": [],
+   "label": "TMB (Nam)",
+   "provenance": {
+    "license_hint": "gpl",
+    "year": 1998,
+    "note": "nam.tmb: minor modification of the Duke Nukem 3D bank",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 72,
+   "family": "WOPL",
+   "name": "DMXOPL3 bank by Sneakernets",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "72-wopl-dmxopl3-bank-by-sneakernets",
+   "raw": "72 = WOPL (DMXOPL3 bank by Sneakernets)",
+   "unknown_markers": [],
+   "label": "DMXOPL3 by Sneakernets",
+   "provenance": {
+    "license_hint": "mit",
+    "year": 2017,
+    "note": "DMXOPL3-by-sneakernets-GS.wopl: DMXOPL3 by Sneakernets (Shannon Freeman), MIT",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 73,
+   "family": "EA",
+   "name": "Cartooners",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "73-ea-cartooners",
+   "raw": "73 = EA (Cartooners)",
+   "unknown_markers": [],
+   "label": "EA (Cartooners)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1989,
+    "note": "Cartooners (EA, 1989): reverse-engineered bank data; samples mostly from AdLib Inc.'s free sample files",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 74,
+   "family": "WOPL",
+   "name": "Apogee IMF 90-ish",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "74-wopl-apogee-imf-90-ish",
+   "raw": "74 = WOPL (Apogee IMF 90-ish)",
+   "unknown_markers": [],
+   "label": "Apogee IMF 90-ish (WOPL)",
+   "provenance": {
+    "license_hint": "sbtimbre_royalty_free",
+    "year": 1990,
+    "note": "Apogee-IMF-90.wopl: IMF-era instruments captured by Wohlstand, all from SBTimbre mt32.ibk",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 75,
+   "family": "AIL",
+   "name": "The Lost Vikings",
+   "tags": {
+    "non_gm": true,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "75-ail-the-lost-vikings",
+   "raw": "75 = AIL (The Lost Vikings) :NON-GM:",
+   "unknown_markers": [],
+   "label": "AIL (The Lost Vikings)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1993,
+    "note": "The Lost Vikings: 2-op/4-op bank shipped with the game",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 76,
+   "family": "DMX",
+   "name": "Strife",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "76-dmx-strife",
+   "raw": "76 = DMX (Strife)",
+   "unknown_markers": [],
+   "label": "DMX (Strife)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1996,
+    "note": "strife.op2: modified Paul Radek DMX bank shipped with Strife",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 77,
+   "family": "WOPL",
+   "name": "MS-AdLib, Windows 3.x",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "77-wopl-ms-adlib-windows-3-x",
+   "raw": "77 = WOPL (MS-AdLib, Windows 3.x)",
+   "unknown_markers": [],
+   "label": "MS AdLib driver (Windows 3.x)",
+   "provenance": {
+    "license_hint": "unknown",
+    "year": 1992,
+    "note": "msadlib.wopl: Creative's example bank from the Windows 3.1 AdLib/SB drivers",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  },
+  {
+   "index": 78,
+   "family": "AIL",
+   "name": "Monopoly Deluxe",
+   "tags": {
+    "non_gm": false,
+    "mt32": false,
+    "miss_ins": false,
+    "broken_drums": false,
+    "melodic_only": false,
+    "fourop": false,
+    "pseudo_fourop": false
+   },
+   "slug": "78-ail-monopoly-deluxe",
+   "raw": "78 = AIL (Monopoly Deluxe)",
+   "unknown_markers": [],
+   "label": "AIL (Monopoly Deluxe)",
+   "provenance": {
+    "license_hint": "game_release",
+    "year": 1992,
+    "note": "MonopolyDeluxe.ad: bank shipped with Monopoly Deluxe",
+    "source": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   }
+  }
+ ]
+}

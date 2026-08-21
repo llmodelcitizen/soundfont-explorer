@@ -1,0 +1,90 @@
+{
+ "schema": 1,
+ "_comment": [
+  "Extra libADLMIDI render passes over the embedded banks (plan \u00a76 variants table).",
+  "Bank numbers refer to catalog/adl_banks.json (adlmidiplay --list-banks order, libADLMIDI 1.6.2).",
+  "variants.py turns each entry into adl-b{NN}-{suffix} variants; edit here, never in variants.json."
+ ],
+ "passes": [
+  {
+   "id": "opl2",
+   "suffix": "-opl2",
+   "core": "dosbox-opl2",
+   "core_flag": "--emu-dosbox-opl2",
+   "chip_family": "opl2",
+   "label_suffix": "OPL2",
+   "rationale": "AdLib / Sound Blaster-era 2-op banks (AIL default, HMI, DMX, SB IBK, Apogee TMB, Fat Man 2-op, MS-AdLib Win3.x) heard as on an OPL2 card: DOSBox OPL2 core, 9 mono channels, no 4-op, no stereo - the way the original DOS games sounded. 4-op banks, NON-GM and MISS-INS banks are left out (bank 57, Simon the Sorcerer, is MT-32-style but in the plan's list and kept).",
+   "banks": [
+    0,
+    2,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    55,
+    56,
+    57,
+    58,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    69,
+    70,
+    71,
+    76,
+    77
+   ]
+  },
+  {
+   "id": "esfmu",
+   "suffix": "-esfmu",
+   "core": "esfmu",
+   "core_flag": "--emu-esfmu",
+   "chip_family": "esfm",
+   "label_suffix": "ESFM",
+   "rationale": "Flagship full-GM banks through ESFMu (ESS ESFM in OPL3-compatible mode: different envelope, feedback and waveform behaviour from a real YMF262). Per plan \u00a76 a bank's ESFM pass is dropped at M2a if a null-test against the Nuked render correlates > 0.99.",
+   "banks": [
+    0,
+    14,
+    15,
+    58,
+    62,
+    65,
+    66,
+    67,
+    72,
+    77
+   ]
+  },
+  {
+   "id": "cqm",
+   "suffix": "-cqm",
+   "core": "nuked-cqm",
+   "core_flag": "--emu-nuked-cqm",
+   "chip_family": "cqm",
+   "label_suffix": "CQM",
+   "rationale": "The same ten flagship banks through Nuked CQM (Compaq/Yamaha 'CQM' OPL3 clone used in late-90s OEM chips: audibly different operator math). Flagships = most-played GM banks: AIL default, DMX v2 and default, Fat Man Win9x, Duke3D TMB, GMOPL mod, O'Connell, Apogee default, DMXOPL3, MS-AdLib.",
+   "banks": [
+    0,
+    14,
+    15,
+    58,
+    62,
+    65,
+    66,
+    67,
+    72,
+    77
+   ]
+  }
+ ]
+}

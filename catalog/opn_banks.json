@@ -1,0 +1,391 @@
+{
+ "schema": 1,
+ "milestone": "M2b",
+ "_comment": [
+  "Placeholder for the libOPNMIDI (YM2612 OPN2 / YM2608 OPNA) bank list; every entry is enabled:false until M2b builds opnmidiplay into the image and verifies each file renders.",
+  "Plan §6 counted 8 fm_banks/*.wopn + 6 OPN2BankEditor banks = 14 -> 28 variants (opn-<slug>, opn-<slug>-opna). Measured 2026-08-21: the 8th fm_banks file (gm.wopn) is a symlink to xg.wopn and two OPN2BankEditor files are byte-identical to libOPNMIDI copies, so there are 11 distinct banks -> at most 22 variants; two more (ed-xg, ed-gems-fmlib-gmize, ed-gm-old) are older revisions that may not be worth a variant.",
+  "OPN2BankEditor's Bank_Examples/ also holds GEMS .bnk, GYB, Mucom88, BambooTracker and Y12 instrument sets that are not WOPN files; opnmidiplay loads WOPN only, so they would need conversion in the editor first (not planned).",
+  "Files were downloaded to work/catalog/opn/ (gitignored) to measure bytes/sha256; the image copies them to /opt/banks/wopn/<slug>.wopn only when a license file is present (plan §8.1).",
+  "Render template (M2b, verify flags): opnmidiplay <song>.mid -w -nl -b /opt/banks/wopn/<slug>.wopn --chips 1 --emu-nuked-3438  (OPNA pass: --emu-mame-opna)."
+ ],
+ "engine": {
+  "id": "opnmidi",
+  "repo": "https://github.com/Wohlstand/libOPNMIDI",
+  "head_commit_seen": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+  "head_commit_date": "2026-08-14",
+  "license": "LGPL-2.1+/GPL-2+/GPL-3+/MIT by part (README 'License'); Nuked OPN2 LGPL-2.1+, MAME YM2608 GPL-2+"
+ },
+ "editor": {
+  "repo": "https://github.com/Wohlstand/OPN2BankEditor",
+  "head_commit_seen": "4274c035c2b070c0c52da12dfe9cf241ac00aa4d",
+  "license": "GPL-3.0 (the editor); bank files carry their own terms"
+ },
+ "count": 14,
+ "distinct_sha256": 11,
+ "enabled_count": 0,
+ "duplicates": [
+  {
+   "sha256": "da6f2ba73368c9338fafaf914e240cd7df7483edbef65ceba6abf820402f46a6",
+   "slugs": [
+    "gm-old",
+    "ed-gm"
+   ]
+  },
+  {
+   "sha256": "bbae9d7b7275035f487a310ea3fbd70cee243daff3f3aad9c4fd5b000ddb7190",
+   "slugs": [
+    "tomsoft",
+    "ed-tomsoft"
+   ]
+  }
+ ],
+ "banks": [
+  {
+   "slug": "xg",
+   "name": "Wohlstand XG bank (libOPNMIDI default)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-xg",
+    "opn-xg-opna"
+   ],
+   "file": "xg.wopn",
+   "image_path": "/opt/banks/wopn/xg.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/libOPNMIDI",
+    "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+    "path": "fm_banks/xg.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/xg.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/readme.txt"
+   },
+   "bytes": 186204,
+   "sha256": "1e8dfe7d799a3c9a61337971b8ef9dfc36e9ee9cf1bb9242b061d2e481b8d6c9",
+   "license": "MIT",
+   "license_note": "fm_banks/readme.txt: 'This bank (gm.wopn and xg.wopn) is made by me ... License for this bank - MIT' (Vitaliy Novichkov, 2017-2018)",
+   "duplicate_of": null,
+   "notes": "Default bank compiled into libOPNMIDI; GS/XG-style multi-bank.",
+   "todo": null
+  },
+  {
+   "slug": "gm-old",
+   "name": "Wohlstand GM bank (old)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-gm-old",
+    "opn-gm-old-opna"
+   ],
+   "file": "gm-old.wopn",
+   "image_path": "/opt/banks/wopn/gm-old.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/libOPNMIDI",
+    "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+    "path": "fm_banks/gm-old.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/gm-old.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/readme.txt"
+   },
+   "bytes": 17750,
+   "sha256": "da6f2ba73368c9338fafaf914e240cd7df7483edbef65ceba6abf820402f46a6",
+   "license": "MIT",
+   "license_note": "Earlier revision of Wohlstand's own bank; same author/readme as xg.wopn.",
+   "duplicate_of": null,
+   "notes": null,
+   "todo": null
+  },
+  {
+   "slug": "fmmidi",
+   "name": "fmmidi hardcoded instruments",
+   "enabled": false,
+   "variant_ids": [
+    "opn-fmmidi",
+    "opn-fmmidi-opna"
+   ],
+   "file": "fmmidi.wopn",
+   "image_path": "/opt/banks/wopn/fmmidi.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/libOPNMIDI",
+    "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+    "path": "fm_banks/fmmidi.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/fmmidi.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/fmmidi-readme.txt"
+   },
+   "bytes": 17750,
+   "sha256": "5464425499c776625505218554ec7ee255c14a978e551103a5e07721a44650f0",
+   "license": "BSD-3-Clause",
+   "license_note": "fm_banks/fmmidi-readme.txt: extracted from the fmmidi project (http://unhaut.x10host.com/fmmidi/), 'three clauses BSD license'.",
+   "duplicate_of": null,
+   "notes": null,
+   "todo": null
+  },
+  {
+   "slug": "gems-fmlib-gmize",
+   "name": "GEMS FM library, GM-ized",
+   "enabled": false,
+   "variant_ids": [
+    "opn-gems-fmlib-gmize",
+    "opn-gems-fmlib-gmize-opna"
+   ],
+   "file": "gems-fmlib-gmize.wopn",
+   "image_path": "/opt/banks/wopn/gems-fmlib-gmize.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/libOPNMIDI",
+    "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+    "path": "fm_banks/gems-fmlib-gmize.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/gems-fmlib-gmize.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/gems-fmlib-gmize-readme.txt"
+   },
+   "bytes": 62080,
+   "sha256": "bab2f14758e6a2466115f9b08046618e317cfd143cb88a5350867b2721a803b4",
+   "license": "unknown",
+   "license_note": "Instruments imported from the standard set shipped with Sega's official GEMS tool, reorganised to GM by Wohlstand with some xg.wopn patches; GEMS' terms are not documented (issue-#301-like provenance).",
+   "duplicate_of": null,
+   "notes": null,
+   "todo": null
+  },
+  {
+   "slug": "nineko",
+   "name": "Nineko / ValleyBell MIDI2VGM bank",
+   "enabled": false,
+   "variant_ids": [
+    "opn-nineko",
+    "opn-nineko-opna"
+   ],
+   "file": "Nineko.wopn",
+   "image_path": "/opt/banks/wopn/nineko.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/libOPNMIDI",
+    "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+    "path": "fm_banks/Nineko.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/Nineko.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/Nineko-readme.txt"
+   },
+   "bytes": 53214,
+   "sha256": "74c49cea0fa118af979594598c7b9af16e09ea35a01bb7f6e76374493e110dfa",
+   "license": "unknown",
+   "license_note": "fm_banks/Nineko-readme.txt: melodic bank from the MIDI2VGM utility by ValleyBell and Nineko; percussion copied from the GEMS bank as a placeholder. No license stated.",
+   "duplicate_of": null,
+   "notes": null,
+   "todo": null
+  },
+  {
+   "slug": "tomsoft",
+   "name": "Tomsoft SegaMusic bank",
+   "enabled": false,
+   "variant_ids": [
+    "opn-tomsoft",
+    "opn-tomsoft-opna"
+   ],
+   "file": "Tomsoft.wopn",
+   "image_path": "/opt/banks/wopn/tomsoft.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/libOPNMIDI",
+    "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+    "path": "fm_banks/Tomsoft.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/Tomsoft.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/Tomsoft-readme.txt"
+   },
+   "bytes": 62080,
+   "sha256": "bbae9d7b7275035f487a310ea3fbd70cee243daff3f3aad9c4fd5b000ddb7190",
+   "license": "unknown",
+   "license_note": "fm_banks/Tomsoft-readme.txt: instruments captured from TommyXie's SegaMusic program via a GYM dump (OPN2BankEditor issue #44), tuned by Wohlstand and merged with xg.wopn percussion. No license stated.",
+   "duplicate_of": null,
+   "notes": null,
+   "todo": null
+  },
+  {
+   "slug": "gs-dmxopn2",
+   "name": "DMXOPN2 GS bank (papiezak & Sneakernets)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-gs-dmxopn2",
+    "opn-gs-dmxopn2-opna"
+   ],
+   "file": "gs-by-papiezak-and-sneakernets.wopn",
+   "image_path": "/opt/banks/wopn/gs-dmxopn2.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/libOPNMIDI",
+    "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+    "path": "fm_banks/gs-by-papiezak-and-sneakernets.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/gs-by-papiezak-and-sneakernets.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/gs-by-papiezak-and-sneakernets-readme.txt"
+   },
+   "bytes": 274864,
+   "sha256": "488327960374b95dcc302e5586622a62fc21bdda7082f92a40258002ed267f40",
+   "license": "MIT",
+   "license_note": "DMXOPN2 (https://github.com/sneakernets/DMXOPN2, https://github.com/papiezak/DMXOPN2): repository licensed MIT; the readme in fm_banks/ carries no license text of its own.",
+   "duplicate_of": null,
+   "notes": null,
+   "todo": null
+  },
+  {
+   "slug": "gm",
+   "name": "gm.wopn (symlink to xg.wopn)",
+   "enabled": false,
+   "variant_ids": [],
+   "file": "gm.wopn",
+   "image_path": null,
+   "source": {
+    "repo": "https://github.com/Wohlstand/libOPNMIDI",
+    "commit": "3e6612377fbcf652056586b2562f00860c5bb0e7",
+    "path": "fm_banks/gm.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/gm.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/libOPNMIDI/3e6612377fbcf652056586b2562f00860c5bb0e7/fm_banks/readme.txt"
+   },
+   "bytes": 7,
+   "sha256": null,
+   "license": "MIT",
+   "license_note": "In git this is a 7-byte symlink whose target is 'xg.wopn'; not a separate bank.",
+   "duplicate_of": "xg",
+   "notes": "Counted as the 8th fm_banks/*.wopn in plan §6 but it is the same data as xg.",
+   "todo": null
+  },
+  {
+   "slug": "ed-xg",
+   "name": "OPN2BankEditor xg.wopn (older revision)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-ed-xg",
+    "opn-ed-xg-opna"
+   ],
+   "file": "xg.wopn",
+   "image_path": "/opt/banks/wopn/ed-xg.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/OPN2BankEditor",
+    "commit": "4274c035c2b070c0c52da12dfe9cf241ac00aa4d",
+    "path": "Bank_Examples/xg.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/OPN2BankEditor/4274c035c2b070c0c52da12dfe9cf241ac00aa4d/Bank_Examples/xg.wopn",
+    "readme": null
+   },
+   "bytes": 62080,
+   "sha256": "6f1f25a75140ae3732c31c708bf3d5d7bf65454fd9a00dee44bc99ad2e009d58",
+   "license": "MIT",
+   "license_note": "Same author/license as libOPNMIDI's xg.wopn (Wohlstand, MIT); different bytes (62080 vs 186204): an older, single-bank revision.",
+   "duplicate_of": null,
+   "notes": "Verify at M2b whether it is audibly distinct from opn-xg; otherwise drop.",
+   "todo": null
+  },
+  {
+   "slug": "tomsoft-orig",
+   "name": "Tomsoft SegaMusic bank (original import, melodic only)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-tomsoft-orig",
+    "opn-tomsoft-orig-opna"
+   ],
+   "file": "Tomsoft-orig.wopn",
+   "image_path": "/opt/banks/wopn/tomsoft-orig.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/OPN2BankEditor",
+    "commit": "4274c035c2b070c0c52da12dfe9cf241ac00aa4d",
+    "path": "Bank_Examples/Other banks/Tomsoft-orig.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/OPN2BankEditor/4274c035c2b070c0c52da12dfe9cf241ac00aa4d/Bank_Examples/Other banks/Tomsoft-orig.wopn",
+    "readme": null
+   },
+   "bytes": 17750,
+   "sha256": "93f99642f3c9aa2a52abb8cc004e680a5704698f74d9fae76cbffcc4db80cf81",
+   "license": "unknown",
+   "license_note": "Raw import before Wohlstand's tuning and percussion merge; same provenance caveat as opn-tomsoft.",
+   "duplicate_of": null,
+   "notes": "Melodic-only -> completeness melodic_only if enabled.",
+   "todo": null
+  },
+  {
+   "slug": "ed-gems-fmlib-gmize",
+   "name": "GEMS FM library, GM-ized (OPN2BankEditor copy)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-ed-gems-fmlib-gmize",
+    "opn-ed-gems-fmlib-gmize-opna"
+   ],
+   "file": "gems-fmlib-gmize.wopn",
+   "image_path": "/opt/banks/wopn/ed-gems-fmlib-gmize.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/OPN2BankEditor",
+    "commit": "4274c035c2b070c0c52da12dfe9cf241ac00aa4d",
+    "path": "Bank_Examples/Other banks/gems-fmlib-gmize.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/OPN2BankEditor/4274c035c2b070c0c52da12dfe9cf241ac00aa4d/Bank_Examples/Other banks/gems-fmlib-gmize.wopn",
+    "readme": "https://raw.githubusercontent.com/Wohlstand/OPN2BankEditor/4274c035c2b070c0c52da12dfe9cf241ac00aa4d/Bank_Examples/Other banks/gems-fmlib-gmize-readme.txt"
+   },
+   "bytes": 62080,
+   "sha256": "de92431c4a426bfb7d4205e5fca78b1b2ed65a17e1b334be61025c80ac0ca09d",
+   "license": "unknown",
+   "license_note": "Same readme as the libOPNMIDI copy, different bytes (older revision).",
+   "duplicate_of": null,
+   "notes": "Compare with opn-gems-fmlib-gmize at M2b; keep only if distinct.",
+   "todo": null
+  },
+  {
+   "slug": "ed-gm-old",
+   "name": "Wohlstand GM bank (OPN2BankEditor old_banks/gm-old.wopn)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-ed-gm-old",
+    "opn-ed-gm-old-opna"
+   ],
+   "file": "gm-old.wopn",
+   "image_path": "/opt/banks/wopn/ed-gm-old.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/OPN2BankEditor",
+    "commit": "4274c035c2b070c0c52da12dfe9cf241ac00aa4d",
+    "path": "Bank_Examples/old_banks/gm-old.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/OPN2BankEditor/4274c035c2b070c0c52da12dfe9cf241ac00aa4d/Bank_Examples/old_banks/gm-old.wopn",
+    "readme": null
+   },
+   "bytes": 16656,
+   "sha256": "54e704bb9ae8b80488772d8df3379b5bc73f980ad3f577f22d809540f1bf0bb2",
+   "license": "MIT",
+   "license_note": "Wohlstand's own bank, older revision (16656 bytes).",
+   "duplicate_of": null,
+   "notes": "Compare with opn-gm-old at M2b; keep only if distinct.",
+   "todo": null
+  },
+  {
+   "slug": "ed-tomsoft",
+   "name": "Tomsoft SegaMusic bank (OPN2BankEditor copy)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-ed-tomsoft",
+    "opn-ed-tomsoft-opna"
+   ],
+   "file": "Tomsoft.wopn",
+   "image_path": "/opt/banks/wopn/ed-tomsoft.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/OPN2BankEditor",
+    "commit": "4274c035c2b070c0c52da12dfe9cf241ac00aa4d",
+    "path": "Bank_Examples/Other banks/Tomsoft.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/OPN2BankEditor/4274c035c2b070c0c52da12dfe9cf241ac00aa4d/Bank_Examples/Other banks/Tomsoft.wopn",
+    "readme": null
+   },
+   "bytes": 62080,
+   "sha256": "bbae9d7b7275035f487a310ea3fbd70cee243daff3f3aad9c4fd5b000ddb7190",
+   "license": "unknown",
+   "license_note": "Byte-identical to libOPNMIDI fm_banks/Tomsoft.wopn.",
+   "duplicate_of": "tomsoft",
+   "notes": null,
+   "todo": null
+  },
+  {
+   "slug": "ed-gm",
+   "name": "Wohlstand GM bank (OPN2BankEditor old_banks/gm.wopn)",
+   "enabled": false,
+   "variant_ids": [
+    "opn-ed-gm",
+    "opn-ed-gm-opna"
+   ],
+   "file": "gm.wopn",
+   "image_path": "/opt/banks/wopn/ed-gm.wopn",
+   "source": {
+    "repo": "https://github.com/Wohlstand/OPN2BankEditor",
+    "commit": "4274c035c2b070c0c52da12dfe9cf241ac00aa4d",
+    "path": "Bank_Examples/old_banks/gm.wopn",
+    "url": "https://raw.githubusercontent.com/Wohlstand/OPN2BankEditor/4274c035c2b070c0c52da12dfe9cf241ac00aa4d/Bank_Examples/old_banks/gm.wopn",
+    "readme": null
+   },
+   "bytes": 17750,
+   "sha256": "da6f2ba73368c9338fafaf914e240cd7df7483edbef65ceba6abf820402f46a6",
+   "license": "MIT",
+   "license_note": "Byte-identical to libOPNMIDI fm_banks/gm-old.wopn.",
+   "duplicate_of": "gm-old",
+   "notes": null,
+   "todo": null
+  }
+ ]
+}
