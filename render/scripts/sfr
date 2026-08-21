@@ -1,0 +1,4 @@
+#!/bin/sh
+# Thin launcher so the image can be used as `docker run … sfr-render sfr <cmd>`
+# while `docker run … sfr-render adlmidiplay` etc. still reach the engines directly.
+exec python3 -m sfr "$@"

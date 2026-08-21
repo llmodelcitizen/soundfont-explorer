@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "note": "Single source of truth for engine versions, flags and calibration. Values marked null are filled in at the milestone that adds the engine (M2b for OPN/EDM/GUS/SC-55/MT-32). Calibration offsets (start_offset_s, drift_ppm) come from render/calib/ at M2a/M2b.",
+  "render": {
+    "sample_rate": 48000,
+    "channels": 2,
+    "slice_s": 2,
+    "listen_slice_s": 10,
+    "lead_in_s": 0.12,
+    "lead_out_s": 0.02,
+    "segment_samples": 102720,
+    "listen_segment_samples": 486720,
+    "scrub_bitrate_kbps": 48,
+    "listen_bitrate_kbps": 96,
+    "opus_framesize_ms": 20,
+    "opus_comp": 10,
+    "pack_size": 24,
+    "lufs_target": -16.0,
+    "tp_ceiling_dbtp": -1.5,
+    "gain_clamp_db": 30.0,
+    "silent_below_lufs": -50.0,
+    "tail_s": 3
+  },
+  "engines": {
+    "adlmidi": {
+      "label": "libADLMIDI",
+      "version": "1.6.2",
+      "commit": "c46220909879dc552d7632467be553f4bf2a9e21",
+      "url": "https://github.com/Wohlstand/libADLMIDI",
+      "license": "LGPL-3.0-or-later (library), GPL-3.0 (utils); embedded banks: see fm_banks/LICENSE-*.txt and catalog/review.md",
+      "binary": "adlmidiplay",
+      "native_rate": 44100,
+      "build_notes": "MIDIPLAY_WAVE_ONLY=ON: no -w/-nl flags (always writes <input>.wav, never loops); output rate fixed at 44100 Hz; still links libasound2.",
+      "cores": {
+        "nuked": "--emu-nuked",
+        "dosbox-opl2": "--emu-dosbox-opl2",
+        "esfmu": "--emu-esfmu",
+        "nuked-cqm": "--emu-nuked-cqm"
+      },
+      "base_args": ["-f32", "-vm", "0", "--gain", "2.0"],
+      "chips": 1,
+      "start_offset_s": null,
+      "drift_ppm": null
+    },
+    "fluidsynth": {
+      "label": "FluidSynth",
+      "version": "2.4.4",
+      "source": "debian trixie package",
+      "url": "https://www.fluidsynth.org/",
+      "license": "LGPL-2.1-or-later",
+      "binary": "fluidsynth",
+      "native_rate": 48000,
+      "base_args": ["-ni", "-T", "wav", "-O", "float", "-r", "48000", "-g", "0.5", "-R", "0", "-C", "0",
+                    "-o", "synth.polyphony=256", "-o", "synth.cpu-cores=1"],
+      "dynamic_sample_loading_above_bytes": 134217728,
+      "start_offset_s": 0.0,
+      "drift_ppm": 0,
+      "reference": true
+    },
+    "opnmidi": { "label": "libOPNMIDI", "version": null, "commit": null, "binary": "opnmidiplay", "native_rate": null, "start_offset_s": null, "drift_ppm": null },
+    "edmidi":  { "label": "libEDMIDI",  "version": null, "commit": null, "binary": "edmidi-render", "native_rate": 48000, "start_offset_s": null, "drift_ppm": null },
+    "timidity": { "label": "TiMidity++ / FreePats", "version": null, "binary": "timidity", "native_rate": 48000, "start_offset_s": null, "drift_ppm": null },
+    "sc55":    { "label": "Nuked-SC55", "version": null, "commit": null, "binary": "nuked-sc55-render", "requires_rom": true, "start_offset_s": null, "drift_ppm": null },
+    "munt":    { "label": "Munt (mt32emu)", "version": null, "commit": null, "binary": "mt32emu-smf2wav", "requires_rom": true, "start_offset_s": null, "drift_ppm": null }
+  },
+  "tools": {
+    "ffmpeg": "7.1.5 (debian trixie, libsoxr enabled)",
+    "opus-tools": "0.2 (libopus 1.5.2)"
+  }
+}
