@@ -571,10 +571,12 @@ export class App {
     return this.cursor;
   }
 
+  private get compact(): boolean {
+    return typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches;
+  }
+
   private effectiveColumns(): ColKey[] {
-    const compact = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches;
-    if (compact) return ['chip', 'fav', 'dot'];
-    return this.prefs.columns as ColKey[];
+    return (this.compact ? this.prefs.mobileColumns : this.prefs.columns) as ColKey[];
   }
 
   private toggleSort(key: ColKey): void {

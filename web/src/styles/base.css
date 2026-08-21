@@ -658,6 +658,23 @@ select:focus-visible {
   display: none;
   gap: 4px;
 }
+.transport .break {
+  display: none;
+}
+/* desktop order: transport · clock · seek · loop · mute · volume */
+.transport .clock {
+  order: 2;
+}
+.transport .seek {
+  order: 3;
+}
+.transport .toggle {
+  order: 4;
+}
+.transport .vol,
+.transport .status {
+  order: 5;
+}
 .transport .status {
   min-width: 10ch;
 }
@@ -883,15 +900,66 @@ kbd {
     flex-wrap: wrap;
     padding-bottom: max(6px, env(safe-area-inset-bottom));
   }
-  .transport .seek {
-    flex: 1 1 100%;
-    order: 10;
+  /* phone: line 1 = ▲ ▼ ◀◀ ▶ ▶▶ loop mute; line 2 = clock + progress bar */
+  .transport .toggle {
+    order: 0;
+  }
+  .transport .break {
+    display: block;
+    flex: 1 0 100%;
+    height: 0;
+    order: 1;
   }
   .transport .clock {
+    order: 2;
     min-width: 0;
     font-size: 0.85em;
-    margin-left: auto;
+    margin-left: 0;
   }
+  .transport .seek {
+    order: 3;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .transport {
+    gap: 6px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .transport .steps {
+    gap: 6px;
+  }
+  .transport .steps .btn {
+    padding: 6px 10px;
+    font-size: 1.2em;
+  }
+  .transport > .btn {
+    padding: 6px 9px;
+  }
+  .transport .toggle {
+    padding: 6px 8px;
+    font-size: 0.9em;
+  }
+}
+@media (max-width: 375px) {
+  .transport {
+    gap: 4px;
+  }
+  .transport .steps {
+    gap: 4px;
+  }
+  .transport .steps .btn {
+    padding: 6px 8px;
+  }
+  .transport > .btn {
+    padding: 6px 7px;
+  }
+  .transport .toggle {
+    padding: 6px 6px;
+    font-size: 0.85em;
+  }
+}
+@media (max-width: 720px) {
   .transport .steps {
     display: flex;
   }

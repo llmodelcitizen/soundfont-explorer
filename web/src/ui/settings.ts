@@ -47,6 +47,7 @@ export class SettingsModal {
 
   private render(): void {
     clear(this.box);
+    const compact = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches;
     const input = h('input', { type: 'number', min: '0', max: '60', step: '0.5', value: String(this.prefs.listenedAfterS), class: 'num', 'aria-label': 'seconds' }) as HTMLInputElement;
     const range = h('input', { type: 'range', min: '0', max: '30', step: '0.5', value: String(Math.min(30, this.prefs.listenedAfterS)), 'aria-label': 'seconds' }) as HTMLInputElement;
     const commit = (v: number) => {
@@ -92,18 +93,20 @@ export class SettingsModal {
       h(
         'section',
         { class: 'setting' },
-        h('div', { class: 'setting-title' }, 'List columns'),
+        h('div', { class: 'setting-title' }, compact ? 'List columns (phone layout)' : 'List columns'),
         h(
           'div',
           { class: 'colgrid' },
           COLUMNS.filter((c) => !c.always).map((c) => {
+            // the checkboxes edit the column set of the *current* layout (phone vs desktop)
+            const field = compact ? 'mobileColumns' : 'columns';
             const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
-            box.checked = this.prefs.columns.includes(c.key);
+            box.checked = this.prefs[field].includes(c.key);
             box.addEventListener('change', () => {
-              const cols = new Set(this.prefs.columns);
+              const cols = new Set(this.prefs[field]);
               if (box.checked) cols.add(c.key);
               else cols.delete(c.key);
-              this.prefs = { ...this.prefs, columns: COLUMNS.filter((x) => cols.has(x.key)).map((x) => x.key) };
+              this.prefs = { ...this.prefs, [field]: COLUMNS.filter((x) => cols.has(x.key)).map((x) => x.key) };
               this.cb.onChange(this.prefs);
             });
             return h('label', { class: 'preserve', title: c.title }, box, ` ${c.label}`);

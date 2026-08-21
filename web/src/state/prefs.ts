@@ -10,9 +10,16 @@ export interface Prefs {
   preserveTrackPosition: boolean;
   /** visible list columns (keys from ui/columns.ts); always-on columns are implied */
   columns: string[];
+  /** the same for the compact (mobile) layout */
+  mobileColumns: string[];
 }
 
-export const DEFAULT_PREFS: Prefs = { listenedAfterS: 3, preserveTrackPosition: true, columns: ['chip', 'engine', 'decade', 'fav', 'dot'] };
+export const DEFAULT_PREFS: Prefs = {
+  listenedAfterS: 3,
+  preserveTrackPosition: true,
+  columns: ['chip', 'engine', 'decade', 'fav', 'dot'],
+  mobileColumns: ['chip', 'fav', 'dot'],
+};
 const PREFS_KEY = 'sfp.prefs.v1';
 const LISTENED_KEY = 'sfp.listened.v1';
 
@@ -40,6 +47,7 @@ export function loadPrefs(): Prefs {
     listenedAfterS: Number.isFinite(n) && n >= 0 ? Math.min(60, n) : DEFAULT_PREFS.listenedAfterS,
     preserveTrackPosition: typeof p.preserveTrackPosition === 'boolean' ? p.preserveTrackPosition : DEFAULT_PREFS.preserveTrackPosition,
     columns: Array.isArray(p.columns) ? p.columns.map(String) : [...DEFAULT_PREFS.columns],
+    mobileColumns: Array.isArray(p.mobileColumns) ? p.mobileColumns.map(String) : [...DEFAULT_PREFS.mobileColumns],
   };
 }
 

@@ -100,10 +100,11 @@ export class Transport {
       back,
       this.playBtn,
       fwd,
-      this.clock,
-      this.seek,
       this.loopBtn,
       this.muteBtn,
+      h('span', { class: 'break', 'aria-hidden': 'true' }),
+      this.clock,
+      this.seek,
       this.vol,
       this.status,
     );
