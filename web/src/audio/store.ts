@@ -1,0 +1,223 @@
+/**
+ * SegmentStore: (variant, tier, slice) → decoded buffer, through the compressed-bytes cache,
+ * the priority fetcher (whole packs or Range-per-member) and the decoder.
+ *
+ * request() coalesces: one fetch per pack/member, one decode per key. Callers that just need
+ * "tell me when something new is decoded" subscribe with onDecoded().
+ */
+import { CACHE, NET } from '../config';
+import type { SetDoc } from '../contracts/set';
+import { listenUrl, packUrl } from '../contracts/set';
+import { ByteLRU } from './cache/lru';
+import type { Decoder } from './decode';
+import { AbortedError, Fetcher } from './net/fetcher';
+import { headerBytesFor, parseHeader, splitPack, MAX_HEADER_PROBE } from './net/packs';
+import { bufferBytes, keyStr, type BufferLike, type SegKey } from './types';
+
+export interface Want {
+  key: SegKey;
+  priority: number;
+}
+
+interface Located {
+  url: string;
+  /** member slot for packs; -1 for listen objects */
+  slot: number;
+  /** compressed cache id */
+  cid: string;
+}
+
+export class SegmentStore {
+  readonly decoded: ByteLRU<BufferLike>;
+  readonly compressed: ByteLRU<ArrayBuffer>;
+  private decoding = new Map<string, Promise<BufferLike>>();
+  private packHeaders = new Map<string, ReturnType<typeof parseHeader>>();
+  private listeners = new Set<(key: SegKey, buf: BufferLike) => void>();
+  stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0 };
+
+  constructor(
+    public readonly set: SetDoc,
+    private readonly fetcher: Fetcher,
+    private readonly decoder: Decoder,
+    budgets: { decodedBytes: number; compressedBytes: number } = CACHE,
+  ) {
+    this.decoded = new ByteLRU<BufferLike>(budgets.decodedBytes, bufferBytes);
+    this.compressed = new ByteLRU<ArrayBuffer>(budgets.compressedBytes, (b) => b.byteLength);
+  }
+
+  // ---- lookup ---------------------------------------------------------------
+
+  locate(key: SegKey): Located | null {
+    const v = this.set.variants[key.v];
+    if (!v) return null;
+    if (key.tier === 'l') {
+      if (key.i < 0 || key.i >= this.set.listen.slices) return null;
+      const url = listenUrl(this.set, v.render_hash, key.i);
+      return { url, slot: -1, cid: url };
+    }
+    if (key.i < 0 || key.i >= this.set.slices) return null;
+    const g = this.set.groups[v.group];
+    if (!g) return null;
+    const url = packUrl(this.set, g.hash, key.i);
+    return { url, slot: v.slot, cid: `${url}#${v.slot}` };
+  }
+
+  get(key: SegKey): BufferLike | undefined {
+    return this.decoded.get(keyStr(key));
+  }
+
+  peek(key: SegKey): BufferLike | undefined {
+    return this.decoded.peek(keyStr(key));
+  }
+
+  has(key: SegKey): boolean {
+    return this.decoded.has(keyStr(key));
+  }
+
+  pin(key: SegKey): void {
+    this.decoded.pin(keyStr(key));
+  }
+  unpin(key: SegKey): void {
+    this.decoded.unpin(keyStr(key));
+  }
+
+  onDecoded(cb: (key: SegKey, buf: BufferLike) => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  isPending(key: SegKey): boolean {
+    const loc = this.locate(key);
+    if (!loc) return false;
+    if (this.decoding.has(keyStr(key))) return true;
+    return this.fetcher.isPending(loc.url) || (loc.slot >= 0 && this.memberRangePending(loc));
+  }
+
+  // ---- requests ------------------------------------------------------------
+
+  /** Ensure one segment is (being) decoded; resolves with the buffer. */
+  request(key: SegKey, priority: number, opts: { whole?: boolean; tag?: string } = {}): Promise<BufferLike> {
+    const ks = keyStr(key);
+    const have = this.decoded.peek(ks);
+    if (have) return Promise.resolve(have);
+    const live = this.decoding.get(ks);
+    if (live) return live;
+    const loc = this.locate(key);
+    if (!loc) return Promise.reject(new Error(`no such segment ${ks}`));
+    // an urgent request (switch commit / audible fill) takes the whole pack: one round trip beats header+member
+    if (priority <= 0 && loc.slot >= 0) opts = { ...opts, whole: true };
+    const p = this.bytesFor(loc, priority, opts)
+      .then((bytes) => this.decoder.decode(bytes, priority))
+      .then((buf) => {
+        this.decoded.set(ks, buf);
+        this.stats.decodedOk++;
+        for (const l of this.listeners) l(key, buf);
+        return buf;
+      })
+      .catch((e) => {
+        if (!(e instanceof AbortedError)) this.stats.decodeErrors++;
+        throw e;
+      })
+      .finally(() => this.decoding.delete(ks));
+    this.decoding.set(ks, p);
+    p.catch(() => undefined);
+    return p;
+  }
+
+  /**
+   * Batch want-set from the prefetcher: groups pack members per object; a pack is fetched whole
+   * when ≥ wholePackThreshold members are wanted (or it is already in flight), else by Range.
+   */
+  want(wants: Want[], tag = 'prefetch'): void {
+    const byPack = new Map<string, Want[]>();
+    for (const w of wants) {
+      const ks = keyStr(w.key);
+      if (this.decoded.has(ks) || this.decoding.has(ks)) continue;
+      const loc = this.locate(w.key);
+      if (!loc) continue;
+      if (loc.slot < 0) {
+        this.request(w.key, w.priority, { tag: 'listen' }).catch(() => undefined);
+        continue;
+      }
+      const arr = byPack.get(loc.url) ?? [];
+      arr.push(w);
+      byPack.set(loc.url, arr);
+    }
+    for (const [url, ws] of byPack) {
+      const whole = ws.length >= NET.wholePackThreshold || this.fetcher.isPending(url);
+      const best = Math.min(...ws.map((w) => w.priority));
+      for (const w of ws) this.request(w.key, whole ? best : w.priority, { whole, tag }).catch(() => undefined);
+    }
+  }
+
+  // ---- bytes ---------------------------------------------------------------
+
+  private memberRangePending(loc: Located): boolean {
+    const h = this.packHeaders.get(loc.url);
+    if (!h) return this.fetcher.isPending(loc.url, { start: 0, end: MAX_HEADER_PROBE - 1 });
+    const start = h.offsets[loc.slot]!;
+    return this.fetcher.isPending(loc.url, { start, end: start + h.lengths[loc.slot]! - 1 });
+  }
+
+  private async bytesFor(loc: Located, priority: number, opts: { whole?: boolean; tag?: string }): Promise<ArrayBuffer> {
+    const cached = this.compressed.get(loc.cid);
+    if (cached) return cached;
+    if (loc.slot < 0) {
+      try {
+        const buf = await this.fetcher.get(loc.url, { priority, tag: opts.tag ?? 'listen' });
+        this.compressed.set(loc.cid, buf);
+        return buf;
+      } catch (e) {
+        if (!(e instanceof AbortedError)) this.stats.fetchErrors++;
+        throw e;
+      }
+    }
+    // pack member
+    const wholeInFlight = this.fetcher.isPending(loc.url);
+    if (opts.whole || wholeInFlight) {
+      try {
+        const pack = await this.fetcher.get(loc.url, { priority, sticky: true, tag: 'pack' });
+        this.ingestPack(loc.url, pack);
+        this.stats.wholePacks++;
+      } catch (e) {
+        this.stats.fetchErrors++;
+        throw e;
+      }
+      const got = this.compressed.get(loc.cid);
+      if (!got) throw new Error(`member ${loc.slot} missing from pack ${loc.url}`);
+      return got;
+    }
+    // Range per member: header (cached per URL) then the member
+    let h = this.packHeaders.get(loc.url);
+    if (!h) {
+      const head = await this.fetcher.get(loc.url, { priority, range: { start: 0, end: MAX_HEADER_PROBE - 1 }, sticky: true, tag: 'pack' });
+      const count = new DataView(head).getUint8(5);
+      const need = headerBytesFor(count);
+      const full = head.byteLength >= need ? head : await this.fetcher.get(loc.url, { priority, range: { start: 0, end: need - 1 }, sticky: true, tag: 'pack' });
+      h = parseHeader(full);
+      this.packHeaders.set(loc.url, h);
+    }
+    const start = h.offsets[loc.slot]!;
+    const end = start + h.lengths[loc.slot]! - 1;
+    try {
+      const member = await this.fetcher.get(loc.url, { priority, range: { start, end }, tag: opts.tag ?? 'prefetch' });
+      this.compressed.set(loc.cid, member);
+      this.stats.rangeMembers++;
+      return member;
+    } catch (e) {
+      if (!(e instanceof AbortedError)) this.stats.fetchErrors++;
+      throw e;
+    }
+  }
+
+  private ingestPack(url: string, pack: ArrayBuffer): void {
+    const members = splitPack(pack);
+    this.packHeaders.set(url, parseHeader(pack));
+    members.forEach((m, j) => this.compressed.set(`${url}#${j}`, m));
+  }
+
+  /** Abort fetches whose tag matches and whose URL is not in keep (packs are sticky anyway). */
+  abortListen(keep: Set<string>): number {
+    return this.fetcher.abortWhere((url, o) => o.tag === 'listen' && !keep.has(url));
+  }
+}
