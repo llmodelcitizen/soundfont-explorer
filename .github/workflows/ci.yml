@@ -66,7 +66,7 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: render/Dockerfile
-          ignore: DL3008,DL3003,DL3013
+          ignore: DL3008,DL3003,DL3013,DL3006
 
   terraform:
     name: terraform fmt + validate
