@@ -1,6 +1,6 @@
 /** Settings modal (⚙ / S). First option: the "listened" threshold; plus reset buttons. */
 import { clear, h } from './dom';
-import type { Prefs } from '../state/prefs';
+import { DEFAULT_PREFS, type Prefs } from '../state/prefs';
 import { COLUMNS } from './columns';
 
 export interface SettingsCallbacks {
@@ -66,11 +66,12 @@ export class SettingsModal {
     resetAll.addEventListener('click', () => {
       if (confirm('Forget which variants you have listened to, for every track?')) this.cb.onResetAll();
     });
-    const preserve = h('input', { type: 'checkbox' }) as HTMLInputElement;
-    preserve.checked = this.prefs.preserveTrackPosition;
-    preserve.addEventListener('change', () => {
-      this.prefs = { ...this.prefs, preserveTrackPosition: preserve.checked };
+    const defaultsBtn = h('button', { class: 'btn', type: 'button', title: 'restore the default columns for this layout' }, 'defaults');
+    defaultsBtn.addEventListener('click', () => {
+      const field = compact ? 'mobileColumns' : 'columns';
+      this.prefs = { ...this.prefs, [field]: [...DEFAULT_PREFS[field]] };
       this.cb.onChange(this.prefs);
+      this.render();
     });
     const close = h('button', { class: 'btn close-settings', type: 'button' }, 'close');
     close.addEventListener('click', () => this.toggle(false));
@@ -84,11 +85,6 @@ export class SettingsModal {
         h('p', { class: 'muted' }, 'Only time the variant is actually audible counts. Remembered per track in this browser.'),
         h('div', { class: 'btnrow' }, resetTrack, resetAll),
         h('p', { class: 'muted small' }, `current track: ${this.cb.trackTitle()}`),
-      ),
-      h(
-        'section',
-        { class: 'setting' },
-        h('label', { class: 'preserve', title: 'When unchecked, always start from the beginning after stepping to a new track.' }, preserve, ' Preserve track position when stepping to another track'),
       ),
       h(
         'section',
@@ -112,6 +108,7 @@ export class SettingsModal {
             return h('label', { class: 'preserve', title: c.title }, box, ` ${c.label}`);
           }),
         ),
+        h('div', { class: 'btnrow' }, defaultsBtn),
         h('p', { class: 'muted small' }, '# and name are always shown. Click a column header to sort; click again to reverse, a third time to restore the catalog order.'),
       ),
       h('div', { class: 'btnrow' }, close),
