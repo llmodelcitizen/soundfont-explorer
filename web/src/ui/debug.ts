@@ -14,7 +14,9 @@ export class DebugPanel {
     copy.addEventListener('click', () => {
       if (this.last) void navigator.clipboard?.writeText(JSON.stringify(this.last, null, 1));
     });
-    this.el = h('aside', { class: 'debug hidden' }, h('div', { class: 'dbg-head' }, h('strong', null, 'debug'), copy), this.body);
+    const close = h('button', { class: 'btn close', type: 'button', title: 'close (D)', 'aria-label': 'close debug panel' }, '×');
+    close.addEventListener('click', () => this.toggle(false));
+    this.el = h('aside', { class: 'debug hidden' }, h('div', { class: 'dbg-head' }, h('strong', null, 'debug'), h('div', { class: 'dbg-actions' }, copy, close)), this.body);
   }
 
   toggle(force?: boolean): void {

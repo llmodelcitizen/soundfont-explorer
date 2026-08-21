@@ -538,6 +538,15 @@ kbd {
   align-items: center;
   margin-bottom: 4px;
 }
+.dbg-actions {
+  display: flex;
+  gap: 6px;
+}
+.btn.close {
+  padding: 2px 9px;
+  font-weight: 700;
+  line-height: 1.2;
+}
 .dbg-body {
   margin: 0;
   white-space: pre-wrap;
