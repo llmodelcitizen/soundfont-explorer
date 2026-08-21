@@ -246,7 +246,7 @@ select:focus-visible {
   gap: 8px;
   align-items: center;
   /* extra room on the right so the scrollbar never sits on the last column */
-  padding: 2px 18px 2px 8px;
+  padding: 0 18px 0 8px;
   border-bottom: 1px solid var(--line-faint);
   cursor: pointer;
   white-space: nowrap;
@@ -273,12 +273,7 @@ select:focus-visible {
   text-align: center;
   color: var(--fg-dim);
   font: var(--mono);
-  line-height: 1;
-  align-self: center;
-}
-.hcell {
-  align-self: center;
-  line-height: 1;
+  line-height: var(--row-h);
 }
 .row.sel .idx {
   color: inherit;
@@ -425,10 +420,32 @@ select:focus-visible {
 .hcell.center {
   text-align: center;
 }
+/* every cell's line box is exactly the row height → text of any font/size is centred identically */
 .row .cell {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  display: block;
+  height: var(--row-h);
+  line-height: var(--row-h);
+  white-space: nowrap;
+  border: 0;
+  background: none;
+}
+.row .cell.badge,
+.row .cell.fav,
+.row .cell.dot {
+  height: auto;
+  line-height: 1.3;
+  align-self: center;
+}
+.row .cell.fav {
+  line-height: 10px;
+  height: 10px;
+}
+.hcell {
+  height: var(--row-h);
+  line-height: var(--row-h);
 }
 .row .meta {
   color: var(--fg-dim);
@@ -437,6 +454,7 @@ select:focus-visible {
 .row .num {
   font: var(--mono);
   font-size: 0.8em;
+  line-height: var(--row-h);
 }
 .row.sel .meta,
 .row.sel .num {
