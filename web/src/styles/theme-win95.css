@@ -316,3 +316,13 @@
     min-width: 40px;
   }
 }
+
+[data-theme='win95'] .vsplit,
+[data-theme='win95'] .hsplit {
+  background: #c0c0c0;
+  box-shadow: var(--bevel-out);
+}
+[data-theme='win95'] .vsplit::after,
+[data-theme='win95'] .hsplit::after {
+  display: none;
+}

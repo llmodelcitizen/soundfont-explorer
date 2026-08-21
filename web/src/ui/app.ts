@@ -388,8 +388,9 @@ export class App {
       },
     });
     this.rightPane = h('section', { class: 'right' }, this.tracks.el, this.splitHandle(), this.nowPlaying.el);
-    this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.rightPane);
+    this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.vSplitHandle(), this.hSplitHandle(), this.rightPane);
     this.applySplit();
+    this.applyPaneSizes();
     this.root.append(this.header, this.main, this.transport.el, this.debug.el, this.keymap.el, this.settings.el);
     this.policy = new InputPolicy({
       move: (d) => this.moveCursor(this.cursor + d),
@@ -461,6 +462,101 @@ export class App {
     this.engine.on('tier', (t: Tier | null) => this.nowPlaying.setTier(t));
     this.applyFilters(sel, query, true);
     if (this.creditsEl) this.root.appendChild(this.creditsEl); // keep the About page on top across song loads
+  }
+
+  // ---- pane sizes: right-pane width (desktop/landscape) and Now Playing height (phone portrait) ----
+  private static RIGHT_W_KEY = 'sfp.right-width.v1';
+  private static NP_MOBILE_KEY = 'sfp.np-mobile-height.v1';
+
+  private dragHandle(handle: HTMLElement, axis: 'x' | 'y', apply: (delta: number, start: number) => void, start: () => number, reset: () => void): void {
+    let origin = 0;
+    let base = 0;
+    const onMove = (e: PointerEvent) => apply(axis === 'x' ? origin - e.clientX : origin - e.clientY, base);
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    handle.addEventListener('pointerdown', (e) => {
+      origin = axis === 'x' ? e.clientX : e.clientY;
+      base = start();
+      handle.setPointerCapture?.(e.pointerId);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+      e.preventDefault();
+    });
+    handle.addEventListener('dblclick', reset);
+  }
+
+  /** vertical bar between the list and the right pane: drag left/right to resize the right pane (desktop, landscape) */
+  private vSplitHandle(): HTMLElement {
+    const handle = h('div', { class: 'vsplit', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'resize side pane', title: 'drag to resize · double-click to reset' });
+    this.dragHandle(
+      handle,
+      'x',
+      (delta, base) => {
+        const w = Math.max(240, Math.min(this.main.clientWidth * 0.7, base + delta));
+        this.main.style.setProperty('--right-w', `${Math.round(w)}px`);
+        this.save(App.RIGHT_W_KEY, `${Math.round(w)}px`);
+      },
+      () => this.rightPane.getBoundingClientRect().width,
+      () => {
+        this.main.style.removeProperty('--right-w');
+        this.save(App.RIGHT_W_KEY, null);
+      },
+    );
+    return handle;
+  }
+
+  /** horizontal bar above Now Playing on phones in portrait: drag up/down to resize it */
+  private hSplitHandle(): HTMLElement {
+    const handle = h('div', { class: 'hsplit', role: 'separator', 'aria-orientation': 'horizontal', 'aria-label': 'resize now playing', title: 'drag to resize · double-tap to reset' });
+    this.dragHandle(
+      handle,
+      'y',
+      (delta, base) => {
+        const hh = Math.max(60, Math.min(this.main.clientHeight - 120, base + delta));
+        this.main.style.setProperty('--np-mobile-h', `${Math.round(hh)}px`);
+        this.save(App.NP_MOBILE_KEY, `${Math.round(hh)}px`);
+      },
+      () => this.rightPane.getBoundingClientRect().height,
+      () => {
+        this.main.style.removeProperty('--np-mobile-h');
+        this.save(App.NP_MOBILE_KEY, null);
+      },
+    );
+    // double-tap reset for touch
+    let lastTap = 0;
+    handle.addEventListener('pointerup', () => {
+      const now = performance.now();
+      if (now - lastTap < 350) {
+        this.main.style.removeProperty('--np-mobile-h');
+        this.save(App.NP_MOBILE_KEY, null);
+      }
+      lastTap = now;
+    });
+    return handle;
+  }
+
+  private save(key: string, value: string | null): void {
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private applyPaneSizes(): void {
+    try {
+      const w = localStorage.getItem(App.RIGHT_W_KEY);
+      if (w) this.main.style.setProperty('--right-w', w);
+      const hh = localStorage.getItem(App.NP_MOBILE_KEY);
+      if (hh) this.main.style.setProperty('--np-mobile-h', hh);
+    } catch {
+      /* ignore */
+    }
   }
 
   // ---- right-pane split (tracks above, now-playing below) ------------------------------

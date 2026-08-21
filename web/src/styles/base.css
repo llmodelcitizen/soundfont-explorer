@@ -141,8 +141,49 @@ select:focus-visible {
 /* main */
 .main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
+  grid-template-columns: minmax(0, 1fr) 6px var(--right-w, minmax(280px, 34%));
   min-height: 0;
+}
+.vsplit {
+  cursor: col-resize;
+  background: var(--line);
+  position: relative;
+  touch-action: none;
+}
+.vsplit::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  height: 40px;
+  width: 4px;
+  margin-top: -20px;
+  border-radius: 2px;
+  background: var(--fg-dim);
+  opacity: 0.5;
+}
+.vsplit:hover::after {
+  background: var(--accent);
+  opacity: 1;
+}
+.hsplit {
+  display: none;
+  cursor: row-resize;
+  background: var(--line);
+  position: relative;
+  touch-action: none;
+}
+.hsplit::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 48px;
+  height: 4px;
+  margin-left: -24px;
+  border-radius: 2px;
+  background: var(--fg-dim);
+  opacity: 0.6;
 }
 .left {
   display: flex;
@@ -920,6 +961,9 @@ kbd {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
   }
+  .vsplit {
+    display: none;
+  }
   .nowplaying,
   .left {
     min-width: 0;
@@ -946,6 +990,25 @@ kbd {
     max-height: 32vh;
     overflow: auto;
     border-top: 1px solid var(--line);
+  }
+}
+/* phone portrait: Now Playing height is draggable (handle above it) */
+@media (max-width: 720px) and (orientation: portrait) {
+  .main {
+    grid-template-rows: minmax(0, 1fr) 10px var(--np-mobile-h, 32vh);
+  }
+  .hsplit {
+    display: block;
+  }
+  .right {
+    max-height: none;
+    height: 100%;
+    border-top: 0;
+  }
+}
+@media (max-width: 720px) {
+  .left {
+    min-width: 0;
   }
   .tracks,
   .split {
