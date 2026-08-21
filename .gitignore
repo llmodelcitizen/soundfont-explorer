@@ -1,0 +1,5 @@
+out/
+vendor/libADLMIDI/
+vendor/*.log
+__pycache__/
+soundfonts/

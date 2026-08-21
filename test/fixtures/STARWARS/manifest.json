@@ -1,0 +1,795 @@
+{
+ "source": "STARWARS.MID",
+ "tracks": [
+  {
+   "bank": 0,
+   "name": "AIL (The Fat Man 2op set, default AIL)",
+   "file": "00_AIL_The_Fat_Man_2op_set_default_AIL.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 1,
+   "name": "Bisqwit (selection of 4op and 2op)",
+   "file": "01_Bisqwit_selection_of_4op_and_2op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 2,
+   "name": "HMI (Descent, Asterix)",
+   "file": "02_HMI_Descent_Asterix.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 3,
+   "name": "HMI (Descent:: Int) :NON-GM:",
+   "file": "03_HMI_Descent_Int_NON_GM.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 4,
+   "name": "HMI (Descent:: Ham) :NON-GM:",
+   "file": "04_HMI_Descent_Ham_NON_GM.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 5,
+   "name": "HMI (Descent:: Rick) :NON-GM:",
+   "file": "05_HMI_Descent_Rick_NON_GM.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 6,
+   "name": "HMI (Descent 2) :NON-GM:",
+   "file": "06_HMI_Descent_2_NON_GM.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 7,
+   "name": "HMI (Normality)",
+   "file": "07_HMI_Normality.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 8,
+   "name": "HMI (Shattered Steel)",
+   "file": "08_HMI_Shattered_Steel.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 9,
+   "name": "HMI (Theme Park)",
+   "file": "09_HMI_Theme_Park.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 10,
+   "name": "HMI (MegaPatch by LoudMouth)",
+   "file": "10_HMI_MegaPatch_by_LoudMouth.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 11,
+   "name": "HMI (MegaPatch - Aces of the Deep)",
+   "file": "11_HMI_MegaPatch_Aces_of_the_Deep.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 12,
+   "name": "HMI (MegaPatch - Earthsiege)",
+   "file": "12_HMI_MegaPatch_Earthsiege.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 13,
+   "name": "HMI (Anvil of Dawn)",
+   "file": "13_HMI_Anvil_of_Dawn.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 14,
+   "name": "DMX (Bobby Prince v2)",
+   "file": "14_DMX_Bobby_Prince_v2.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 15,
+   "name": "DMX (Cygnus Studios, default DMX)",
+   "file": "15_DMX_Cygnus_Studios_default_DMX.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 16,
+   "name": "DMX (Bobby Prince v1)",
+   "file": "16_DMX_Bobby_Prince_v1.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 17,
+   "name": "AIL (Discworld, Grandest Fleet, etc.)",
+   "file": "17_AIL_Discworld_Grandest_Fleet_etc.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 18,
+   "name": "AIL (Warcraft 2)",
+   "file": "18_AIL_Warcraft_2.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 19,
+   "name": "AIL (Syndicate) :MT-32:",
+   "file": "19_AIL_Syndicate_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 20,
+   "name": "AIL (Guilty, Orion Conspiracy, TNSFC ::4op)",
+   "file": "20_AIL_Guilty_Orion_Conspiracy_TNSFC_4op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 21,
+   "name": "AIL (Magic Carpet 2) :MT-32:",
+   "file": "21_AIL_Magic_Carpet_2_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 22,
+   "name": "AIL (Eric Heberling - Nemesis)",
+   "file": "22_AIL_Eric_Heberling_Nemesis.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 23,
+   "name": "AIL (Jagged Alliance) :MT-32:",
+   "file": "23_AIL_Jagged_Alliance_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 24,
+   "name": "AIL (When Two Worlds War) :MT-32: :MISS-INS:",
+   "file": "24_AIL_When_Two_Worlds_War_MT_32_MISS_INS.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 25,
+   "name": "AIL (Bards Tale Construction) :MT-32: :MISS-INS:",
+   "file": "25_AIL_Bards_Tale_Construction_MT_32_MISS_INS.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 26,
+   "name": "AIL (Return to Zork) :MT-32:",
+   "file": "26_AIL_Return_to_Zork_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 27,
+   "name": "AIL (Theme Hospital)",
+   "file": "27_AIL_Theme_Hospital.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 28,
+   "name": "AIL (MegaPatch - National Hockey League PA)",
+   "file": "28_AIL_MegaPatch_National_Hockey_League_PA.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 29,
+   "name": "AIL (Inherit The Earth) :MT-32:",
+   "file": "29_AIL_Inherit_The_Earth_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 30,
+   "name": "AIL (Inherit The Earth, file two) :MT-32:",
+   "file": "30_AIL_Inherit_The_Earth_file_two_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 31,
+   "name": "AIL (Little Big Adventure) :4op:",
+   "file": "31_AIL_Little_Big_Adventure_4op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 32,
+   "name": "AIL (Heroes of Might and Magic II) :MT-32:",
+   "file": "32_AIL_Heroes_of_Might_and_Magic_II_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 33,
+   "name": "AIL (Eric Heberling - Death Gate)",
+   "file": "33_AIL_Eric_Heberling_Death_Gate.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 34,
+   "name": "AIL (FIFA International Soccer)",
+   "file": "34_AIL_FIFA_International_Soccer.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 35,
+   "name": "AIL (Starship Invasion)",
+   "file": "35_AIL_Starship_Invasion.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 36,
+   "name": "AIL (Super Street Fighter 2 :4op:)",
+   "file": "36_AIL_Super_Street_Fighter_2_4op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 37,
+   "name": "AIL (Lords of the Realm) :MISS-INS:",
+   "file": "37_AIL_Lords_of_the_Realm_MISS_INS.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 38,
+   "name": "AIL (SimFarm, SimHealth) :4op:",
+   "file": "38_AIL_SimFarm_SimHealth_4op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 39,
+   "name": "AIL (SimFarm, Settlers, Serf City)",
+   "file": "39_AIL_SimFarm_Settlers_Serf_City.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 40,
+   "name": "AIL (Caesar 2) :p4op: :MISS-INS:",
+   "file": "40_AIL_Caesar_2_p4op_MISS_INS.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 41,
+   "name": "AIL (Syndicate Wars) :MT-32:",
+   "file": "41_AIL_Syndicate_Wars_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 42,
+   "name": "AIL (MegaPatch mod by Probe Ent.)",
+   "file": "42_AIL_MegaPatch_mod_by_Probe_Ent.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 43,
+   "name": "AIL (Warcraft) :NON-GM:",
+   "file": "43_AIL_Warcraft_NON_GM.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 44,
+   "name": "AIL (Terra Nova Strike Force Centuri) :p4op:",
+   "file": "44_AIL_Terra_Nova_Strike_Force_Centuri_p4op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 45,
+   "name": "AIL (System Shock) :p4op:",
+   "file": "45_AIL_System_Shock_p4op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 46,
+   "name": "AIL (Eric Heberling - Advanced Civilization)",
+   "file": "46_AIL_Eric_Heberling_Advanced_Civilization.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 47,
+   "name": "AIL (Battle Chess 4000) :MT-32:",
+   "file": "47_AIL_Battle_Chess_4000_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 48,
+   "name": "AIL (Ultimate Soccer Manager :p4op:)",
+   "file": "48_AIL_Ultimate_Soccer_Manager_p4op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 49,
+   "name": "AIL (Air Bucks, Blue And The Gray, etc) :MT-32:",
+   "file": "49_AIL_Air_Bucks_Blue_And_The_Gray_etc_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 50,
+   "name": "AIL (Ultima Underworld 2) :MT-32:",
+   "file": "50_AIL_Ultima_Underworld_2_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 51,
+   "name": "AIL (FatMan MT32) :MT-32:",
+   "file": "51_AIL_FatMan_MT32_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 52,
+   "name": "AIL (High Seas Trader) :MISS-INS:",
+   "file": "52_AIL_High_Seas_Trader_MISS_INS.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 53,
+   "name": "AIL (Master of Magic) :4op:",
+   "file": "53_AIL_Master_of_Magic_4op.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 54,
+   "name": "AIL (Master of Magic) :4op: orchestral drums",
+   "file": "54_AIL_Master_of_Magic_4op_orchestral_drums.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 55,
+   "name": "SB (Action Soccer)",
+   "file": "55_SB_Action_Soccer.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 56,
+   "name": "SB (3d Cyberpuck :: melodic only)",
+   "file": "56_SB_3d_Cyberpuck_melodic_only.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 57,
+   "name": "SB (Simon the Sorcerer) :MT-32:",
+   "file": "57_SB_Simon_the_Sorcerer_MT_32.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 58,
+   "name": "WOPL (The Fat Man 2op set; Win9x)",
+   "file": "58_WOPL_The_Fat_Man_2op_set_Win9x.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 59,
+   "name": "WOPL (The Fat Man 4op set)",
+   "file": "59_WOPL_The_Fat_Man_4op_set.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 60,
+   "name": "OP3 (JungleVision 2op set :: melodic only)",
+   "file": "60_OP3_JungleVision_2op_set_melodic_only.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 61,
+   "name": "OP3 (Wallace 2op set, Nitemare 3D :: melodic only)",
+   "file": "61_OP3_Wallace_2op_set_Nitemare_3D_melodic_only.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 62,
+   "name": "TMB (Duke Nukem 3D)",
+   "file": "62_TMB_Duke_Nukem_3D.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 63,
+   "name": "TMB (Shadow Warrior)",
+   "file": "63_TMB_Shadow_Warrior.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 64,
+   "name": "DMX (Scott Host)",
+   "file": "64_DMX_Scott_Host.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 65,
+   "name": "SB (Modded GMOPL by Wohlstand)",
+   "file": "65_SB_Modded_GMOPL_by_Wohlstand.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 66,
+   "name": "SB (Jamie O'Connell's bank)",
+   "file": "66_SB_Jamie_O_Connell_s_bank.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 67,
+   "name": "TMB (Apogee Sound System Default bank) :broken drums:",
+   "file": "67_TMB_Apogee_Sound_System_Default_bank_broken_drums.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 68,
+   "name": "WOPL (4op bank by James Alan Nguyen and Wohlstand)",
+   "file": "68_WOPL_4op_bank_by_James_Alan_Nguyen_and_Wohlstand.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 69,
+   "name": "TMB (MegaPatch - Blood)",
+   "file": "69_TMB_MegaPatch_Blood.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 70,
+   "name": "TMB (Rise of the Triad)",
+   "file": "70_TMB_Rise_of_the_Triad.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 71,
+   "name": "TMB (Nam)",
+   "file": "71_TMB_Nam.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 72,
+   "name": "WOPL (DMXOPL3 bank by Sneakernets)",
+   "file": "72_WOPL_DMXOPL3_bank_by_Sneakernets.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 73,
+   "name": "EA (Cartooners)",
+   "file": "73_EA_Cartooners.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 74,
+   "name": "WOPL (Apogee IMF 90-ish)",
+   "file": "74_WOPL_Apogee_IMF_90_ish.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 75,
+   "name": "AIL (The Lost Vikings) :NON-GM:",
+   "file": "75_AIL_The_Lost_Vikings_NON_GM.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 76,
+   "name": "DMX (Strife)",
+   "file": "76_DMX_Strife.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 77,
+   "name": "WOPL (MS-AdLib, Windows 3.x)",
+   "file": "77_WOPL_MS_AdLib_Windows_3_x.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  },
+  {
+   "bank": 78,
+   "name": "AIL (Monopoly Deluxe)",
+   "file": "78_AIL_Monopoly_Deluxe.wav",
+   "dur": 361.416,
+   "bytes": 63753804,
+   "rate": 44100,
+   "ch": 2,
+   "bits": 16
+  }
+ ]
+}
