@@ -29,3 +29,10 @@ vendor/*.log
 *.swp
 .vscode/
 .idea/
+
+# terraform local artefacts
+infra/**/.terraform/
+infra/**/terraform.tfstate*
+infra/live/terraform.tfvars
+infra/live/outputs.json
+infra/modules/circuit-breaker/lambda/*.zip
