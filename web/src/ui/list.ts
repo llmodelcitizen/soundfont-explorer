@@ -56,7 +56,7 @@ export class VariantList {
   private selIndex = -1;
   private audibleId: string | null = null;
   private loadingId: string | null = null;
-  private doneIds = new Set<string>();
+  private listened = new Set<string>();
 
   constructor(private catalog: CatalogDoc, private set: SetDoc, private cb: ListCallbacks) {
     this.sticky = h('div', { class: 'row sticky hidden', role: 'option' });
@@ -115,8 +115,20 @@ export class VariantList {
 
   setAudible(id: string | null): void {
     this.audibleId = id;
-    if (id) this.doneIds.add(id);
     this.applyHighlights();
+  }
+
+  /** variants whose dot is lit (listened ≥ threshold) */
+  setListened(ids: Set<string>): void {
+    this.listened = ids;
+    this.applyHighlights();
+  }
+
+  markListened(id: string): void {
+    if (this.listened.has(id)) return;
+    this.listened.add(id);
+    const i = this.ids.indexOf(id);
+    if (i >= 0) this.rows[i]?.classList.add('cached');
   }
 
   setLoading(id: string | null): void {
@@ -130,7 +142,7 @@ export class VariantList {
       r.classList.toggle('sel', i === this.selIndex);
       r.classList.toggle('audible', id === this.audibleId);
       r.classList.toggle('loading', id === this.loadingId);
-      r.classList.toggle('cached', this.doneIds.has(id));
+      r.classList.toggle('cached', this.listened.has(id));
       if (i === this.selIndex) r.setAttribute('aria-selected', 'true');
       else r.removeAttribute('aria-selected');
     });

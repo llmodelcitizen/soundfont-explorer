@@ -487,6 +487,38 @@ kbd {
   border-radius: var(--radius);
 }
 
+/* settings */
+.settings {
+  min-width: min(440px, 92vw);
+}
+.settings .setting {
+  margin: 10px 0 14px;
+}
+.settings label {
+  display: block;
+  margin-bottom: 6px;
+}
+.settings .num {
+  width: 5em;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+  border-radius: var(--radius);
+}
+.settings input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.settings .btnrow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.settings .small {
+  font-size: 0.85em;
+}
+
 /* debug */
 .debug {
   position: fixed;

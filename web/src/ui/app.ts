@@ -24,6 +24,8 @@ import { KeymapOverlay } from './keymapOverlay';
 import { VariantList } from './list';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
+import { SettingsModal } from './settings';
+import { ListenedLedger, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { audioSession, createContextInGesture, installResumeOnGesture, unlock } from '../audio/unlock';
 import { Transport } from './transport';
@@ -57,6 +59,25 @@ export class App {
   private picker!: SongPicker;
   private debug = new DebugPanel();
   private keymap = new KeymapOverlay();
+  private prefs: Prefs = loadPrefs();
+  private ledger = new ListenedLedger();
+  private settings = new SettingsModal(this.prefs, {
+    onChange: (p) => {
+      this.prefs = p;
+      savePrefs(p);
+      this.refreshListened();
+    },
+    onResetTrack: () => {
+      this.ledger.resetSong(this.song.id);
+      this.refreshListened();
+    },
+    onResetAll: () => {
+      this.ledger.resetAll();
+      this.refreshListened();
+    },
+    trackTitle: () => this.song?.title ?? '',
+  });
+  private lastListenTick = 0;
   private policy!: InputPolicy;
   private theme: ThemeName;
   private pinnedA: string | null = null;
@@ -281,6 +302,8 @@ export class App {
     helpBtn.addEventListener('click', () => this.keymap.toggle());
     const dbgBtn = h('button', { class: 'btn dbg-btn', type: 'button', title: 'debug panel (D)' }, 'dbg');
     dbgBtn.addEventListener('click', () => this.debug.toggle());
+    const settingsBtn = h('button', { class: 'btn', type: 'button', title: 'settings (S)', 'aria-label': 'settings' }, '⚙');
+    settingsBtn.addEventListener('click', () => this.settings.toggle());
     this.header = h(
       'header',
       { class: 'top' },
@@ -289,11 +312,12 @@ export class App {
       h('div', { class: 'spacer' }),
       themeSel,
       h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
+      settingsBtn,
       dbgBtn,
       helpBtn,
     );
     this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.nowPlaying.el);
-    this.root.append(this.header, this.main, this.transport.el, this.debug.el, this.keymap.el);
+    this.root.append(this.header, this.main, this.transport.el, this.debug.el, this.keymap.el, this.settings.el);
     this.policy = new InputPolicy({
       move: (d) => this.moveCursor(this.cursor + d),
       moveTo: (i) => this.moveCursor(i),
@@ -324,6 +348,7 @@ export class App {
       focusSearch: () => this.filters.search.focus(),
       escape: () => {
         this.keymap.toggle(false);
+        this.settings.toggle(false);
         this.filters.toggle(false);
         if (this.creditsEl) history.replaceState(null, '', location.pathname + location.search), this.onHashChange();
         this.focusList();
@@ -349,7 +374,9 @@ export class App {
       theme: () => this.setTheme(nextTheme(this.theme)),
       debug: () => this.debug.toggle(),
       keymap: () => this.keymap.toggle(),
+      settings: () => this.settings.toggle(),
     });
+    this.refreshListened();
     this.engine.on('status', (s) => this.onStatus(s));
     this.engine.on('audible', (v) => {
       this.list.setAudible(v);
@@ -389,6 +416,7 @@ export class App {
   }
 
   private stepSong(d: number): void {
+    this.ledger.flush();
     const ids = this.songs.songs.map((s) => s.id);
     const i = ids.indexOf(this.song.id);
     const next = ids[(i + d + ids.length) % ids.length]!;
@@ -430,6 +458,21 @@ export class App {
 
   private uiLoopStarted = false;
 
+  /** credit the audible variant with real playback time (not while paused, loading or suspended) */
+  private accumulateListened(): void {
+    const now = performance.now();
+    const dt = this.lastListenTick ? (now - this.lastListenTick) / 1000 : 0;
+    this.lastListenTick = now;
+    const v = this.engine.audible;
+    if (!v || !this.engine.playing || this.ctx.state !== 'running' || this.engine.status.kind !== 'playing' || dt <= 0 || dt > 1) return;
+    const total = this.ledger.add(this.song.id, v, dt);
+    if (total >= this.prefs.listenedAfterS) this.list.markListened(v);
+  }
+
+  private refreshListened(): void {
+    if (this.list && this.song) this.list.setListened(this.ledger.listened(this.song.id, this.prefs.listenedAfterS));
+  }
+
   private tickUi(): void {
     if (this.uiLoopStarted) return;
     this.uiLoopStarted = true;
@@ -440,6 +483,7 @@ export class App {
       }
       this.transport.update(this.engine.position(), this.engine.playing);
       if (this.ctx.state !== 'running' && this.engine.playing) this.transport.setStatus(`audio ${this.ctx.state} — tap to resume`, 'wontload');
+      this.accumulateListened();
       if (this.debug.visible) {
         const f = this.fetcher.stats;
         const d = this.decoder.stats;

@@ -22,6 +22,7 @@ export interface KeyActions {
   theme(): void;
   debug(): void;
   keymap(): void;
+  settings(): void;
 }
 
 export const KEYMAP: [string, string][] = [
@@ -40,6 +41,7 @@ export const KEYMAP: [string, string][] = [
   ['F', 'filters'],
   ['T', 'theme'],
   ['D', 'debug panel'],
+  ['S', 'settings'],
   ['?', 'this keymap'],
 ];
 
@@ -133,6 +135,9 @@ export function installKeyboard(target: Window, a: KeyActions): () => void {
         break;
       case 'd':
         a.debug();
+        break;
+      case 's':
+        a.settings();
         break;
       case '?':
         a.keymap();
