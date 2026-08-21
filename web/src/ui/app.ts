@@ -25,7 +25,7 @@ import { VariantList } from './list';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { SettingsModal } from './settings';
-import { ListenedLedger, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
+import { Favorites, ListenedLedger, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { audioSession, createContextInGesture, installResumeOnGesture, unlock } from '../audio/unlock';
 import { Transport } from './transport';
@@ -78,6 +78,7 @@ export class App {
     trackTitle: () => this.song?.title ?? '',
   });
   private lastListenTick = 0;
+  private favorites = new Favorites();
   private policy!: InputPolicy;
   private theme: ThemeName;
   private pinnedA: string | null = null;
@@ -266,7 +267,14 @@ export class App {
         this.focusList();
       },
     });
-    this.nowPlaying = new NowPlaying(this.catalog, this.set, this.song);
+    this.nowPlaying = new NowPlaying(this.catalog, this.set, this.song, {
+      isFavorite: (id) => this.favorites.has(id),
+      toggleFavorite: (id) => {
+        const on = this.favorites.toggle(id);
+        this.list.setFavorites(this.favorites.all());
+        return on;
+      },
+    });
     this.transport = new Transport(
       this.set.duration_s,
       {
@@ -377,6 +385,7 @@ export class App {
       settings: () => this.settings.toggle(),
     });
     this.refreshListened();
+    this.list.setFavorites(this.favorites.all());
     this.engine.on('status', (s) => this.onStatus(s));
     this.engine.on('audible', (v) => {
       this.list.setAudible(v);

@@ -25,3 +25,17 @@ describe('prefs + listened ledger', () => {
     expect(l.seconds('s2', 'a')).toBe(0);
   });
 });
+
+describe('favorites', () => {
+  it('toggles, persists in memory without localStorage, notifies', async () => {
+    const { Favorites } = await import('../../src/state/prefs');
+    const f = new Favorites();
+    const seen: number[] = [];
+    f.onChange((ids) => seen.push(ids.size));
+    expect(f.toggle('a')).toBe(true);
+    expect(f.toggle('b')).toBe(true);
+    expect(f.toggle('a')).toBe(false);
+    expect([...f.all()]).toEqual(['b']);
+    expect(seen).toEqual([1, 2, 1]);
+  });
+});

@@ -221,7 +221,7 @@ select:focus-visible {
 }
 .row {
   display: grid;
-  grid-template-columns: 3.2em 4.6em minmax(0, 1fr) auto 4.6em 0.9em;
+  grid-template-columns: 3.2em 4.6em minmax(0, 1fr) auto 4.6em 1em 0.9em;
   gap: 8px;
   align-items: center;
   padding: 2px 8px;
@@ -308,6 +308,31 @@ select:focus-visible {
 }
 .row.sel .gain {
   color: inherit;
+}
+.row .fav {
+  visibility: hidden;
+  color: var(--heart);
+  font-size: 0.95em;
+  line-height: 1;
+  text-align: center;
+}
+.row.favorite .fav {
+  visibility: visible;
+}
+.np-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+.np-actions .fav-btn.on {
+  color: var(--heart);
+  border-color: var(--heart);
+  background: var(--btn-bg);
+}
+.np-actions .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .row .dot {
   width: 8px;
@@ -624,7 +649,7 @@ kbd {
     border-top: 1px solid var(--line);
   }
   .row {
-    grid-template-columns: 2.6em 4em minmax(0, 1fr) 0.8em;
+    grid-template-columns: 2.6em 4em minmax(0, 1fr) 1em 0.8em;
   }
   .row .meta,
   .row .gain {

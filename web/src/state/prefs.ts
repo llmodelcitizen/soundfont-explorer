@@ -91,3 +91,37 @@ export class ListenedLedger {
     this.lastFlush = this.now();
   }
 }
+
+const FAV_KEY = 'sfp.favorites.v1';
+
+/** Favourite variants (global: a SoundFont you like is a favourite for every track). */
+export class Favorites {
+  private ids: Set<string>;
+  private listeners = new Set<(ids: Set<string>) => void>();
+
+  constructor() {
+    const raw = read<string[]>(FAV_KEY);
+    this.ids = new Set(Array.isArray(raw) ? raw.map(String) : []);
+  }
+
+  has(id: string): boolean {
+    return this.ids.has(id);
+  }
+
+  all(): Set<string> {
+    return new Set(this.ids);
+  }
+
+  toggle(id: string): boolean {
+    if (this.ids.has(id)) this.ids.delete(id);
+    else this.ids.add(id);
+    write(FAV_KEY, [...this.ids]);
+    for (const l of this.listeners) l(this.all());
+    return this.ids.has(id);
+  }
+
+  onChange(fn: (ids: Set<string>) => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+}

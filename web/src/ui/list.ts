@@ -57,6 +57,7 @@ export class VariantList {
   private audibleId: string | null = null;
   private loadingId: string | null = null;
   private listened = new Set<string>();
+  private favorites = new Set<string>();
 
   constructor(private catalog: CatalogDoc, private set: SetDoc, private cb: ListCallbacks) {
     this.sticky = h('div', { class: 'row sticky hidden', role: 'option' });
@@ -102,6 +103,7 @@ export class VariantList {
       h('span', { class: 'label' }, v?.label ?? id),
       h('span', { class: 'meta' }, metaLine(v)),
       h('span', { class: 'gain', title: 'applied gain' }, sv ? `${sv.gain_db >= 0 ? '+' : ''}${sv.gain_db.toFixed(1)} dB` : ''),
+      h('span', { class: 'fav', title: 'favourite', 'aria-hidden': 'true' }, '♥'),
       h('span', { class: 'dot', 'aria-hidden': 'true' }),
     );
     return row;
@@ -124,6 +126,11 @@ export class VariantList {
     this.applyHighlights();
   }
 
+  setFavorites(ids: Set<string>): void {
+    this.favorites = ids;
+    this.rows.forEach((r, i) => r.classList.toggle('favorite', this.favorites.has(this.ids[i]!)));
+  }
+
   markListened(id: string): void {
     if (this.listened.has(id)) return;
     this.listened.add(id);
@@ -143,6 +150,7 @@ export class VariantList {
       r.classList.toggle('audible', id === this.audibleId);
       r.classList.toggle('loading', id === this.loadingId);
       r.classList.toggle('cached', this.listened.has(id));
+      r.classList.toggle('favorite', this.favorites.has(id));
       if (i === this.selIndex) r.setAttribute('aria-selected', 'true');
       else r.removeAttribute('aria-selected');
     });

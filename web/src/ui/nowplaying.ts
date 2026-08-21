@@ -4,13 +4,20 @@ import type { SetDoc } from '../contracts/set';
 import type { SongEntry } from '../contracts/songs';
 import { clear, fmtBytes, h } from './dom';
 
+export interface NowPlayingActions {
+  isFavorite(id: string): boolean;
+  toggleFavorite(id: string): boolean;
+}
+
 export class NowPlaying {
   readonly el: HTMLElement;
   private tierEl: HTMLElement;
   private statusEl: HTMLElement;
   private body: HTMLElement;
+  private current: string | null = null;
+  private favBtn: HTMLButtonElement | null = null;
 
-  constructor(private catalog: CatalogDoc, private set: SetDoc, private song: SongEntry) {
+  constructor(private catalog: CatalogDoc, private set: SetDoc, private song: SongEntry, private actions: NowPlayingActions) {
     this.tierEl = h('span', { class: 'tier', title: 'audio tier: scrub (48 kbps) or listen (96 kbps)' }, '');
     this.statusEl = h('span', { class: 'np-status' }, '');
     this.body = h('div', { class: 'np-body' }, h('p', { class: 'muted' }, 'Select a variant (↑/↓) to hear the song through it.'));
@@ -33,8 +40,35 @@ export class NowPlaying {
     this.statusEl.className = `np-status ${kind}`;
   }
 
+  /** re-render the favourite button (favourites changed elsewhere) */
+  refreshActions(): void {
+    if (this.current && this.favBtn) this.paintFav(this.favBtn, this.current);
+  }
+
+  private paintFav(btn: HTMLButtonElement, id: string): void {
+    const on = this.actions.isFavorite(id);
+    btn.textContent = on ? '♥ remove from favorites' : '♡ add to favorites';
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  private actionsBar(id: string): HTMLElement {
+    const fav = h('button', { class: 'btn fav-btn', type: 'button' }) as HTMLButtonElement;
+    this.paintFav(fav, id);
+    fav.addEventListener('click', () => {
+      this.actions.toggleFavorite(id);
+      this.paintFav(fav, id);
+      fav.blur();
+    });
+    this.favBtn = fav;
+    const dl = h('button', { class: 'btn', type: 'button', disabled: true, title: 'downloads are coming in a later release' }, '⤓ download') as HTMLButtonElement;
+    return h('div', { class: 'np-actions' }, fav, dl);
+  }
+
   show(id: string | null): void {
     clear(this.body);
+    this.current = id;
+    this.favBtn = null;
     if (!id) return;
     const v = this.catalog.byId.get(id);
     const sv = this.set.variants[id];
@@ -75,7 +109,7 @@ export class NowPlaying {
       if (val === null || val === undefined || val === '') continue;
       dl.append(h('dt', null, k), h('dd', null, val));
     }
-    this.body.append(h('h2', { class: 'np-label' }, v?.label ?? id), dl);
+    this.body.append(h('h2', { class: 'np-label' }, v?.label ?? id), this.actionsBar(id), dl);
   }
 }
 
