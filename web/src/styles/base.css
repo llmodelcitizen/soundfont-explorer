@@ -845,6 +845,8 @@ kbd {
   .top .title {
     font-size: 1.25em;
     text-align: left;
+    /* always its own line: the controls never share the title row, whatever the font metrics */
+    flex: 1 1 100%;
   }
   .top .spacer {
     display: none;
