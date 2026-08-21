@@ -1,5 +1,5 @@
 import './styles/base.css';
-import './styles/theme-dark.css';
+import './styles/theme-modern.css';
 import './styles/theme-win95.css';
 import { App } from './ui/app';
 

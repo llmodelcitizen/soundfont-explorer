@@ -82,6 +82,8 @@ export class Engine {
   private unsubDecoded: () => void;
   private volume = 1;
   private muted = false;
+  /** true after the song ran to its end by itself (not a user pause): the next select() restarts it */
+  private endedNaturally = false;
   readonly metrics = { switchLatencyMs: [] as number[] };
   private order: string[] = [];
   private cursorIndex = 0;
@@ -162,12 +164,15 @@ export class Engine {
 
   play(): void {
     if (this.timeline.playing) return;
-    this.timeline.play();
+    this.endedNaturally = false;
+    this.timeline.play(); // from the end this restarts at 0
     this.restartAudible(AUDIO.SEAM_XFADE);
   }
 
+  /** explicit user pause: selections made while paused stay silent until play() */
   pause(): void {
     if (!this.timeline.playing) return;
+    this.endedNaturally = false;
     const now = this.ctx.currentTime;
     this.timeline.pause(now);
     this.audibleChain?.release(now, AUDIO.SWITCH_XFADE);
@@ -225,8 +230,14 @@ export class Engine {
   select(variant: string, selectedAtMs: number = this.nowMs()): void {
     if (!Object.hasOwn(this.set.variants, variant)) return;
     const token = ++this.seq;
-    if (variant === this.audible && !this.pending && this.audibleChain && !this.audibleChain.releasing) return;
+    if (variant === this.audible && !this.pending && this.audibleChain && !this.audibleChain.releasing && this.timeline.playing) return;
     this.pending = { token, variant, sinceMs: this.nowMs(), selectedAtMs, fade: AUDIO.SWITCH_XFADE };
+    if (!this.timeline.playing && this.endedNaturally) {
+      // the song finished on its own: a new choice means "hear this one" → start over from 0
+      this.endedNaturally = false;
+      this.timeline.play();
+      this.setStatus('playing');
+    }
     this.tryCommit();
   }
 
@@ -359,6 +370,7 @@ export class Engine {
         this.timeline.pause(now);
         this.audibleChain?.release(now, AUDIO.SWITCH_XFADE);
         this.audibleChain = null;
+        this.endedNaturally = true;
         this.setStatus('ended');
         return;
       }

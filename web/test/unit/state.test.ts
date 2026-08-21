@@ -84,7 +84,7 @@ describe('URL state', () => {
     const back = parseUrl(s);
     expect(back).toMatchObject({ song: 'x', variant: 'adl-b0', t: 13, q: 'fat man', theme: 'win95', loop: true });
     expect([...back.filters!.engine!]).toEqual(['adlmidi', 'opnmidi']);
-    expect(buildSearch({ theme: 'dark', t: 0 })).toBe('');
+    expect(buildSearch({ theme: 'modern', t: 0 })).toBe('');
   });
 
   it('ignores hostile or malformed values', () => {

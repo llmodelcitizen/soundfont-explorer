@@ -1,6 +1,6 @@
-/* The dark 90s look (MVP palette). */
+/* 'modern' — the dark 90s look (MVP palette), the default theme. */
 :root,
-[data-theme='dark'] {
+[data-theme='modern'] {
   --bg: #0b0d10;
   --panel: #12151a;
   --panel-2: #0f1216;

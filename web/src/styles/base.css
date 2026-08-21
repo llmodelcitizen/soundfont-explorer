@@ -613,8 +613,7 @@ kbd {
   .transport .status {
     display: none;
   }
-  .top .sub,
-  .top .themepick {
+  .top .sub {
     display: none;
   }
   .debug {

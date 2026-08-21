@@ -1,10 +1,12 @@
-/** Theme: dark (default) / win95 / system via data-theme on <html>, persisted in localStorage + ?theme=. */
-export type ThemeName = 'dark' | 'win95' | 'system';
+/** Theme: modern (default) / win95 via data-theme on <html>, persisted in localStorage + ?theme=. Explicit only — no 'system'. */
+export type ThemeName = 'modern' | 'win95';
+export const DEFAULT_THEME: ThemeName = 'modern';
 const KEY = 'sfp.theme';
 
-export function readTheme(fromUrl?: string): ThemeName {
-  const v = fromUrl ?? safeGet();
-  return v === 'win95' || v === 'system' || v === 'dark' ? v : 'dark';
+export function readTheme(fromUrl?: string | null): ThemeName {
+  const v = fromUrl || safeGet();
+  if (v === 'win95') return 'win95';
+  return DEFAULT_THEME; // includes legacy 'dark' / 'system' values
 }
 
 function safeGet(): string | null {
@@ -17,13 +19,7 @@ function safeGet(): string | null {
 
 export function applyTheme(t: ThemeName): void {
   const root = document.documentElement;
-  if (t === 'system') {
-    const light = typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches;
-    root.dataset.theme = light ? 'win95' : 'dark';
-  } else {
-    root.dataset.theme = t;
-  }
-  root.dataset.themeChoice = t;
+  root.dataset.theme = t;
   try {
     localStorage.setItem(KEY, t);
   } catch {
@@ -32,5 +28,5 @@ export function applyTheme(t: ThemeName): void {
 }
 
 export function nextTheme(t: ThemeName): ThemeName {
-  return t === 'dark' ? 'win95' : 'dark';
+  return t === 'modern' ? 'win95' : 'modern';
 }

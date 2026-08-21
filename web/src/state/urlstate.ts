@@ -77,7 +77,7 @@ export function buildSearch(st: UrlState): string {
   const f = st.filters ? encodeFilters(st.filters) : '';
   if (f) p.set('f', f);
   if (st.q) p.set('q', st.q);
-  if (st.theme && st.theme !== 'dark') p.set('theme', st.theme);
+  if (st.theme && st.theme !== 'modern') p.set('theme', st.theme);
   if (st.loop) p.set('loop', '1');
   const s = p.toString();
   return s ? `?${s}` : '';

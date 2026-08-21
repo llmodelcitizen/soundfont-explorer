@@ -271,7 +271,7 @@ export class App {
     );
     this.transport.setLoop(this.engine.timeline.loop);
     this.picker = new SongPicker(this.songs.songs, this.song.id, (id) => void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined }));
-    const themeSel = h('select', { class: 'themepick', 'aria-label': 'theme', title: 'theme (T)' }, h('option', { value: 'dark' }, 'dark'), h('option', { value: 'win95' }, 'win95'), h('option', { value: 'system' }, 'system')) as HTMLSelectElement;
+    const themeSel = h('select', { class: 'themepick', 'aria-label': 'theme', title: 'theme (T)' }, h('option', { value: 'modern' }, 'modern'), h('option', { value: 'win95' }, 'win95')) as HTMLSelectElement;
     themeSel.value = this.theme;
     themeSel.addEventListener('change', () => {
       this.setTheme(themeSel.value as ThemeName);

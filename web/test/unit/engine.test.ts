@@ -234,6 +234,39 @@ describe('Engine', () => {
     expect(h.engine.status.kind).toBe('ended');
   });
 
+  it('after the song ends on its own, selecting a variant restarts playback from 0', async () => {
+    const h = harness(4, 8);
+    h.engine.select('v0');
+    h.engine.play();
+    await h.run(8500);
+    expect(h.engine.status.kind).toBe('ended');
+    expect(h.engine.playing).toBe(false);
+    h.engine.select('v1');
+    await h.run(300);
+    expect(h.engine.playing).toBe(true);
+    expect(h.engine.audible).toBe('v1');
+    expect(h.engine.position()).toBeLessThan(1);
+    expect(h.engine.status.kind).toBe('playing');
+  });
+
+  it('after an explicit pause, selecting a variant does not auto-play', async () => {
+    const h = harness(4, 8);
+    h.engine.select('v0');
+    h.engine.play();
+    await h.run(1000);
+    h.engine.pause();
+    const pos = h.engine.position();
+    h.engine.select('v1');
+    await h.run(500);
+    expect(h.engine.playing).toBe(false);
+    expect(h.engine.position()).toBeCloseTo(pos, 3);
+    expect(h.engine.audible).toBe('v1'); // designated; plays on the next play()
+    h.engine.play();
+    await h.run(200);
+    expect(h.engine.playing).toBe(true);
+    expect(h.ctx.sources.at(-1)!.buffer && (h.ctx.sources.at(-1)!.buffer as FakeBuffer).tag.startsWith('v1/')).toBe(true);
+  });
+
   it('upgrades to the listen tier once settled, aligned on the same timeline', async () => {
     const h = harness(4, 8);
     h.ff.failUrls.add('/a/test/l/rh-v0/000.opus'); // listen tier not available yet

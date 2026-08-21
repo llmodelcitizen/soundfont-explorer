@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 const url = process.argv[2] ?? 'https://soundfonts.ericq.com/';
 const out = process.argv[3] ?? '../work/shots';
 const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
-for (const theme of ['dark', 'win95']) {
+for (const theme of ['modern', 'win95']) {
   const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
   await p.goto(`${url}?theme=${theme}`, { waitUntil: 'networkidle' });
   await p.screenshot({ path: `${out}/${theme}-gate.png` });
