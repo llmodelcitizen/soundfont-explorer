@@ -719,6 +719,10 @@ select:focus-visible {
   place-items: center;
   background: var(--overlay);
   z-index: 10;
+  /* short viewports (phone landscape): the dialog scrolls inside the visible area */
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .gate-box,
 .overlay-box {
@@ -728,6 +732,12 @@ select:focus-visible {
   max-width: 480px;
   box-shadow: var(--shadow);
   border-radius: var(--radius);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
 }
 .gate-box h1 {
   margin: 0 0 8px;
