@@ -598,8 +598,12 @@ select:focus-visible {
   margin-left: 4px;
 }
 @media (max-width: 720px) and (orientation: portrait) {
+  /* fills whatever is left of the button row (both themes) */
   .top .vol-top {
     display: inline-block;
+    flex: 1 1 0;
+    width: 0;
+    min-width: 40px;
   }
 }
 
