@@ -80,7 +80,7 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                 res = run(spec.argv, cwd=spec.cwd, timeout_s=spec.timeout_s, rlimit_as=spec.rlimit_as_bytes,
                           env=spec.env, what=job.engine)
                 timings["render_s"] = round(time.monotonic() - tr, 2)
-                timings["render_cpu_s"] = round(res.cpu_seconds, 2)
+                timings["render_cpu_s_approx"] = round(res.cpu_seconds, 2)  # process-wide children delta: over-counts under concurrency
                 if not spec.out_wav.exists() or spec.out_wav.stat().st_size < 1024:
                     tail = (res.stderr or res.stdout)[-1500:].decode("utf-8", "replace")
                     raise JobError("no-output", f"{job.engine} produced no WAV: {tail}")
@@ -90,7 +90,7 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                 timings["measure_s"] = round(time.monotonic() - tm, 2)
                 meta.update({"lufs": meas["input_i"], "tp": meas["input_tp"], "lra": meas["input_lra"],
                              "cmd": " ".join(spec.argv), "render_seconds": timings["render_s"],
-                             "render_cpu_seconds": timings["render_cpu_s"]})
+                             "render_cpu_seconds_approx": timings["render_cpu_s_approx"]})
                 if is_silent(meas["input_i"], job.settings):
                     return _fail(job, paths, "silent", f"integrated loudness {meas['input_i']} LUFS", t0,
                                  {"lufs": meas["input_i"], "tp": meas["input_tp"]})
