@@ -69,6 +69,7 @@ export class App {
       this.prefs = p;
       savePrefs(p);
       this.refreshListened();
+      if (this.tracks) this.tracks.preserveBox.checked = p.preserveTrackPosition;
     },
     onResetTrack: () => {
       this.ledger.resetSong(this.song.id);
@@ -213,7 +214,8 @@ export class App {
       this.fatal(`Could not load the song set for ${id}: ${(e as Error).message}`);
       return;
     }
-    const prevPos = this.engine ? this.engine.position() : (opts.t ?? 0);
+    // stepping to another track: keep the playhead or restart, per the "Preserve track position" preference
+    const prevPos = this.engine ? (this.prefs.preserveTrackPosition ? this.engine.position() : 0) : (opts.t ?? 0);
     const wasPlaying = this.engine ? this.engine.playing : false;
     const prevFilters = this.filters ? this.filters.sel : (this.url.filters ?? { completeness: new Set(['full_gm']) });
     const prevQuery = this.filters ? this.filters.query : (this.url.q ?? '');
@@ -336,7 +338,14 @@ export class App {
       helpBtn,
       h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
     );
-    this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined }));
+    this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined }), {
+      value: this.prefs.preserveTrackPosition,
+      onChange: (v) => {
+        this.prefs = { ...this.prefs, preserveTrackPosition: v };
+        savePrefs(this.prefs);
+        this.settings.setPrefs(this.prefs);
+      },
+    });
     this.rightPane = h('section', { class: 'right' }, this.tracks.el, this.splitHandle(), this.nowPlaying.el);
     this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.rightPane);
     this.applySplit();

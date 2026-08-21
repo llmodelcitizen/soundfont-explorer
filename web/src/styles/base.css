@@ -476,8 +476,26 @@ select:focus-visible {
   gap: 10px;
   align-items: baseline;
   border-bottom: 1px solid var(--line);
-  padding-bottom: 4px;
+  padding-bottom: 6px;
   margin-bottom: 6px;
+}
+.np-head .spacer {
+  flex: 1;
+}
+.preserve {
+  font-size: 0.82em;
+  color: var(--fg-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.preserve input {
+  accent-color: var(--accent);
+  margin: 0;
+  width: 13px;
+  height: 13px;
 }
 .np-title {
   text-transform: uppercase;

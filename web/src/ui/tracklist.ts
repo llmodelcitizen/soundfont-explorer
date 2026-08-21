@@ -7,9 +7,24 @@ export class TrackList {
   private rows = new Map<string, HTMLElement>();
   private body: HTMLElement;
 
-  constructor(songs: SongEntry[], current: string, private readonly onPick: (id: string) => void) {
+  readonly preserveBox: HTMLInputElement;
+
+  constructor(songs: SongEntry[], current: string, private readonly onPick: (id: string) => void, preserve: { value: boolean; onChange: (v: boolean) => void }) {
     this.body = h('div', { class: 'track-rows', role: 'listbox', 'aria-label': 'tracks' });
-    this.el = h('section', { class: 'tracks' }, h('div', { class: 'np-head' }, h('span', { class: 'np-title' }, 'tracks'), h('span', { class: 'muted small' }, `${songs.length} · [ ] to step`)), this.body);
+    this.preserveBox = h('input', { type: 'checkbox', id: 'preserve-pos' }) as HTMLInputElement;
+    this.preserveBox.checked = preserve.value;
+    this.preserveBox.addEventListener('change', () => {
+      preserve.onChange(this.preserveBox.checked);
+      this.preserveBox.blur();
+    });
+    const tip = 'When unchecked, always start from the beginning after stepping to a new track.';
+    const label = h('label', { class: 'preserve', for: 'preserve-pos', title: tip }, this.preserveBox, ' Preserve track position');
+    this.el = h(
+      'section',
+      { class: 'tracks' },
+      h('div', { class: 'np-head' }, h('span', { class: 'np-title' }, 'tracks'), h('span', { class: 'muted small' }, `${songs.length} · [ ] to step`), h('span', { class: 'spacer' }), label),
+      this.body,
+    );
     this.setSongs(songs, current);
   }
 

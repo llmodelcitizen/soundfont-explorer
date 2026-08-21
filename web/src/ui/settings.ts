@@ -64,6 +64,12 @@ export class SettingsModal {
     resetAll.addEventListener('click', () => {
       if (confirm('Forget which variants you have listened to, for every track?')) this.cb.onResetAll();
     });
+    const preserve = h('input', { type: 'checkbox' }) as HTMLInputElement;
+    preserve.checked = this.prefs.preserveTrackPosition;
+    preserve.addEventListener('change', () => {
+      this.prefs = { ...this.prefs, preserveTrackPosition: preserve.checked };
+      this.cb.onChange(this.prefs);
+    });
     const close = h('button', { class: 'btn close-settings', type: 'button' }, 'close');
     close.addEventListener('click', () => this.toggle(false));
     this.box.append(
@@ -76,6 +82,11 @@ export class SettingsModal {
         h('p', { class: 'muted' }, 'Only time the variant is actually audible counts. Remembered per track in this browser.'),
         h('div', { class: 'btnrow' }, resetTrack, resetAll),
         h('p', { class: 'muted small' }, `current track: ${this.cb.trackTitle()}`),
+      ),
+      h(
+        'section',
+        { class: 'setting' },
+        h('label', { class: 'preserve', title: 'When unchecked, always start from the beginning after stepping to a new track.' }, preserve, ' Preserve track position when stepping to another track'),
       ),
       h('div', { class: 'btnrow' }, close),
     );

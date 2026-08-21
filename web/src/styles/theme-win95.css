@@ -238,3 +238,12 @@
 [data-theme='win95'] .split::after {
   display: none;
 }
+
+[data-theme='win95'] .preserve {
+  color: #000;
+}
+[data-theme='win95'] .preserve input {
+  accent-color: #000;
+  width: 13px;
+  height: 13px;
+}

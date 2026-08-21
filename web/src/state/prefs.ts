@@ -6,9 +6,11 @@
 export interface Prefs {
   /** seconds of audible playback before a variant's dot lights up */
   listenedAfterS: number;
+  /** keep the playhead position when stepping to another track (false = start from the beginning) */
+  preserveTrackPosition: boolean;
 }
 
-export const DEFAULT_PREFS: Prefs = { listenedAfterS: 3 };
+export const DEFAULT_PREFS: Prefs = { listenedAfterS: 3, preserveTrackPosition: true };
 const PREFS_KEY = 'sfp.prefs.v1';
 const LISTENED_KEY = 'sfp.listened.v1';
 
@@ -32,7 +34,10 @@ function write(key: string, value: unknown): void {
 export function loadPrefs(): Prefs {
   const p = read<Partial<Prefs>>(PREFS_KEY) ?? {};
   const n = Number(p.listenedAfterS);
-  return { listenedAfterS: Number.isFinite(n) && n >= 0 ? Math.min(60, n) : DEFAULT_PREFS.listenedAfterS };
+  return {
+    listenedAfterS: Number.isFinite(n) && n >= 0 ? Math.min(60, n) : DEFAULT_PREFS.listenedAfterS,
+    preserveTrackPosition: typeof p.preserveTrackPosition === 'boolean' ? p.preserveTrackPosition : DEFAULT_PREFS.preserveTrackPosition,
+  };
 }
 
 export function savePrefs(p: Prefs): void {
