@@ -5,6 +5,40 @@ import { h } from './dom';
 
 export const CONTACT = 'soundfonts@ericq.com';
 
+/** One paragraph per source collection, with real counts from the catalog (attribution is per file, never assumed). */
+function soundfontSources(catalog: CatalogDoc): HTMLElement[] {
+  const sf2 = catalog.variants.filter((v) => v.engine === 'fluidsynth');
+  const byColl = new Map<string, { c: NonNullable<NonNullable<CatalogDoc['variants'][number]['source']>['collection']>; n: number }>();
+  let unknown = 0;
+  for (const v of sf2) {
+    const c = v.source?.collection;
+    if (!c) {
+      unknown++;
+      continue;
+    }
+    const e = byColl.get(c.id) ?? { c, n: 0 };
+    e.n++;
+    byColl.set(c.id, e);
+  }
+  const out: HTMLElement[] = [];
+  for (const { c, n } of byColl.values()) {
+    out.push(
+      h(
+        'p',
+        null,
+        `${n} of the ${sf2.length} SoundFonts here come from the Internet Archive item `,
+        h('a', { href: c.url, target: '_blank', rel: 'noopener' }, c.title.replace(/\s*\(Internet Archive\)$/, '')),
+        ' — thanks to the Archive and to the collector who assembled it',
+        c.torrent ? [' (', h('a', { href: c.torrent, target: '_blank', rel: 'noopener' }, 'torrent'), ')'] : '',
+        '. Those variants say so in the now-playing panel ("from"), next to the authorship and copyright notices embedded in the file.',
+      ),
+    );
+  }
+  if (unknown > 0) out.push(h('p', null, `${unknown} SoundFont${unknown === 1 ? '' : 's'} ${unknown === 1 ? 'has' : 'have'} no recorded source collection; only the notices inside the file are shown.`));
+  if (!out.length) out.push(h('p', null, 'SoundFont provenance is shown per variant in the now-playing panel.'));
+  return out;
+}
+
 export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement {
   const songRows = songs.songs.map((s) =>
     h(
@@ -41,15 +75,7 @@ export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement
     h('h2', null, 'Engines'),
     h('ul', { class: 'engines' }, engineRows),
     h('h2', null, 'SoundFonts and banks'),
-    h(
-      'p',
-      null,
-      'Every SoundFont here (all 500 of them) comes from the Internet Archive item ',
-      h('a', { href: 'https://archive.org/details/500-soundfonts-full-gm-sets', target: '_blank', rel: 'noopener' }, '500 Soundfonts Full GM Sets'),
-      ' — thanks to the Archive and to the collector who assembled it. Grab the whole set via the ',
-      h('a', { href: 'https://archive.org/download/500-soundfonts-full-gm-sets/500-soundfonts-full-gm-sets_archive.torrent', target: '_blank', rel: 'noopener' }, 'torrent'),
-      '. Each SoundFont variant says so in its now-playing panel ("from"), along with the authorship and copyright notices embedded in the file.',
-    ),
+    ...soundfontSources(catalog),
     h(
       'p',
       null,

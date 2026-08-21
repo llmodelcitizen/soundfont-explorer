@@ -133,16 +133,29 @@ def sort_key(v: dict):
 # ------------------------------------------------------------------ SF2 variants
 
 
-# Every file in soundfonts/ is the Internet Archive item "500 Soundfonts Full GM Sets".
-SF2_COLLECTION = {
-    "id": "archive.org/500-soundfonts-full-gm-sets",
-    "title": "500 Soundfonts Full GM Sets (Internet Archive)",
-    "url": "https://archive.org/details/500-soundfonts-full-gm-sets",
-    "torrent": "https://archive.org/download/500-soundfonts-full-gm-sets/500-soundfonts-full-gm-sets_archive.torrent",
-}
+# Per-file provenance (catalog/collections.json, built by catalog/provenance.py from the source
+# archives by name+size+crc32). A font with no entry gets no collection — attribution is never guessed.
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_collections() -> dict:
+    path = os.path.join(HERE, "collections.json")
+    if not os.path.exists(path):
+        return {"collections": {}, "files": {}}
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def collection_for(sha256: str | None, coll: dict) -> dict | None:
+    cid = coll.get("files", {}).get(sha256 or "")
+    c = coll.get("collections", {}).get(cid) if cid else None
+    if not c:
+        return None
+    return {k: c.get(k) for k in ("id", "title", "url", "torrent")}
 
 
 def sf2_variants(facets_doc: dict, scan_doc: dict | None, engines: dict | None) -> tuple[list[dict], list[dict]]:
+    collections = load_collections()
     """(variants, aliases): one variant per canonical font with publish decided by the facets file."""
     info_by_file = {}
     if scan_doc:
@@ -179,6 +192,8 @@ def sf2_variants(facets_doc: dict, scan_doc: dict | None, engines: dict | None) 
                     "): sample set derived from Roland ROMs; published by default (decision D2), flip publish in overrides.json to withdraw"
         elif rec.get("notes") and "publish" in (rec.get("overrides_applied") or []):
             legal = rec["notes"]
+
+        coll_entry = collection_for(rec.get("sha256"), collections)
 
         v = {
             "id": vid,
@@ -222,8 +237,8 @@ def sf2_variants(facets_doc: dict, scan_doc: dict | None, engines: dict | None) 
                     "preset_count": rec.get("preset_count"),
                     "bank_count": len(rec.get("banks") or []),
                 },
-                "url": SF2_COLLECTION["url"],
-                "collection": SF2_COLLECTION,
+                "url": (coll_entry or {}).get("url"),
+                "collection": coll_entry,
                 "license_flag": fx["license_flag"],
                 "lineage_source": (rec.get("sources") or {}).get("lineage"),
             },
