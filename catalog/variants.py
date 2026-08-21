@@ -133,6 +133,15 @@ def sort_key(v: dict):
 # ------------------------------------------------------------------ SF2 variants
 
 
+# Every file in soundfonts/ is the Internet Archive item "500 Soundfonts Full GM Sets".
+SF2_COLLECTION = {
+    "id": "archive.org/500-soundfonts-full-gm-sets",
+    "title": "500 Soundfonts Full GM Sets (Internet Archive)",
+    "url": "https://archive.org/details/500-soundfonts-full-gm-sets",
+    "torrent": "https://archive.org/download/500-soundfonts-full-gm-sets/500-soundfonts-full-gm-sets_archive.torrent",
+}
+
+
 def sf2_variants(facets_doc: dict, scan_doc: dict | None, engines: dict | None) -> tuple[list[dict], list[dict]]:
     """(variants, aliases): one variant per canonical font with publish decided by the facets file."""
     info_by_file = {}
@@ -213,7 +222,8 @@ def sf2_variants(facets_doc: dict, scan_doc: dict | None, engines: dict | None) 
                     "preset_count": rec.get("preset_count"),
                     "bank_count": len(rec.get("banks") or []),
                 },
-                "url": None,
+                "url": SF2_COLLECTION["url"],
+                "collection": SF2_COLLECTION,
                 "license_flag": fx["license_flag"],
                 "lineage_source": (rec.get("sources") or {}).get("lineage"),
             },

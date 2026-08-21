@@ -20,7 +20,15 @@ export interface Variant {
   type: string;
   facets: Facets;
   bank: Record<string, unknown> | null;
-  source: { file: string | null; sha256: string | null; bytes: number | null; url?: string | null; license_flag?: string | null; info?: Record<string, string> | null } | null;
+  source: {
+    file: string | null;
+    sha256: string | null;
+    bytes: number | null;
+    url?: string | null;
+    license_flag?: string | null;
+    info?: Record<string, string> | null;
+    collection?: { id: string; title: string; url: string; torrent?: string } | null;
+  } | null;
   render: { cmd?: string; core?: string } | null;
   legal_note: string | null;
   requires_rom: boolean;

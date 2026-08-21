@@ -44,7 +44,15 @@ export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement
     h(
       'p',
       null,
-      'SoundFonts come from public collections on the Internet Archive; their authorship and copyright notices (when present in the file) are shown in the now-playing panel. ',
+      'Every SoundFont here (all 500 of them) comes from the Internet Archive item ',
+      h('a', { href: 'https://archive.org/details/500-soundfonts-full-gm-sets', target: '_blank', rel: 'noopener' }, '500 Soundfonts Full GM Sets'),
+      ' — thanks to the Archive and to the collector who assembled it. Grab the whole set via the ',
+      h('a', { href: 'https://archive.org/download/500-soundfonts-full-gm-sets/500-soundfonts-full-gm-sets_archive.torrent', target: '_blank', rel: 'noopener' }, 'torrent'),
+      '. Each SoundFont variant says so in its now-playing panel ("from"), along with the authorship and copyright notices embedded in the file.',
+    ),
+    h(
+      'p',
+      null,
       'FM banks are the ones embedded in libADLMIDI / libOPNMIDI, several of which were extracted from period games. Variants derived from Roland ROMs or Roland-copyright sample sets are labelled.',
     ),
     h('h2', null, 'Takedown / DMCA'),

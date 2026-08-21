@@ -102,7 +102,10 @@ export class NowPlaying {
     if (v?.render?.cmd) rows.push(['render', h('code', { class: 'cmd' }, v.render.cmd)]);
     if (v?.legal_note) rows.push(['note', h('em', null, v.legal_note)]);
     if (src?.license_flag) rows.push(['license flag', src.license_flag]);
-    if (src?.url) rows.push(['source', h('a', { href: src.url, target: '_blank', rel: 'noopener' }, src.url)]);
+    if (src?.collection) {
+      const c = src.collection;
+      rows.push(['from', h('span', null, 'Internet Archive · ', h('a', { href: c.url, target: '_blank', rel: 'noopener' }, c.title), c.torrent ? [' · ', h('a', { href: c.torrent, target: '_blank', rel: 'noopener' }, 'torrent')] : '')]);
+    } else if (src?.url) rows.push(['source', h('a', { href: src.url, target: '_blank', rel: 'noopener' }, src.url)]);
     rows.push(['song', `${this.song.title}${this.song.composer ? ' — ' + this.song.composer : ''} · ${this.song.license.id}`]);
     const dl = h('dl', { class: 'kv' });
     for (const [k, val] of rows) {
