@@ -542,10 +542,18 @@ select:focus-visible {
 .np-head {
   display: flex;
   gap: 10px;
-  align-items: baseline;
+  align-items: center;
+  /* fixed height: the status / tier text appearing or disappearing must not move the panel */
+  height: 26px;
+  box-sizing: border-box;
   border-bottom: 1px solid var(--line);
   padding-bottom: 6px;
   margin-bottom: 6px;
+  line-height: 1;
+}
+.np-head > * {
+  line-height: 1;
+  white-space: nowrap;
 }
 .np-head .spacer {
   flex: 1;
