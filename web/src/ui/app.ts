@@ -131,7 +131,7 @@ export class App {
     }
     const known = (id: string | null | undefined) => !!id && this.songs.songs.some((s) => s.id === id);
     const songId = known(this.url.song) ? this.url.song! : known(this.songs.defaults.song) ? this.songs.defaults.song! : this.songs.songs[0]!.id;
-    await showGate(this.root, 'Soundfont Explorer', 'One song, hundreds of sound cards. Same notes, different decade — switch instruments mid-phrase and hear what your PC could have sounded like.', 'Start Listening', () => {
+    await showGate(this.root, 'Soundfont Explorer', 'The voices of your PC through the decades <3', 'Start Listening', () => {
       // inside the tap: create + unlock the context synchronously (iOS requirement)
       this.ctx = createContextInGesture();
     });
