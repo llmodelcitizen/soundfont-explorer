@@ -87,6 +87,7 @@
 [data-theme='win95'] .songpicker,
 [data-theme='win95'] .themepick,
 [data-theme='win95'] .list,
+[data-theme='win95'] .track-rows,
 [data-theme='win95'] .nowplaying,
 [data-theme='win95'] .dbg-body {
   border: 0;
@@ -219,4 +220,21 @@
 }
 [data-theme='win95'] .top .btn.icon {
   padding: 3px 7px 5px;
+}
+
+[data-theme='win95'] .tracks {
+  background: #c0c0c0;
+}
+[data-theme='win95'] .track-rows {
+  margin: 0;
+}
+[data-theme='win95'] .track {
+  border-bottom: 0;
+}
+[data-theme='win95'] .split {
+  background: #c0c0c0;
+  box-shadow: var(--bevel-out);
+}
+[data-theme='win95'] .split::after {
+  display: none;
 }

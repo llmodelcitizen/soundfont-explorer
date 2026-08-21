@@ -24,6 +24,7 @@ import { KeymapOverlay } from './keymapOverlay';
 import { VariantList } from './list';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
+import { TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { Favorites, ListenedLedger, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
@@ -57,6 +58,8 @@ export class App {
   private transport!: Transport;
   private nowPlaying!: NowPlaying;
   private picker!: SongPicker;
+  private tracks!: TrackList;
+  private rightPane!: HTMLElement;
   private debug = new DebugPanel();
   private keymap = new KeymapOverlay();
   private prefs: Prefs = loadPrefs();
@@ -314,6 +317,7 @@ export class App {
       '<path d="M8 2l1.88 1.88M14.12 3.88L16 2M9 7.13v-1a3 3 0 0 1 6 0v1"/>' +
       '<path d="M12 20c-3.3 0-6-2.7-6-6v-3a6 6 0 0 1 12 0v3c0 3.3-2.7 6-6 6z"/>' +
       '<path d="M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>';
+    dbgBtn.addEventListener('click', () => this.debug.toggle());
     const settingsBtn = h('button', { class: 'btn icon', type: 'button', title: 'settings (S)', 'aria-label': 'settings' });
     settingsBtn.innerHTML =
       '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -332,7 +336,10 @@ export class App {
       helpBtn,
       h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
     );
-    this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.nowPlaying.el);
+    this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined }));
+    this.rightPane = h('section', { class: 'right' }, this.tracks.el, this.splitHandle(), this.nowPlaying.el);
+    this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.rightPane);
+    this.applySplit();
     this.root.append(this.header, this.main, this.transport.el, this.debug.el, this.keymap.el, this.settings.el);
     this.policy = new InputPolicy({
       move: (d) => this.moveCursor(this.cursor + d),
@@ -398,11 +405,81 @@ export class App {
     this.engine.on('audible', (v) => {
       this.list.setAudible(v);
       this.nowPlaying.show(v);
+      this.applySplit();
       this.syncUrl();
     });
     this.engine.on('tier', (t: Tier | null) => this.nowPlaying.setTier(t));
     this.applyFilters(sel, query, true);
     if (this.creditsEl) this.root.appendChild(this.creditsEl); // keep the About page on top across song loads
+  }
+
+  // ---- right-pane split (tracks above, now-playing below) ------------------------------
+  private static SPLIT_KEY = 'sfp.np-height.v1';
+
+  private splitHandle(): HTMLElement {
+    const handle = h('div', { class: 'split', role: 'separator', 'aria-orientation': 'horizontal', 'aria-label': 'resize now playing', tabindex: '0', title: 'drag to resize · double-click to reset' });
+    let startY = 0;
+    let startH = 0;
+    const onMove = (e: PointerEvent) => {
+      const h2 = Math.max(80, Math.min(this.rightPane.clientHeight - 80, startH + (startY - e.clientY)));
+      this.rightPane.style.setProperty('--np-h', `${h2}px`);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      const v = this.rightPane.style.getPropertyValue('--np-h');
+      try {
+        localStorage.setItem(App.SPLIT_KEY, v);
+      } catch {
+        /* ignore */
+      }
+    };
+    handle.addEventListener('pointerdown', (e) => {
+      startY = e.clientY;
+      startH = this.nowPlaying.el.getBoundingClientRect().height;
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      e.preventDefault();
+    });
+    handle.addEventListener('dblclick', () => {
+      try {
+        localStorage.removeItem(App.SPLIT_KEY);
+      } catch {
+        /* ignore */
+      }
+      this.rightPane.style.removeProperty('--np-h');
+      this.applySplit(true);
+    });
+    handle.addEventListener('keydown', (e) => {
+      const cur = this.nowPlaying.el.getBoundingClientRect().height;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const h2 = Math.max(80, cur + (e.key === 'ArrowUp' ? 24 : -24));
+        this.rightPane.style.setProperty('--np-h', `${h2}px`);
+        e.preventDefault();
+      }
+    });
+    return handle;
+  }
+
+  /** Default split: Now Playing gets exactly its content height (never cut off, capped at 70 %); the tracks take the rest. */
+  private applySplit(force = false): void {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(App.SPLIT_KEY);
+    } catch {
+      /* ignore */
+    }
+    if (saved && !force) {
+      this.rightPane.style.setProperty('--np-h', saved);
+      return;
+    }
+    requestAnimationFrame(() => {
+      const pane = this.rightPane.clientHeight;
+      if (!pane) return;
+      const content = this.nowPlaying.el.scrollHeight + 2;
+      const h2 = Math.min(content, Math.round(pane * 0.7));
+      this.rightPane.style.setProperty('--np-h', `${Math.max(80, h2)}px`);
+    });
   }
 
   private focusList(): void {

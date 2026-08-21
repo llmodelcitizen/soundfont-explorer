@@ -383,6 +383,87 @@ select:focus-visible {
   border-bottom: 1px solid var(--accent);
 }
 
+/* right pane: tracks (rest) / split handle / now playing (--np-h, default = its content) */
+.right {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 6px var(--np-h, auto);
+  min-height: 0;
+  min-width: 0;
+}
+.split {
+  cursor: row-resize;
+  background: var(--line);
+  position: relative;
+}
+.split::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: var(--fg-dim);
+  opacity: 0.5;
+}
+.split:hover::after,
+.split:focus-visible::after {
+  background: var(--accent);
+  opacity: 1;
+}
+.tracks {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel-2);
+  padding: 8px 12px 0;
+}
+.tracks .np-head {
+  margin-bottom: 0;
+}
+.track-rows {
+  overflow: auto;
+  min-height: 0;
+  margin: 0 -12px;
+}
+.track {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-faint);
+  white-space: nowrap;
+}
+.track:hover {
+  background: var(--row-hover);
+}
+.track.current {
+  background: var(--sel);
+  color: var(--sel-fg);
+}
+.track-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.track-meta {
+  color: var(--fg-dim);
+  font-size: 0.82em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.track.current .track-meta {
+  color: inherit;
+  opacity: 0.8;
+}
+/* desktop: the header dropdown is replaced by the list */
+@media (min-width: 721px) {
+  .top .songpicker {
+    display: none;
+  }
+}
+
 /* now playing */
 .nowplaying {
   overflow: auto;
@@ -646,6 +727,17 @@ kbd {
   .left {
     min-width: 0;
   }
+  /* mobile keeps the header dropdown: no track list, no split */
+  .right {
+    display: block;
+    max-height: 32vh;
+    overflow: auto;
+    border-top: 1px solid var(--line);
+  }
+  .tracks,
+  .split {
+    display: none;
+  }
   .kv {
     grid-template-columns: minmax(0, 1fr);
     gap: 0 0;
@@ -661,8 +753,7 @@ kbd {
     border-right: 0;
   }
   .nowplaying {
-    max-height: 32vh;
-    border-top: 1px solid var(--line);
+    border-top: 0;
   }
   .row {
     grid-template-columns: 2.6em 4em minmax(0, 1fr) 1em 0.8em;
