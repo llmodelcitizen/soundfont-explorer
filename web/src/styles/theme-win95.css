@@ -299,3 +299,20 @@
   background-position: right 2px center;
   background-size: 17px 17px;
 }
+
+/* theme dropdown exactly as tall as the header buttons */
+[data-theme='win95'] .top .themepick {
+  height: var(--top-btn-h, 26px);
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+  line-height: normal;
+}
+@media (max-width: 720px) and (orientation: portrait) {
+  /* volume takes whatever is left of the button row */
+  [data-theme='win95'] .top .vol-top {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 40px;
+  }
+}
