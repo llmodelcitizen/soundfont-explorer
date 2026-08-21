@@ -264,3 +264,10 @@
   width: 13px;
   height: 13px;
 }
+
+[data-theme='win95'] .transport > .btn,
+[data-theme='win95'] .transport .toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

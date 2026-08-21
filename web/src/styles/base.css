@@ -661,6 +661,18 @@ select:focus-visible {
 .transport .break {
   display: none;
 }
+/* the five transport buttons share one fixed width, glyphs centred — play/pause must not change width */
+.transport > .btn,
+.transport .toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.4em;
+  padding-left: 0;
+  padding-right: 0;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
 /* desktop order: transport · clock · seek · loop · mute · volume */
 .transport .clock {
   order: 2;
@@ -933,12 +945,21 @@ kbd {
     padding: 6px 10px;
     font-size: 1.2em;
   }
-  .transport > .btn {
-    padding: 6px 9px;
-  }
+  .transport > .btn,
   .transport .toggle {
-    padding: 6px 8px;
-    font-size: 0.9em;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    width: 3.6em;
+    font-size: 0.95em;
+  }
+}
+/* phone, portrait: the five buttons stretch to fill the line (equal widths) next to ▲ ▼ */
+@media (max-width: 720px) and (orientation: portrait) {
+  .transport > .btn,
+  .transport .toggle {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
   }
 }
 @media (max-width: 375px) {
@@ -951,11 +972,7 @@ kbd {
   .transport .steps .btn {
     padding: 6px 8px;
   }
-  .transport > .btn {
-    padding: 6px 7px;
-  }
   .transport .toggle {
-    padding: 6px 6px;
     font-size: 0.85em;
   }
 }
