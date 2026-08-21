@@ -62,6 +62,9 @@ export class Chain {
   /** set when fill() is waiting for a buffer */
   waitingFor: SegKey | null = null;
   lateStarts = 0;
+  /** voice fade-in automation (for an analytic gain value when releasing mid-fade) */
+  private fadeInT0 = 0;
+  private fadeInDur = 0;
 
   constructor(
     readonly ctx: ContextLike,
@@ -102,12 +105,36 @@ export class Chain {
     g.cancelScheduledValues(t0);
     g.setValueAtTime(0, t0);
     g.linearRampToValueAtTime(1, t0 + fadeIn);
+    this.fadeInT0 = t0;
+    this.fadeInDur = fadeIn;
     return true;
+  }
+
+  /** voice gain the automation will have reached at context time t (before any release) */
+  voiceGainAt(t: number): number {
+    if (this.fadeInDur <= 0) return 1;
+    return Math.min(1, Math.max(0, (t - this.fadeInT0) / this.fadeInDur));
+  }
+
+  /**
+   * The timeline rebased its origin by `seconds` (whole loops): shift every unwrapped
+   * coordinate we hold so fill() keeps measuring against the same absolute times.
+   */
+  shift(seconds: number): void {
+    this.tail += seconds;
+    for (const s of this.scheduled) {
+      s.seg = { ...s.seg, uStart: s.seg.uStart + seconds, uEnd: s.seg.uEnd + seconds };
+    }
+  }
+
+  /** chains built for an older timeline generation must not schedule anything more */
+  get stale(): boolean {
+    return this.gen !== this.timeline.gen;
   }
 
   /** Extend scheduling to cover [now, now + LOOKAHEAD]. Returns the key it is waiting for, if any. */
   fill(now: number = this.ctx.currentTime): SegKey | null {
-    if (this.releasing) return null;
+    if (this.releasing || this.stale) return null;
     const target = this.timeline.unwrapped(now) + AUDIO.LOOKAHEAD;
     while (this.tail < target) {
       if (!this.timeline.loop && this.tail >= this.set.duration_s) break;
@@ -207,8 +234,10 @@ export class Chain {
     this.releasing = true;
     this.releasedAt = t + fade;
     const g = this.voice.gain;
+    // hold the value the automation will have reached at t (not the current value: t is in the
+    // future and the fade-in may still be in progress), then ramp to silence
     g.cancelScheduledValues(t);
-    g.setValueAtTime(g.value, t);
+    g.setValueAtTime(this.voiceGainAt(t), t);
     g.linearRampToValueAtTime(0, t + fade);
     for (const s of this.scheduled) {
       try {

@@ -45,6 +45,20 @@ describe('Fetcher', () => {
     expect(f.stats.completed).toBe(7);
   });
 
+  it('reprioritize moves a queued request forward (only to a more urgent priority)', async () => {
+    const objects = new Map<string, ArrayBuffer>([['/a', new ArrayBuffer(8)], ['/b', new ArrayBuffer(8)], ['/c', new ArrayBuffer(8)]]);
+    const ff = new FakeFetch(objects);
+    ff.latencyMs = 20;
+    const f = new Fetcher(1, ff.fn, () => Date.now());
+    const order: string[] = [];
+    const ps = [f.get('/a', { priority: 1 }), f.get('/b', { priority: 5 }), f.get('/c', { priority: 3 })].map((p, i) => p.then(() => order.push('abc'[i]!)));
+    f.reprioritize('/b', 0);
+    f.reprioritize('/c', 9); // never demotes
+    await vi.advanceTimersByTimeAsync(200);
+    await Promise.all(ps);
+    expect(order).toEqual(['a', 'b', 'c']);
+  });
+
   it('aborts matching queued + in-flight requests except sticky ones', async () => {
     const objects = new Map<string, ArrayBuffer>([['/l1', new ArrayBuffer(8)], ['/l2', new ArrayBuffer(8)], ['/p', new ArrayBuffer(8)]]);
     const ff = new FakeFetch(objects);

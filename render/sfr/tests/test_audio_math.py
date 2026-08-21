@@ -47,9 +47,8 @@ class TestLoudness(unittest.TestCase):
         self.assertIn("adelay=480S|480S", master_filter(0, S, 10, start_offset_s=-0.010))
         # drift: asetrate before resample
         af = master_filter(0, S, 10, drift_ppm=12.5, native_rate=44100)
-        i_set, i_res = af.index("asetrate"), af.index("aresample")
-        self.assertLess(i_set, i_res)
-        self.assertIn("asetrate=44100.551250", af)
+        # 10× intermediate rate → asetrate resolution ≈ 2.3 ppm (441000 × (1 + 12.5e-6) = 441005.5)
+        self.assertIn("aresample=441000:resampler=soxr:precision=28,asetrate=441006,aresample=48000", af)
 
 
 class TestEncodeMath(unittest.TestCase):

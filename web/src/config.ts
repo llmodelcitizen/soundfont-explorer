@@ -2,9 +2,11 @@
  * The numbers (plan §4) — single source of truth shared with render/engines.json.
  * All times are SECONDS unless the name says Ms.
  */
+/** phones/tablets get the small budgets; a touchscreen laptop (fine pointer) does not */
 export const IS_TOUCH =
   typeof navigator !== 'undefined' &&
-  (navigator.maxTouchPoints > 0 || /iPhone|iPad|Android/i.test(navigator.userAgent));
+  (/iPhone|iPad|Android/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 0 && typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches));
 
 export const AUDIO = {
   /** commit lead: how far ahead of "now" a switch is scheduled */

@@ -148,6 +148,31 @@ class TestManifest(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertEqual(report["songs"]["freedoom-e1m1"]["variants"], 3)
 
+    def test_manifest_for_one_song_keeps_the_others(self):
+        song2 = song("joplin", D=3)
+        jobs1 = self.jobs()
+        jobs2 = [Job(song2, v, self.settings, ENGINES_JSON["engines"][v["engine"]]) for v in self.variants[:2]]
+        for j in jobs1[:2] + jobs2:
+            _fake_render(j, self.paths)
+        both = [self.song, song2]
+        build_manifests(self.paths, both, self.variants, self.settings, ENGINES_JSON,
+                        {"freedoom-e1m1": jobs1, "joplin": jobs2}, echo=lambda *_: None)
+        pub = self.paths.public
+        sj = json.loads((pub / "songs.json").read_text())
+        self.assertEqual([s["id"] for s in sj["songs"]], ["freedoom-e1m1", "joplin"])
+        joplin_set = sj["songs"][1]["set"]
+        # now re-manifest only the first song with one more render: joplin must be untouched
+        _fake_render(jobs1[2], self.paths)
+        report = build_manifests(self.paths, both, self.variants, self.settings, ENGINES_JSON,
+                                 {"freedoom-e1m1": jobs1}, echo=lambda *_: None)
+        sj2 = json.loads((pub / "songs.json").read_text())
+        self.assertEqual([s["id"] for s in sj2["songs"]], ["freedoom-e1m1", "joplin"])
+        self.assertEqual(sj2["songs"][1]["set"], joplin_set)
+        self.assertEqual(sj2["songs"][0]["variant_count"], 3)
+        self.assertTrue((pub / joplin_set.lstrip("/")).exists())
+        self.assertTrue((pub / "a" / "joplin" / "g").exists())
+        self.assertIn("kept", report["songs"]["joplin"])
+
     def test_build_catalog_facets(self):
         cat = build_catalog(self.variants, ENGINES_JSON)
         comp = {f["value"]: f["count"] for f in cat["facets"]["completeness"]}

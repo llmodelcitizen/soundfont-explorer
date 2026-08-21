@@ -17,7 +17,12 @@ import { bufferBytes, keyStr, type BufferLike, type SegKey } from './types';
 export interface Want {
   key: SegKey;
   priority: number;
+  /** bytes only (compressed cache), no decode — for neighbours beyond the decode radius */
+  fetchOnly?: boolean;
 }
+
+const BACKOFF_BASE_MS = 1000;
+const BACKOFF_MAX_MS = 30000;
 
 interface Located {
   url: string;
@@ -33,13 +38,16 @@ export class SegmentStore {
   private decoding = new Map<string, Promise<BufferLike>>();
   private packHeaders = new Map<string, ReturnType<typeof parseHeader>>();
   private listeners = new Set<(key: SegKey, buf: BufferLike) => void>();
-  stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0 };
+  /** negative cache: key → {fails, until(ms)} so a 404/decoder error is not retried every tick */
+  private failed = new Map<string, { fails: number; until: number }>();
+  stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0, backedOff: 0 };
 
   constructor(
     public readonly set: SetDoc,
     private readonly fetcher: Fetcher,
     private readonly decoder: Decoder,
     budgets: { decodedBytes: number; compressedBytes: number } = CACHE,
+    private readonly nowMs: () => number = () => Date.now(),
   ) {
     this.decoded = new ByteLRU<BufferLike>(budgets.decodedBytes, bufferBytes);
     this.compressed = new ByteLRU<ArrayBuffer>(budgets.compressedBytes, (b) => b.byteLength);
@@ -95,27 +103,58 @@ export class SegmentStore {
 
   // ---- requests ------------------------------------------------------------
 
+  /** ms until a failed key may be retried (0 = now) */
+  backoffMs(key: SegKey): number {
+    const f = this.failed.get(keyStr(key));
+    return f ? Math.max(0, f.until - this.nowMs()) : 0;
+  }
+
+  private noteFailure(ks: string): void {
+    const prev = this.failed.get(ks);
+    const fails = (prev?.fails ?? 0) + 1;
+    const wait = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (fails - 1));
+    this.failed.set(ks, { fails, until: this.nowMs() + wait });
+  }
+
   /** Ensure one segment is (being) decoded; resolves with the buffer. */
   request(key: SegKey, priority: number, opts: { whole?: boolean; tag?: string } = {}): Promise<BufferLike> {
     const ks = keyStr(key);
     const have = this.decoded.peek(ks);
     if (have) return Promise.resolve(have);
-    const live = this.decoding.get(ks);
-    if (live) return live;
     const loc = this.locate(key);
     if (!loc) return Promise.reject(new Error(`no such segment ${ks}`));
+    const live = this.decoding.get(ks);
+    if (live) {
+      // already on its way: make sure the underlying fetch is not stuck behind lower priorities
+      this.fetcher.reprioritize(loc.url, priority);
+      const h = this.packHeaders.get(loc.url);
+      if (loc.slot >= 0 && h) {
+        const start = h.offsets[loc.slot]!;
+        this.fetcher.reprioritize(loc.url, priority, { start, end: start + h.lengths[loc.slot]! - 1 });
+      }
+      return live;
+    }
+    const wait = this.backoffMs(key);
+    if (wait > 0) {
+      this.stats.backedOff++;
+      return Promise.reject(new Error(`backoff ${ks} for ${wait} ms`));
+    }
     // an urgent request (switch commit / audible fill) takes the whole pack: one round trip beats header+member
     if (priority <= 0 && loc.slot >= 0) opts = { ...opts, whole: true };
     const p = this.bytesFor(loc, priority, opts)
       .then((bytes) => this.decoder.decode(bytes, priority))
       .then((buf) => {
         this.decoded.set(ks, buf);
+        this.failed.delete(ks);
         this.stats.decodedOk++;
         for (const l of this.listeners) l(key, buf);
         return buf;
       })
       .catch((e) => {
-        if (!(e instanceof AbortedError)) this.stats.decodeErrors++;
+        if (!(e instanceof AbortedError)) {
+          this.stats.decodeErrors++;
+          this.noteFailure(ks);
+        }
         throw e;
       })
       .finally(() => this.decoding.delete(ks));
@@ -133,10 +172,11 @@ export class SegmentStore {
     for (const w of wants) {
       const ks = keyStr(w.key);
       if (this.decoded.has(ks) || this.decoding.has(ks)) continue;
+      if (this.backoffMs(w.key) > 0) continue;
       const loc = this.locate(w.key);
       if (!loc) continue;
       if (loc.slot < 0) {
-        this.request(w.key, w.priority, { tag: 'listen' }).catch(() => undefined);
+        if (!w.fetchOnly) this.request(w.key, w.priority, { tag: 'listen' }).catch(() => undefined);
         continue;
       }
       const arr = byPack.get(loc.url) ?? [];
@@ -146,7 +186,15 @@ export class SegmentStore {
     for (const [url, ws] of byPack) {
       const whole = ws.length >= NET.wholePackThreshold || this.fetcher.isPending(url);
       const best = Math.min(...ws.map((w) => w.priority));
-      for (const w of ws) this.request(w.key, whole ? best : w.priority, { whole, tag }).catch(() => undefined);
+      for (const w of ws) {
+        if (w.fetchOnly) {
+          const loc = this.locate(w.key)!;
+          if (this.compressed.has(loc.cid)) continue;
+          this.bytesFor(loc, whole ? best : w.priority, { whole, tag }).catch(() => undefined);
+        } else {
+          this.request(w.key, whole ? best : w.priority, { whole, tag }).catch(() => undefined);
+        }
+      }
     }
   }
 
@@ -219,5 +267,11 @@ export class SegmentStore {
   /** Abort fetches whose tag matches and whose URL is not in keep (packs are sticky anyway). */
   abortListen(keep: Set<string>): number {
     return this.fetcher.abortWhere((url, o) => o.tag === 'listen' && !keep.has(url));
+  }
+
+  /** Song switch: drop everything still queued for this store, sticky packs included. */
+  abortAll(): number {
+    this.listeners.clear();
+    return this.fetcher.abortWhere(() => true, true);
   }
 }

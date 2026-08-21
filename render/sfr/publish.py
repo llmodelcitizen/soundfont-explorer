@@ -75,10 +75,12 @@ def prune(paths: Paths, bucket: str | None, *, dry_run: bool, echo=print) -> int
     bucket, _ = resolve_targets(paths, bucket, None)
     public = paths.public
     current = {str(p.relative_to(public)) for p in public.rglob("*") if p.is_file()}
+    # keep what is on disk now plus the last two *published* listings (the live songs.json may
+    # still reference the previous publish's objects; CloudFront may still serve the one before)
     hist = sorted((paths.work / "publish").glob("*.txt")) if (paths.work / "publish").exists() else []
     previous: set[str] = set()
-    if len(hist) >= 2:
-        previous = set(hist[-2].read_text().split())
+    for h in hist[-2:]:
+        previous |= set(h.read_text().split())
     keep = current | previous
     r = subprocess.run(["aws", "s3api", "list-objects-v2", "--bucket", bucket, "--query", "Contents[].Key",
                         "--output", "json"], capture_output=True, text=True, check=True)

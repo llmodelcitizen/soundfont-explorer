@@ -62,6 +62,7 @@ export class App {
   private url: UrlState;
   private urlTimer: ReturnType<typeof setTimeout> | null = null;
   private decodeKind = 'native';
+  private volume = 1;
   private main!: HTMLElement;
   private header!: HTMLElement;
   private uninstallKeys: (() => void) | null = null;
@@ -74,19 +75,6 @@ export class App {
   }
 
   async boot(): Promise<void> {
-    if (location.hash.startsWith('#/credits')) {
-      try {
-        this.songs = parseSongs(await getJson('/songs.json'));
-        this.catalog = parseCatalog(await getJson(this.songs.catalog));
-      } catch (e) {
-        this.fatal(`Could not load the catalog: ${(e as Error).message}`);
-        return;
-      }
-      clear(this.root);
-      this.root.appendChild(renderCredits(this.songs, this.catalog));
-      window.addEventListener('hashchange', () => location.reload(), { once: true });
-      return;
-    }
     try {
       this.songs = parseSongs(await getJson('/songs.json'));
     } catch (e) {
@@ -103,12 +91,44 @@ export class App {
       this.fatal(`Could not load the catalog: ${(e as Error).message}`);
       return;
     }
-    const songId = this.url.song && this.songs.songs.some((s) => s.id === this.url.song) ? this.url.song : (this.songs.defaults.song ?? this.songs.songs[0]!.id);
+    const known = (id: string | null | undefined) => !!id && this.songs.songs.some((s) => s.id === id);
+    const songId = known(this.url.song) ? this.url.song! : known(this.songs.defaults.song) ? this.songs.defaults.song! : this.songs.songs[0]!.id;
     await showGate(this.root, 'soundfonts.ericq.com', 'Hear one MIDI through hundreds of SoundFonts and synth chips. Hold ↓ to scrub; the music never stops.', 'Start');
     this.ctx = new AudioContext({ latencyHint: 'interactive' });
     if (this.ctx.state !== 'running') await this.ctx.resume().catch(() => undefined);
     await this.pickDecoder();
+    this.installGlobalListeners();
     await this.loadSong(songId, { variant: this.url.variant, t: this.url.t, initial: true });
+    this.tickUi();
+    this.onHashChange();
+  }
+
+  /** window/document/AudioContext listeners — installed exactly once, not per song. */
+  private installGlobalListeners(): void {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.ctx.state !== 'running') void this.ctx.resume();
+    });
+    this.ctx.addEventListener?.('statechange', () => {
+      if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
+        void showGate(this.root, 'audio paused', 'The browser suspended audio. Tap to resume.', 'Resume').then(() => this.ctx.resume());
+      }
+    });
+    window.addEventListener('hashchange', () => this.onHashChange());
+  }
+
+  private creditsEl: HTMLElement | null = null;
+
+  /** #/credits opens the About page over the player without stopping the music. */
+  private onHashChange(): void {
+    const want = location.hash.startsWith('#/credits');
+    if (want && !this.creditsEl) {
+      this.creditsEl = h('div', { class: 'page' }, renderCredits(this.songs, this.catalog));
+      this.root.appendChild(this.creditsEl);
+      this.creditsEl.scrollTop = 0;
+    } else if (!want && this.creditsEl) {
+      this.creditsEl.remove();
+      this.creditsEl = null;
+    }
   }
 
   private fatal(msg: string): void {
@@ -142,6 +162,13 @@ export class App {
     try {
       set = parseSet(await getJson(entry.set));
     } catch (e) {
+      const msg = `could not load ${entry.title}: ${(e as Error).message}`;
+      if (this.engine) {
+        // keep playing the current song; tell the user
+        this.transport.setStatus(msg, 'wontload');
+        this.picker.set(this.song.id);
+        return;
+      }
       this.fatal(`Could not load the song set for ${id}: ${(e as Error).message}`);
       return;
     }
@@ -150,7 +177,8 @@ export class App {
     const prevFilters = this.filters ? this.filters.sel : (this.url.filters ?? { completeness: new Set(['full_gm']) });
     const prevQuery = this.filters ? this.filters.query : (this.url.q ?? '');
     const loop = this.engine ? this.engine.timeline.loop : !!this.url.loop;
-    const volume = this.engine ? 1 : 1;
+    const volume = this.volume;
+    const muted = this.engine ? this.engine.isMuted : false;
     if (this.engine) {
       this.engine.dispose();
       this.policy.reset();
@@ -161,6 +189,7 @@ export class App {
     this.engine = new Engine(this.ctx as unknown as ContextLike, set, this.store);
     this.engine.setLoop(loop);
     this.engine.setVolume(volume);
+    this.engine.setMuted(muted);
     this.index = new FilterIndex(set.order, this.catalog);
     this.buildUi(prevFilters, prevQuery);
     // choose the variant: requested id → nearest index → default → first
@@ -177,8 +206,9 @@ export class App {
     const pos = Math.min(prevPos, set.duration_s);
     this.engine.seek(pos);
     if (wasPlaying || opts.initial) this.engine.play();
+    this.transport.setMuted(muted);
+    this.transport.setVolume(volume);
     this.syncUrl(true);
-    this.tickUi();
   }
 
   private buildUi(sel: Selection, query: string): void {
@@ -210,7 +240,10 @@ export class App {
           this.engine.setLoop(on);
           this.syncUrl();
         },
-        onVolume: (v) => this.engine.setVolume(v),
+        onVolume: (v) => {
+          this.volume = v;
+          this.engine.setVolume(v);
+        },
         onMute: () => {
           this.engine.setMuted(!this.engine.isMuted);
           this.transport.setMuted(this.engine.isMuted);
@@ -273,6 +306,7 @@ export class App {
       escape: () => {
         this.keymap.toggle(false);
         this.filters.toggle(false);
+        if (this.creditsEl) history.replaceState(null, '', location.pathname + location.search), this.onHashChange();
         this.focusList();
       },
       song: (d) => this.stepSong(d),
@@ -305,14 +339,7 @@ export class App {
     });
     this.engine.on('tier', (t: Tier | null) => this.nowPlaying.setTier(t));
     this.applyFilters(sel, query, true);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && this.ctx.state !== 'running') void this.ctx.resume();
-    });
-    this.ctx.addEventListener?.('statechange', () => {
-      if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
-        void showGate(this.root, 'audio paused', 'The browser suspended audio. Tap to resume.', 'Resume').then(() => this.ctx.resume());
-      }
-    });
+    if (this.creditsEl) this.root.appendChild(this.creditsEl); // keep the About page on top across song loads
   }
 
   private focusList(): void {
@@ -382,9 +409,16 @@ export class App {
     else this.urlTimer = setTimeout(write, POLICY.settleMs + 30);
   }
 
+  private uiLoopStarted = false;
+
   private tickUi(): void {
+    if (this.uiLoopStarted) return;
+    this.uiLoopStarted = true;
     const loop = () => {
-      if (!this.engine) return;
+      if (!this.engine) {
+        requestAnimationFrame(loop);
+        return;
+      }
       this.transport.update(this.engine.position(), this.engine.playing);
       if (this.debug.visible) {
         const f = this.fetcher.stats;

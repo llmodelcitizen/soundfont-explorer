@@ -128,6 +128,7 @@ export class Engine {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.unsubDecoded();
+    this.store.abortAll();
     this.pool.clear();
     try {
       this.master.disconnect();
@@ -141,7 +142,7 @@ export class Engine {
   setOrder(order: string[], cursorIndex: number): void {
     this.order = order;
     this.cursorIndex = cursorIndex;
-    this.prefetcher.cursor(cursorIndex, this.nowMs());
+    this.prefetcher.cursor(cursorIndex, this.nowMs(), /*jump*/ true);
   }
 
   cursor(index: number): void {
@@ -171,7 +172,11 @@ export class Engine {
     this.timeline.pause(now);
     this.audibleChain?.release(now, AUDIO.SWITCH_XFADE);
     this.audibleChain = null;
-    this.pending = null;
+    if (this.pending) {
+      // the user asked for this variant; play() will resume on it
+      this.setAudible(this.pending.variant, null);
+      this.pending = null;
+    }
     this.setStatus('paused');
   }
 
@@ -218,7 +223,7 @@ export class Engine {
 
   /** Ask to hear `variant`. `selectedAtMs` = the originating input timestamp for latency metrics. */
   select(variant: string, selectedAtMs: number = this.nowMs()): void {
-    if (!this.set.variants[variant]) return;
+    if (!Object.hasOwn(this.set.variants, variant)) return;
     const token = ++this.seq;
     if (variant === this.audible && !this.pending && this.audibleChain && !this.audibleChain.releasing) return;
     this.pending = { token, variant, sinceMs: this.nowMs(), selectedAtMs, fade: AUDIO.SWITCH_XFADE };
@@ -347,8 +352,10 @@ export class Engine {
       return false;
     });
     if (this.timeline.playing) {
-      if (this.timeline.loop) this.timeline.rebase(now);
-      else if (this.timeline.ended(now)) {
+      if (this.timeline.loop) {
+        const n = this.timeline.rebase(now);
+        if (n > 0) for (const c of this.pool.chains) c.shift(-n * this.set.duration_s);
+      } else if (this.timeline.ended(now)) {
         this.timeline.pause(now);
         this.audibleChain?.release(now, AUDIO.SWITCH_XFADE);
         this.audibleChain = null;
@@ -367,7 +374,7 @@ export class Engine {
     if (this.tickN % 4 === 0) {
       this.prefetcher.decay(nowMs);
       const settled = !this.pending && nowMs - this.lastSwitchMs >= POLICY.settleMs;
-      this.prefetcher.tick(this.position(), this.audible, settled);
+      this.prefetcher.tick(this.position(), this.audibleChain?.variant ?? this.audible, settled, this.timeline.loop);
     }
   }
 

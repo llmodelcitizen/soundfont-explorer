@@ -82,23 +82,23 @@ export class Fetcher {
   reprioritize(url: string, priority: number, range?: { start: number; end: number }): void {
     const id = Fetcher.id(url, range);
     const p = this.queue.find((q) => q.id === id);
-    if (p && p.priority !== priority) {
+    if (p && priority < p.priority) {
       p.priority = priority;
       this.sort();
     }
   }
 
   /** Abort queued or in-flight requests matching tag + predicate (sticky ones are skipped). */
-  abortWhere(pred: (url: string, opts: FetchOpts) => boolean): number {
+  abortWhere(pred: (url: string, opts: FetchOpts) => boolean, force = false): number {
     let n = 0;
     this.queue = this.queue.filter((p) => {
-      if (p.opts.sticky || !pred(p.url, p.opts)) return true;
+      if ((p.opts.sticky && !force) || !pred(p.url, p.opts)) return true;
       p.reject(new AbortedError(p.url));
       n++;
       return false;
     });
     for (const p of [...this.inflight.values()]) {
-      if (p.opts.sticky || !pred(p.url, p.opts)) continue;
+      if ((p.opts.sticky && !force) || !pred(p.url, p.opts)) continue;
       p.controller?.abort();
       n++;
     }

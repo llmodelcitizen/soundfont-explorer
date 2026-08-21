@@ -81,6 +81,7 @@ class Job:
             "version": e.get("version"),
             "commit": e.get("commit"),
             "base_args": e.get("base_args"),
+            "chips": e.get("chips"),
             "core": self.core,
             "start_offset_s": e.get("start_offset_s") or 0.0,
             "drift_ppm": e.get("drift_ppm") or 0,
@@ -194,6 +195,8 @@ def classify(job: Job, paths: Paths) -> str:
         return State.TODO
     if meta.get("status") == "failed":
         return State.FAILED
+    if meta.get("status") == "running":   # interrupted mid-job
+        return State.TODO
     if meta.get("spec_hash") == job.spec_hash and outputs_complete(job, paths):
         return State.DONE
     if meta.get("master_hash") == job.master_hash and job.master_path(paths).exists():

@@ -43,7 +43,7 @@ export function parseSet(raw: unknown): SetDoc {
     hash: String(g.hash),
     variants: Array.isArray(g.variants) ? g.variants.map(String) : [],
   }));
-  const variants: Record<string, SetVariant> = {};
+  const variants: Record<string, SetVariant> = Object.create(null) as Record<string, SetVariant>;
   if (isObj(raw.variants)) {
     for (const [id, v] of Object.entries(raw.variants)) {
       if (!isObj(v)) continue;
@@ -58,9 +58,10 @@ export function parseSet(raw: unknown): SetDoc {
     }
   }
   for (const id of order) {
-    if (!variants[id]) throw new ContractError(`set: order references unknown variant ${id}`);
-    const g = groups[variants[id].group];
-    if (!g || g.variants[variants[id].slot] !== id) throw new ContractError(`set: group/slot mismatch for ${id}`);
+    const v = Object.hasOwn(variants, id) ? variants[id] : undefined;
+    if (!v) throw new ContractError(`set: order references unknown variant ${id}`);
+    const g = groups[v.group];
+    if (!g || g.variants[v.slot] !== id) throw new ContractError(`set: group/slot mismatch for ${id}`);
   }
   return {
     schema: 1,

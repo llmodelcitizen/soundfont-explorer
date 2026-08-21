@@ -27,7 +27,7 @@ export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement
   return h(
     'article',
     { class: 'credits' },
-    h('p', null, h('a', { href: '/' }, '← back to the player')),
+    h('p', null, h('a', { href: '#', class: 'btn link' }, '← back to the player')),
     h('h1', null, 'About'),
     h(
       'p',

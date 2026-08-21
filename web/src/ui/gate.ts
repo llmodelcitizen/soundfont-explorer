@@ -13,6 +13,7 @@ export function showGate(root: HTMLElement, title: string, text: string, button:
     };
     btn.addEventListener('click', go);
     overlay.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // the player's key map must not see keys meant for the gate
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         go();

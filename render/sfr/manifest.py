@@ -48,6 +48,30 @@ def _sweep(dirpath: Path, keep: set[str]) -> None:
 FACET_KEYS = ("engine", "chip", "type", "completeness", "bank_map", "size", "lineage", "decade", "quality")
 
 
+def _song_entry(song: dict, duration_s: int, variant_count: int, set_path: str) -> dict:
+    return {
+        "id": song["id"], "title": song.get("title"), "composer": song.get("composer"),
+        "sequencer": song.get("sequencer"), "source_url": song.get("source_url"),
+        "license": song.get("license"), "modifications": song.get("modifications") or "none",
+        "duration_s": int(duration_s), "variant_count": variant_count, "set": set_path,
+    }
+
+
+def _existing_set(public: Path, song_id: str) -> tuple[str, dict] | None:
+    """The song's current set document under out/public/s/<song>/ (there is exactly one after a sweep)."""
+    d = public / "s" / song_id
+    if not d.exists():
+        return None
+    files = sorted((p for p in d.glob("*.json")), key=lambda p: p.stat().st_mtime)
+    if not files:
+        return None
+    latest = files[-1]
+    try:
+        return latest.stem, json.loads(latest.read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def build_catalog(variants: list[dict], engines_json: dict) -> dict:
     engines = []
     for eid, e in engines_json["engines"].items():
@@ -122,6 +146,16 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
     report: dict[str, Any] = {"catalog": f"/c/{chash}.json", "songs": {}}
     for song in songs:
         sid = song["id"]
+        if sid not in jobs_by_song:
+            # not selected this run: keep the song's current published set untouched
+            existing = _existing_set(public, sid)
+            if existing is None:
+                report["songs"][sid] = {"skipped": "not selected, no existing set"}
+                continue
+            shash, sdoc = existing
+            song_entries.append(_song_entry(song, sdoc["duration_s"], len(sdoc["order"]), f"/s/{sid}/{shash}.json"))
+            report["songs"][sid] = {"kept": f"/s/{sid}/{shash}.json", "variants": len(sdoc["order"])}
+            continue
         jobs = jobs_by_song.get(sid, [])
         ok_meta: dict[str, dict] = {}
         excluded: list[dict] = []
@@ -162,12 +196,7 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
             for p in ldir.iterdir():
                 if p.is_dir() and p.name not in live_l:
                     shutil.rmtree(p)
-        song_entries.append({
-            "id": sid, "title": song.get("title"), "composer": song.get("composer"),
-            "sequencer": song.get("sequencer"), "source_url": song.get("source_url"),
-            "license": song.get("license"), "modifications": song.get("modifications") or "none",
-            "duration_s": D, "variant_count": len(order), "set": f"/s/{sid}/{shash}.json",
-        })
+        song_entries.append(_song_entry(song, D, len(order), f"/s/{sid}/{shash}.json"))
         report["songs"][sid] = {"variants": len(order), "excluded": len(excluded), "set": f"/s/{sid}/{shash}.json",
                                "groups": len(packed["groups"]),
                                "excluded_reasons": sorted({e["reason"].split(":")[0] for e in excluded})}

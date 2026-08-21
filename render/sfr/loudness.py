@@ -53,8 +53,12 @@ def master_filter(gain: float, settings: RenderSettings, duration_s: int, *,
     sr = settings.sample_rate
     parts = [f"volume={gain:.4f}dB", "aformat=channel_layouts=stereo"]
     if drift_ppm:
-        # the engine's clock runs fast/slow by drift_ppm: relabel the rate before resampling
-        parts.append(f"asetrate={native_rate * (1.0 + drift_ppm / 1e6):.6f}")
+        # the engine's clock runs fast/slow by drift_ppm: relabel the rate before resampling.
+        # asetrate takes integer Hz (22.7 ppm steps at 44.1 k), so go through a 10× intermediate
+        # rate first: resolution becomes ~2.3 ppm at the cost of one extra (cheap) resample.
+        hi = native_rate * 10
+        parts.append(f"aresample={hi}:resampler=soxr:precision=28")
+        parts.append(f"asetrate={round(hi * (1.0 + drift_ppm / 1e6))}")
     parts.append(f"aresample={sr}:resampler=soxr:precision=28")
     off = round(start_offset_s * sr)
     if off > 0:          # engine audio lags the reference → advance it

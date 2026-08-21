@@ -3,10 +3,13 @@
  * velocity-scaled radius around the cursor for the current and next slice(s); settled audible
  * variant gets its listen slices. Packs are never aborted; listen fetches beyond 2R are.
  */
-import { NET } from '../config';
+import { CACHE, NET } from '../config';
 import type { SetDoc } from '../contracts/set';
 import { listenUrl } from '../contracts/set';
 import type { SegmentStore, Want } from './store';
+
+/** decoded bytes of one scrub segment (f32 stereo at the set's sample count) */
+const segBytes = (set: SetDoc): number => set.segment_samples * 2 * 4;
 
 export const PRIO = {
   URGENT: 0,
@@ -33,10 +36,24 @@ export class Prefetcher {
     this.getOrder = getOrder;
   }
 
-  /** Called whenever the cursor (selection) moves; `now` in ms. */
-  cursor(index: number, now: number): void {
+  /**
+   * Decode radius: how many neighbours (each side) we can keep decoded without thrashing the
+   * decoded LRU: ≈ 60 % of the budget for 3 slices per neighbour (the rest: listen tier + pins).
+   */
+  decodeRadius(budgetBytes: number = CACHE.decodedBytes): number {
+    const perNeighbour = 3 * segBytes(this.set);
+    return Math.max(1, Math.floor((0.6 * budgetBytes) / perNeighbour / 2));
+  }
+
+  /** Called whenever the cursor (selection) moves; `now` in ms. `jump` = not a scrub step (no velocity). */
+  cursor(index: number, now: number, jump = false): void {
     const dt = (now - this.lastMoveAt) / 1000;
     const di = index - this.lastIndex;
+    if (jump) {
+      this.lastIndex = index;
+      this.lastMoveAt = now;
+      return;
+    }
     if (di !== 0) this.direction = Math.sign(di);
     if (this.lastMoveAt > 0 && dt > 0 && dt < 2) {
       const inst = Math.abs(di) / dt;
@@ -56,12 +73,16 @@ export class Prefetcher {
     }
   }
 
-  /** Compute and issue the want-set. `pos` = song position (s); audible = settled audible variant or null. */
-  tick(pos: number, audible: string | null, settled: boolean): Want[] {
+  /**
+   * Compute and issue the want-set. `pos` = song position (s); `audible` = the variant currently
+   * playing (its listen fetches are always kept); listen slices are only *added* once settled.
+   */
+  tick(pos: number, audible: string | null, settled: boolean, loop = false): Want[] {
     const order = this.getOrder();
     if (!order.length) return [];
     const i = Math.min(Math.max(this.lastIndex, 0), order.length - 1);
     const R = this.radius;
+    const Rd = this.decodeRadius();
     const s0 = Math.min(Math.floor(pos / this.set.slice_s), this.set.slices - 1);
     const inSlice = pos - s0 * this.set.slice_s;
     const slices = [s0, s0 + 1];
@@ -69,29 +90,32 @@ export class Prefetcher {
     const wants: Want[] = [];
     for (let j = Math.max(0, i - R); j <= Math.min(order.length - 1, i + R); j++) {
       const v = order[j]!;
+      const dist = Math.abs(j - i);
       const dirMatch = j === i || Math.sign(j - i) === this.direction;
-      const cost = Math.abs(j - i) * (dirMatch ? 1 : NET.directionPenalty) + 1;
+      const cost = dist * (dirMatch ? 1 : NET.directionPenalty) + 1;
+      const fetchOnly = dist > Rd;
       slices.forEach((s, n) => {
+        if (s >= this.set.slices && !loop) return; // no wrap-around prefetch unless looping
         const si = this.set.slices > 0 ? s % this.set.slices : s;
-        wants.push({ key: { v, tier: 's', i: si }, priority: cost + n * 0.25 });
+        wants.push({ key: { v, tier: 's', i: si }, priority: cost + n * 0.25, fetchOnly });
       });
     }
-    if (audible && settled && this.set.listen.slices > 0) {
+    const keep = new Set<string>();
+    if (audible && this.set.listen.slices > 0) {
       const k = Math.min(Math.floor(pos / this.set.listen.slice_s), this.set.listen.slices - 1);
-      wants.push({ key: { v: audible, tier: 'l', i: k }, priority: PRIO.AUDIBLE_LISTEN });
       const k1 = (k + 1) % this.set.listen.slices;
-      wants.push({ key: { v: audible, tier: 'l', i: k1 }, priority: PRIO.AUDIBLE_NEXT });
-      // abort listen fetches that are no longer the audible variant's
       const rh = this.set.variants[audible]?.render_hash;
-      const keep = new Set<string>();
       if (rh) {
         keep.add(listenUrl(this.set, rh, k));
         keep.add(listenUrl(this.set, rh, k1));
       }
-      this.store.abortListen(keep);
-    } else if (!audible || !settled) {
-      this.store.abortListen(new Set());
+      if (settled) {
+        wants.push({ key: { v: audible, tier: 'l', i: k }, priority: PRIO.AUDIBLE_LISTEN });
+        if (k1 !== k && (loop || k + 1 < this.set.listen.slices)) wants.push({ key: { v: audible, tier: 'l', i: k1 }, priority: PRIO.AUDIBLE_NEXT });
+      }
     }
+    // listen fetches for anything but the audible variant's current/next slice are wasted
+    this.store.abortListen(keep);
     this.lastWants = wants.length;
     this.store.want(wants);
     return wants;

@@ -17,11 +17,14 @@ from .config import Paths, load_engines, load_settings, load_songs, load_variant
 from .jobs import State, classify, plan_jobs, read_meta
 
 
-def add_path_args(p: argparse.ArgumentParser) -> None:
+def add_path_args(p: argparse.ArgumentParser, top: bool = False) -> None:
+    """Path flags are accepted both before and after the sub-command (SUPPRESS keeps the
+    sub-parser from clobbering values given at the top level)."""
     g = p.add_argument_group("paths (defaults from SFR_* env; the image sets them to the bind mounts)")
+    d = None if top else argparse.SUPPRESS
     for name in ("fonts", "songs", "catalog", "roms", "work", "out"):
-        g.add_argument(f"--{name}", type=Path)
-    g.add_argument("--engines", type=Path, dest="engines_json", help="render/engines.json")
+        g.add_argument(f"--{name}", type=Path, default=d)
+    g.add_argument("--engines", type=Path, dest="engines_json", default=d, help="render/engines.json")
 
 
 def add_select_args(p: argparse.ArgumentParser) -> None:
@@ -86,6 +89,18 @@ def validate_environment(paths: Paths, jobs) -> None:
                 if flag not in usage:
                     raise SystemExit(f"adlmidiplay does not know {flag} (an unknown flag is silently "
                                      f"treated as a bank file — MVP footgun)")
+    # soft version check: a package upgrade would silently change audio behind an unchanged hash
+    try:
+        import subprocess
+        ej = load_engines(paths)["engines"]
+        if "fluidsynth" in engines_needed and ej.get("fluidsynth", {}).get("version"):
+            out = subprocess.run(["fluidsynth", "--version"], capture_output=True, text=True).stdout
+            want = ej["fluidsynth"]["version"]
+            if want not in out:
+                print(f"WARNING: fluidsynth reports {out.strip().splitlines()[0]!r} but engines.json pins {want}; "
+                      f"update engines.json (changes master hashes) or rebuild the image", file=sys.stderr)
+    except Exception:  # noqa: BLE001 - advisory only
+        pass
     paths.work.mkdir(parents=True, exist_ok=True)
     st = os.statvfs(paths.work)
     free_gb = st.f_bavail * st.f_frsize / 1e9
@@ -191,15 +206,24 @@ def cmd_status(args) -> int:
 
 
 def cmd_manifest(args) -> int:
+    """Validate + pack + write manifests. Only --song narrows the work; every other song keeps its
+    current published set, and --variant/--engine/--limit are ignored (a set must always describe
+    every rendered variant of a song, never a subset)."""
     from .manifest import build_manifests
     paths = paths_from(args)
-    if not args.song and not args.engine and not args.variant:
+    if args.variant or args.engine or args.limit:
+        print("manifest: --variant/--engine/--limit are ignored (sets always cover every variant)", file=sys.stderr)
+    args.variant = args.engine = None
+    args.limit = None
+    if not args.song:
         args.all = True
     jobs, settings, engines_json, songs, variants = select_jobs(args, paths)
     by_song: dict[str, list] = defaultdict(list)
     for j in jobs:
         by_song[j.song_id].append(j)
-    songs = [s for s in songs if s["id"] in by_song]
+    if args.song:
+        for sid in args.song:
+            by_song.setdefault(sid, [])   # selected but nothing planned → still rebuilt (possibly empty)
     report = build_manifests(paths, songs, variants, settings, engines_json, by_song, thorough=args.thorough,
                              defaults={"song": args.default_song, "variant": args.default_variant})
     print(json.dumps(report, indent=1))
@@ -245,6 +269,7 @@ def cmd_calibrate(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="sfr", description="Soundfont Explorer render pipeline")
     p.add_argument("--version", action="version", version=f"sfr {__version__}")
+    add_path_args(p, top=True)
     sub = p.add_subparsers(dest="cmd")
 
     s = sub.add_parser("doctor", help="tool versions and paths in this environment"); add_path_args(s)

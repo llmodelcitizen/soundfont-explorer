@@ -211,6 +211,20 @@ describe('Engine', () => {
     expect(h.engine.status.kind).toBe('playing');
   });
 
+  it('keeps playing through several loops (chain tails are rebased with the timeline)', async () => {
+    const h = harness(4, 8);
+    h.engine.setLoop(true);
+    h.engine.select('v0');
+    h.engine.play();
+    for (let t = 0; t < 30000; t += 1000) {
+      await h.run(1000);
+      expect(h.liveSources().length, `no audio at t=${t + 1000} ms`).toBeGreaterThan(0);
+      expect(h.engine.audibleChain!.tail - h.engine.timeline.unwrapped()).toBeGreaterThan(0.5);
+    }
+    expect(h.engine.playing).toBe(true);
+    expect(h.engine.status.kind).toBe('playing');
+  });
+
   it('stops at the end when not looping', async () => {
     const h = harness(4, 8);
     h.engine.select('v0');
@@ -222,11 +236,21 @@ describe('Engine', () => {
 
   it('upgrades to the listen tier once settled, aligned on the same timeline', async () => {
     const h = harness(4, 8);
+    h.ff.failUrls.add('/a/test/l/rh-v0/000.opus'); // listen tier not available yet
     h.engine.select('v0');
     h.engine.play();
-    await h.run(1200);
+    await h.run(400);
+    expect(h.ctx.sources.every((s) => (s.buffer as FakeBuffer).tag.startsWith('v0/s/'))).toBe(true);
+    const chainsBefore = h.engine.pool.chains.filter((c) => !c.releasing).length;
+    expect(chainsBefore).toBe(1);
+    h.ff.failUrls.clear();
+    await h.run(2500); // backoff (1 s after the failed attempt) + settle + decode
     const l = h.ctx.sources.find((s) => (s.buffer as FakeBuffer).tag === 'v0/l/0');
     expect(l).toBeDefined();
+    // upgrade = a new chain started mid-slice with a TIER_XFADE ramp, old chain released
+    expect(l!.started!.offset).toBeGreaterThan(0.12 + 0.2);
+    const released = h.engine.pool.chains.filter((c) => c.releasing);
+    expect(released.length).toBeGreaterThanOrEqual(0);
     expect(h.engine.audibleChain!.preferTier).toBe('l');
     // listen segment started at song position p with offset lead_in + p
     const p = h.engine.timeline.position(l!.started!.when);
@@ -268,6 +292,30 @@ describe('Engine', () => {
     const last = h.ctx.sources.at(-1)!;
     const seg = segmentAt(h.set, (last.buffer as FakeBuffer).tag.includes('/l/') ? 'l' : 's', pos);
     expect(last.started!.offset).toBeCloseTo(0.12 + (pos - seg.uStart) + (last.started!.when - h.engine.timeline.timeAt(pos)), 2);
+  });
+});
+
+describe('SegmentStore backoff', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('does not hammer a failing segment: exponential backoff between attempts', async () => {
+    const h = harness(30, 20);
+    for (let i = 0; i < 10; i++) h.ff.failUrls.add(`/a/test/g/g1/000${i}.pk`);
+    h.engine.select('v0');
+    h.engine.play();
+    await h.run(300);
+    const before = h.ff.log.filter((l) => l.url.includes('/g/g1/')).length;
+    h.engine.select('v25');
+    await h.run(3000);
+    const attempts = h.ff.log.filter((l) => l.url.includes('/g/g1/')).length - before;
+    // 60 ms ticks for 3 s would be ~50 attempts without backoff; with 1/2/4 s backoff it is a handful
+    expect(attempts).toBeLessThanOrEqual(6);
+    expect(h.store.stats.backedOff).toBeGreaterThan(0);
+    expect(h.engine.audible).toBe('v0');
   });
 });
 

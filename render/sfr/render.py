@@ -92,6 +92,8 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                              "cmd": " ".join(spec.argv), "render_seconds": timings["render_s"],
                              "render_cpu_seconds_approx": timings["render_cpu_s_approx"]})
                 if is_silent(meas["input_i"], job.settings):
+                    if logs:
+                        logs.job(f"failed {job.key} silent ({meas['input_i']} LUFS)")
                     return _fail(job, paths, "silent", f"integrated loudness {meas['input_i']} LUFS", t0,
                                  {"lufs": meas["input_i"], "tp": meas["input_tp"]})
                 # ---- 3. gain, 4. master -----------------------------------
@@ -148,6 +150,13 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
             logs.error(job.key, e.reason, e.detail)
             logs.job(f"failed {job.key} {e.reason}")
         return _fail(job, paths, e.reason, e.detail, t0)
+    except Exception as e:  # noqa: BLE001 — a bug must still leave a failed meta + a log line
+        import traceback
+        detail = traceback.format_exc()
+        if logs:
+            logs.error(job.key, "exception", detail)
+            logs.job(f"failed {job.key} exception {type(e).__name__}")
+        return _fail(job, paths, "exception", detail, t0)
     finally:
         if not keep_tmp:
             shutil.rmtree(tmp, ignore_errors=True)

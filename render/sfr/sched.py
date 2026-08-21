@@ -18,6 +18,24 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 
+# every live child process group, so an interrupt can kill them all
+_LIVE: set[int] = set()
+_LIVE_LOCK = threading.Lock()
+
+
+def kill_all_children() -> int:
+    n = 0
+    with _LIVE_LOCK:
+        pids = list(_LIVE)
+    for pid in pids:
+        try:
+            os.killpg(pid, signal.SIGKILL)
+            n += 1
+        except ProcessLookupError:
+            pass
+    return n
+
+
 class JobError(Exception):
     def __init__(self, reason: str, detail: str = ""):
         super().__init__(f"{reason}: {detail}" if detail else reason)
@@ -58,13 +76,23 @@ def run(argv: list[str], *, cwd: Path | None = None, timeout_s: int = 900, input
         full_env.update(env)
     t0 = time.monotonic()
     r0 = os.times()
+    # address-space limit: prefer `prlimit` (util-linux, always in Debian) over preexec_fn, which
+    # CPython documents as unsafe with threads
+    preexec = None
+    if rlimit_as:
+        if shutil.which("prlimit"):
+            argv = ["prlimit", f"--as={rlimit_as}", "--", *argv]
+        else:
+            preexec = _preexec(rlimit_as)
     proc = subprocess.Popen(
         argv, cwd=str(cwd) if cwd else None, env=full_env,
         stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
         stderr=subprocess.PIPE if capture else subprocess.DEVNULL,
-        start_new_session=True, preexec_fn=_preexec(rlimit_as),
+        start_new_session=True, preexec_fn=preexec,
     )
+    with _LIVE_LOCK:
+        _LIVE.add(proc.pid)
     try:
         out, err = proc.communicate(input=input_bytes, timeout=timeout_s)
     except subprocess.TimeoutExpired:
@@ -74,6 +102,15 @@ def run(argv: list[str], *, cwd: Path | None = None, timeout_s: int = 900, input
             pass
         proc.wait()
         raise JobError("timeout", f"{what or argv[0]} exceeded {timeout_s}s")
+    except BaseException:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        raise
+    finally:
+        with _LIVE_LOCK:
+            _LIVE.discard(proc.pid)
     r1 = os.times()
     res = Completed(argv, proc.returncode, out or b"", err or b"", time.monotonic() - t0,
                     (r1.children_user - r0.children_user) + (r1.children_system - r0.children_system))
@@ -154,6 +191,8 @@ class Runner:
                           f"running={len(self.running)} mem_free={self.sem.available} elapsed={el:.0f}s "
                           f"eta={eta:.0f}s  {oldest}")
 
+    interrupted = False
+
     def run_all(self, items: Iterable, fn: Callable[[object], Outcome]) -> list[Outcome]:
         items = list(items)
         results: list[Outcome] = []
@@ -161,14 +200,24 @@ class Runner:
         t0 = time.monotonic()
         th = threading.Thread(target=self._progress, args=(len(items), t0, stop), daemon=True)
         th.start()
+        ex = ThreadPoolExecutor(max_workers=self.workers)
         try:
-            with ThreadPoolExecutor(max_workers=self.workers) as ex:
-                futs = {ex.submit(self._wrap, it, fn): it for it in items}
-                for fut in as_completed(futs):
-                    results.append(fut.result())
+            futs = {ex.submit(self._wrap, it, fn): it for it in items}
+            for fut in as_completed(futs):
+                results.append(fut.result())
+        except KeyboardInterrupt:
+            # Ctrl-C: drop everything queued, kill every engine/ffmpeg process group, report
+            self.interrupted = True
+            self.echo("\n[sfr] interrupted — cancelling queued jobs and killing running processes")
+            ex.shutdown(wait=False, cancel_futures=True)
+            killed = kill_all_children()
+            self.echo(f"[sfr] killed {killed} process group(s); partial outputs are left as 'running' meta "
+                      f"and will be redone on the next run")
+            raise
         finally:
             stop.set()
             th.join(timeout=1)
+            ex.shutdown(wait=not self.interrupted, cancel_futures=True)
         return results
 
     def _wrap(self, item, fn) -> Outcome:

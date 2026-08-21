@@ -16,7 +16,13 @@ export interface UrlState {
 }
 
 const encV = (s: string) => encodeURIComponent(s).replace(/%20/g, '+');
-const decV = (s: string) => decodeURIComponent(s.replace(/\+/g, ' '));
+const decV = (s: string): string => {
+  try {
+    return decodeURIComponent(s.replace(/\+/g, ' '));
+  } catch {
+    return s; // malformed %-escape: keep the raw text, it just won't match anything
+  }
+};
 
 export function encodeFilters(sel: Selection): string {
   const parts: string[] = [];
