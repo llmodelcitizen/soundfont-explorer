@@ -308,8 +308,12 @@ export class App {
     });
     const helpBtn = h('button', { class: 'btn', type: 'button', title: 'keys (?)' }, '?');
     helpBtn.addEventListener('click', () => this.keymap.toggle());
-    const dbgBtn = h('button', { class: 'btn dbg-btn', type: 'button', title: 'debug panel (D)' }, 'dbg');
-    dbgBtn.addEventListener('click', () => this.debug.toggle());
+    const dbgBtn = h('button', { class: 'btn icon dbg-btn', type: 'button', title: 'debug panel (D)', 'aria-label': 'debug panel' });
+    dbgBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M8 2l1.88 1.88M14.12 3.88L16 2M9 7.13v-1a3 3 0 0 1 6 0v1"/>' +
+      '<path d="M12 20c-3.3 0-6-2.7-6-6v-3a6 6 0 0 1 12 0v3c0 3.3-2.7 6-6 6z"/>' +
+      '<path d="M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>';
     const settingsBtn = h('button', { class: 'btn icon', type: 'button', title: 'settings (S)', 'aria-label': 'settings' });
     settingsBtn.innerHTML =
       '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -323,10 +327,10 @@ export class App {
       this.picker.el,
       h('div', { class: 'spacer' }),
       themeSel,
-      h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
       settingsBtn,
       dbgBtn,
       helpBtn,
+      h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
     );
     this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.nowPlaying.el);
     this.root.append(this.header, this.main, this.transport.el, this.debug.el, this.keymap.el, this.settings.el);

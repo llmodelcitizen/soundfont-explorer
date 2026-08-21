@@ -62,16 +62,6 @@
 [data-theme='win95'] .top .btn {
   color: #000;
 }
-[data-theme='win95'] .top::after {
-  content: '_  □  ×';
-  font: bold 10px/14px 'Marlett', Tahoma, sans-serif;
-  color: #000;
-  background: #c0c0c0;
-  box-shadow: var(--bevel-out);
-  padding: 0 4px;
-  margin-left: 6px;
-  letter-spacing: 0.2em;
-}
 [data-theme='win95'] .btn,
 [data-theme='win95'] .opt {
   border: 0;
@@ -157,10 +147,11 @@
   padding: 10px 12px 14px;
 }
 [data-theme='win95'] .dbg-head {
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px 8px;
+  gap: 12px;
+  padding: 4px 8px 8px;
   margin-bottom: 8px;
   border-bottom: 1px solid #808080;
 }
@@ -168,7 +159,8 @@
   font-size: 12px;
 }
 [data-theme='win95'] .dbg-actions {
-  justify-content: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 [data-theme='win95'] .dbg-body {
   padding: 8px 10px;
@@ -219,4 +211,12 @@
   border-radius: 0;
   border: 1px dashed #000080;
   color: #000080;
+}
+
+/* header buttons: 2 px taller at the bottom */
+[data-theme='win95'] .top .btn {
+  padding-bottom: 6px;
+}
+[data-theme='win95'] .top .btn.icon {
+  padding: 3px 7px 5px;
 }
