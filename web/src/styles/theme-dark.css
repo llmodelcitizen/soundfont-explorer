@@ -1,0 +1,36 @@
+/* The dark 90s look (MVP palette). */
+:root,
+[data-theme='dark'] {
+  --bg: #0b0d10;
+  --panel: #12151a;
+  --panel-2: #0f1216;
+  --fg: #cfd6dd;
+  --fg-dim: #7f8a96;
+  --line: #252a31;
+  --line-faint: #171b20;
+  --accent: #66ff99;
+  --accent-fg: #062b14;
+  --sel: #1f3b2a;
+  --sel-fg: #e9ffe9;
+  --row-hover: #161b21;
+  --btn-bg: #1a1f26;
+  --btn-hover: #232a33;
+  --input-bg: #0e1115;
+  --badge-bg: #2a313a;
+  --badge-fg: #dfe6ee;
+  --warn: #ffcc66;
+  --bad: #ff6b6b;
+  --overlay: rgba(0, 0, 0, 0.72);
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  --radius: 3px;
+  --row-h: 24px;
+  --font: 14px/1.4 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --mono: 12px/1.4 ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace;
+  --c-sf2: #2b4b7a;
+  --c-opl: #7a3a2b;
+  --c-opn: #6a2b7a;
+  --c-edm: #2b6a5a;
+  --c-gus: #7a6a2b;
+  --c-sc55: #3a3a7a;
+  --c-la: #7a2b5a;
+}

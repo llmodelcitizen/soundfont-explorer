@@ -1,0 +1,140 @@
+/* Windows 95 light mode (easter egg, T / ?theme=win95). Hand-rolled bevels, no 98.css. */
+[data-theme='win95'] {
+  --bg: #008080;
+  --panel: #c0c0c0;
+  --panel-2: #c0c0c0;
+  --fg: #000;
+  --fg-dim: #404040;
+  --line: #808080;
+  --line-faint: #dcdcdc;
+  --accent: #000080;
+  --accent-fg: #fff;
+  --sel: #000080;
+  --sel-fg: #fff;
+  --row-hover: #d4d0c8;
+  --btn-bg: #c0c0c0;
+  --btn-hover: #d4d0c8;
+  --input-bg: #fff;
+  --badge-bg: #808080;
+  --badge-fg: #fff;
+  --warn: #800000;
+  --bad: #ff0000;
+  --overlay: rgba(0, 0, 0, 0.35);
+  --shadow: none;
+  --radius: 0;
+  --row-h: 20px;
+  --font: 11px/1.35 Tahoma, 'MS Sans Serif', 'Microsoft Sans Serif', Arial, sans-serif;
+  --mono: 11px/1.35 'Fixedsys', 'Lucida Console', Consolas, monospace;
+  --c-sf2: #000080;
+  --c-opl: #800000;
+  --c-opn: #800080;
+  --c-edm: #008000;
+  --c-gus: #808000;
+  --c-sc55: #000080;
+  --c-la: #800080;
+  --bevel-out: inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
+  --bevel-in: inset 1px 1px #000, inset -1px -1px #fff, inset 2px 2px #808080, inset -2px -2px #dfdfdf;
+}
+[data-theme='win95'] body {
+  background: #008080;
+}
+[data-theme='win95'] #app {
+  background: #c0c0c0;
+  margin: 6px;
+  height: calc(100% - 12px);
+  box-shadow: var(--bevel-out);
+  padding: 3px;
+}
+[data-theme='win95'] .top {
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: #fff;
+  border: 0;
+  padding: 3px 6px;
+  position: relative;
+}
+[data-theme='win95'] .top .brand,
+[data-theme='win95'] .top .sub {
+  color: #fff;
+}
+[data-theme='win95'] .top::after {
+  content: '_  □  ×';
+  font: bold 10px/14px 'Marlett', Tahoma, sans-serif;
+  color: #000;
+  background: #c0c0c0;
+  box-shadow: var(--bevel-out);
+  padding: 0 4px;
+  margin-left: 6px;
+  letter-spacing: 0.2em;
+}
+[data-theme='win95'] .btn,
+[data-theme='win95'] .opt {
+  border: 0;
+  box-shadow: var(--bevel-out);
+  background: #c0c0c0;
+  color: #000;
+}
+[data-theme='win95'] .btn:active,
+[data-theme='win95'] .btn.on,
+[data-theme='win95'] .btn[aria-pressed='true'],
+[data-theme='win95'] .opt.on {
+  box-shadow: var(--bevel-in);
+  background: #dfdfdf;
+  color: #000;
+}
+[data-theme='win95'] .btn.primary {
+  background: #c0c0c0;
+  color: #000;
+  outline: 1px solid #000;
+  outline-offset: -4px;
+}
+[data-theme='win95'] .search,
+[data-theme='win95'] .songpicker,
+[data-theme='win95'] .themepick,
+[data-theme='win95'] .list,
+[data-theme='win95'] .nowplaying,
+[data-theme='win95'] .dbg-body {
+  border: 0;
+  box-shadow: var(--bevel-in);
+  background: #fff;
+}
+[data-theme='win95'] .row {
+  border-bottom: 0;
+}
+[data-theme='win95'] .row.audible .label {
+  color: #000080;
+}
+[data-theme='win95'] .gate-box,
+[data-theme='win95'] .overlay-box,
+[data-theme='win95'] .debug {
+  border: 0;
+  box-shadow: var(--bevel-out);
+  padding: 0 0 12px;
+}
+[data-theme='win95'] .gate-box h1,
+[data-theme='win95'] .overlay-box h2 {
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 3px 6px;
+  margin: 3px 3px 12px;
+}
+[data-theme='win95'] .gate-box p,
+[data-theme='win95'] .gate-box .btn,
+[data-theme='win95'] .overlay-box table,
+[data-theme='win95'] .overlay-box p {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+[data-theme='win95'] .transport,
+[data-theme='win95'] .filterbar {
+  background: #c0c0c0;
+  border: 0;
+}
+[data-theme='win95'] .transport .seek,
+[data-theme='win95'] .transport .vol {
+  accent-color: #000080;
+}
+[data-theme='win95'] .tier.l {
+  color: #000080;
+}

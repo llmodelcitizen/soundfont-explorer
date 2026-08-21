@@ -1,0 +1,9 @@
+import './styles/base.css';
+import './styles/theme-dark.css';
+import './styles/theme-win95.css';
+import { App } from './ui/app';
+
+const root = document.getElementById('app')!;
+new App(root).boot().catch((e) => {
+  root.textContent = `failed to start: ${(e as Error).message}`;
+});
