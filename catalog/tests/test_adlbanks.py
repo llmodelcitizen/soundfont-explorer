@@ -10,7 +10,7 @@ import unittest
 from catalog import adlbanks
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-LEGACY = os.path.join(REPO, "legacy", "mvp", "data", "banks.txt")
+LEGACY = os.path.join(REPO, "catalog", "tests", "fixtures", "adlmidiplay-banks.txt")
 COMMITTED = os.path.join(REPO, "catalog", "adl_banks.json")
 
 SAMPLE = """\
@@ -126,13 +126,13 @@ class ParseListing(unittest.TestCase):
         self.assertEqual(doc["tag_counts"]["miss_ins"], 2)
 
 
-@unittest.skipUnless(os.path.exists(LEGACY), "legacy/mvp/data/banks.txt missing")
+@unittest.skipUnless(os.path.exists(LEGACY), "catalog/tests/fixtures/adlmidiplay-banks.txt missing")
 class LegacyListing(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with open(LEGACY, encoding="utf-8") as fh:
             cls.banks = adlbanks.parse_listing(fh.read())
-        cls.doc = adlbanks.build_doc(cls.banks, {"kind": "file", "path": "legacy/mvp/data/banks.txt"})
+        cls.doc = adlbanks.build_doc(cls.banks, {"kind": "file", "path": "catalog/tests/fixtures/adlmidiplay-banks.txt"})
 
     def test_79_banks_contiguous(self):
         self.assertEqual(len(self.banks), adlbanks.EXPECTED_COUNT)

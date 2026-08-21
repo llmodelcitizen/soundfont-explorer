@@ -17,12 +17,12 @@ The player only exists inside the render image (plan §1.1), so the default is::
 
     docker run --rm sfr-render adlmidiplay --list-banks
 
-``--from-file`` parses a captured listing instead (``legacy/mvp/data/banks.txt`` is
+``--from-file`` parses a captured listing instead (``catalog/tests/fixtures/adlmidiplay-banks.txt`` is
 the MVP's capture of the same 79 lines; the tests use it so they need no docker).
 
 Usage::
 
-    python3 -m catalog.adlbanks [--from-file legacy/mvp/data/banks.txt] [--image sfr-render]
+    python3 -m catalog.adlbanks [--from-file catalog/tests/fixtures/adlmidiplay-banks.txt] [--image sfr-render]
                                 [--out catalog/adl_banks.json] [--quiet]
 """
 

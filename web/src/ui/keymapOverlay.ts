@@ -6,7 +6,7 @@ export class KeymapOverlay {
   visible = false;
   constructor() {
     const rows = KEYMAP.map(([k, d]) => h('tr', null, h('td', null, h('kbd', null, k)), h('td', null, d)));
-    this.el = h('div', { class: 'overlay hidden', role: 'dialog' }, h('div', { class: 'overlay-box' }, h('h2', null, 'keys'), h('table', { class: 'keymap' }, ...rows), h('p', { class: 'muted' }, 'Esc to close')));
+    this.el = h('div', { class: 'overlay hidden', role: 'dialog', 'aria-labelledby': 'keymap-title' }, h('div', { class: 'overlay-box' }, h('h2', { id: 'keymap-title' }, 'keys'), h('table', { class: 'keymap' }, ...rows), h('p', { class: 'muted' }, 'Esc to close')));
     this.el.addEventListener('click', (e) => {
       if (e.target === this.el) this.toggle(false);
     });
