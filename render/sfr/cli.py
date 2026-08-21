@@ -225,7 +225,9 @@ def cmd_manifest(args) -> int:
     if args.song:
         for sid in args.song:
             by_song.setdefault(sid, [])   # selected but nothing planned → still rebuilt (possibly empty)
+    from .manifest import DEFAULT_WORKERS
     report = build_manifests(paths, songs, variants, settings, engines_json, by_song, thorough=args.thorough,
+                             workers=args.workers or DEFAULT_WORKERS,
                              defaults={"song": args.default_song, "variant": args.default_variant})
     print(json.dumps(report, indent=1))
     return 0
@@ -286,6 +288,8 @@ def build_parser() -> argparse.ArgumentParser:
         s = sub.add_parser(name, help="validate, pack and write /c /s /songs.json under out/public")
         add_path_args(s); add_select_args(s)
         s.add_argument("--thorough", action="store_true", help="decode every segment with opusdec")
+        s.add_argument("--workers", type=int, default=None,
+                       help="parallel validation threads (default: min(24, cpus))")
         s.add_argument("--default-song"); s.add_argument("--default-variant", default="adl-b58")
     s = sub.add_parser("publish", help="aws s3 sync out/public (dry-run first!)"); add_path_args(s)
     s.add_argument("--bucket"); s.add_argument("--distribution")

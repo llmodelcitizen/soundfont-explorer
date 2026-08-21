@@ -2,7 +2,6 @@
 decode with opusdec under --thorough. Failures become `excluded[]` entries, never blockers."""
 from __future__ import annotations
 
-import struct
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,22 +19,22 @@ class Verdict:
     warnings: list[str] = field(default_factory=list)
 
 
-def _decoded_samples(path: Path, tmp_wav: Path) -> int:
-    subprocess.run(["opusdec", "--quiet", "--rate", "48000", "--force-stereo", str(path), str(tmp_wav)],
-                   check=True, capture_output=True, timeout=120)
-    data = tmp_wav.read_bytes()
-    # RIFF parse: find 'data' chunk
-    pos = 12
-    while pos + 8 <= len(data):
-        cid = data[pos:pos + 4]
-        sz = struct.unpack_from("<I", data, pos + 4)[0]
-        if cid == b"data":
-            return sz // 4
-        pos += 8 + sz + (sz & 1)
-    raise ValueError("no data chunk")
+# opusdec writes headerless s16le PCM to stdout when the output is "-" (a WAV header on a pipe
+# would carry placeholder lengths), so the decoded sample count is simply bytes / 4 (stereo s16).
+OPUSDEC = ["opusdec", "--quiet", "--rate", "48000", "--force-stereo"]
 
 
-def validate_job(job: Job, paths: Paths, *, thorough: bool = False, tmp_dir: Path | None = None) -> Verdict:
+def _decoded_samples(path: Path, timeout: float = 120) -> int:
+    """Fully decode one segment through a pipe and count the samples — nothing touches disk."""
+    r = subprocess.run([*OPUSDEC, str(path), "-"], check=True, stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE, timeout=timeout)
+    if len(r.stdout) % 4:
+        raise ValueError(f"odd PCM length {len(r.stdout)}")
+    return len(r.stdout) // 4
+
+
+def validate_job(job: Job, paths: Paths, *, thorough: bool = False) -> Verdict:
+    """Read-only apart from spawning opusdec, so callers may run many jobs concurrently."""
     meta = read_meta(job.meta_path(paths))
     if meta is None:
         return Verdict(False, "no-meta")
@@ -68,15 +67,13 @@ def validate_job(job: Job, paths: Paths, *, thorough: bool = False, tmp_dir: Pat
         if info.channels != 2 or info.input_rate != 48000:
             warnings.append(f"{p.name}: channels={info.channels} rate={info.input_rate}")
         if thorough:
-            td = tmp_dir or paths.tmp / "validate"
-            td.mkdir(parents=True, exist_ok=True)
-            tw = td / f"{job.song_id}__{job.variant_id}.wav"
             try:
-                got = _decoded_samples(p, tw)
+                got = _decoded_samples(p)
+            except subprocess.CalledProcessError as e:
+                err = e.stderr.decode(errors="replace").strip().splitlines()
+                return Verdict(False, f"decode:{p.name}:opusdec rc={e.returncode}" + (f" {err[-1]}" if err else ""), n)
             except Exception as e:  # noqa: BLE001
                 return Verdict(False, f"decode:{p.name}:{e}", n)
-            finally:
-                tw.unlink(missing_ok=True)
             if got != want:
                 return Verdict(False, f"decoded-samples:{p.name}:{got}!={want}", n)
         n += 1

@@ -1,19 +1,38 @@
 import json
+import os
+import shutil
+import sys
 import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from sfr.config import Paths
 from sfr.jobs import Job, write_meta
-from sfr.manifest import build_catalog, build_manifests, build_set
+from sfr import validate as validate_mod
+from sfr.manifest import build_catalog, build_manifests, build_set, validate_jobs
 from sfr.pack import group_hash, groups_of, header_size, pack_bytes, unpack_bytes
 from sfr.sched import WeightedSemaphore
 from sfr.validate import validate_job
 from .helpers import ENGINES_JSON, SETTINGS, adl_variant, sf2_variant, song
 
 FIX = Path(__file__).parent / "fixtures" / "tone-100ms.opus"
+FIX_SAMPLES = 4800   # 100 ms at 48 kHz
+
+# Stand-in for opusdec: emits headerless s16le stereo PCM on stdout exactly like the real tool does
+# for an output of "-". FAKE_OPUSDEC=short|fail selects a misbehaving decode.
+FAKE_OPUSDEC = """
+import os, sys
+if sys.argv[-1] != "-" or not os.path.exists(sys.argv[-2]):
+    sys.exit(2)
+mode = os.environ.get("FAKE_OPUSDEC", "")
+if mode == "fail":
+    sys.stderr.write("boom: corrupt packet\\n"); sys.exit(1)
+n = 4000 if mode == "short" else 4800
+sys.stdout.buffer.write(bytes(n * 4))
+"""
 
 
 class TestSFPK(unittest.TestCase):
@@ -172,6 +191,63 @@ class TestManifest(unittest.TestCase):
         self.assertTrue((pub / joplin_set.lstrip("/")).exists())
         self.assertTrue((pub / "a" / "joplin" / "g").exists())
         self.assertIn("kept", report["songs"]["joplin"])
+
+    def test_thorough_decodes_through_a_pipe(self):
+        jobs = self.jobs()[:1]
+        _fake_render(jobs[0], self.paths)
+        fake = Path(self.td.name) / "fake_opusdec.py"
+        fake.write_text(FAKE_OPUSDEC)
+        with mock.patch.object(validate_mod, "OPUSDEC", [sys.executable, str(fake)]):
+            v = validate_job(jobs[0], self.paths, thorough=True)
+            self.assertTrue(v.ok, v.reason)
+            self.assertEqual(v.checked, jobs[0].n_slices + jobs[0].n_listen)
+            with mock.patch.dict(os.environ, {"FAKE_OPUSDEC": "short"}):
+                self.assertEqual(validate_job(jobs[0], self.paths, thorough=True).reason,
+                                 "decoded-samples:0000.opus:4000!=4800")
+            with mock.patch.dict(os.environ, {"FAKE_OPUSDEC": "fail"}):
+                self.assertEqual(validate_job(jobs[0], self.paths, thorough=True).reason,
+                                 "decode:0000.opus:opusdec rc=1 boom: corrupt packet")
+        # nothing was written anywhere under work/ by validation
+        self.assertFalse((self.paths.tmp / "validate").exists())
+
+    @unittest.skipUnless(shutil.which("opusdec"), "opusdec not installed (runs inside the sfr-render image)")
+    def test_thorough_with_real_opusdec(self):
+        jobs = self.jobs()[:1]
+        _fake_render(jobs[0], self.paths)
+        self.assertEqual(validate_mod._decoded_samples(FIX), FIX_SAMPLES)
+        v = validate_job(jobs[0], self.paths, thorough=True)
+        self.assertTrue(v.ok, v.reason)
+        (jobs[0].seg_dir(self.paths) / "0002.opus").write_bytes(b"OggS" + FIX.read_bytes()[4:-7])
+        self.assertTrue(validate_job(jobs[0], self.paths, thorough=True).reason.startswith("bad-ogg:0002.opus"))
+
+    def test_parallel_validation_keeps_job_order_and_hashes(self):
+        # 9 variants, three of them excluded in known positions; the parallel and serial runs must
+        # produce byte-identical set documents (excluded[] order is part of the content hash)
+        self.variants = [sf2_variant(n) for n in range(1, 8)] + [adl_variant(58), adl_variant(0)]
+        jobs = self.jobs()
+        for i, j in enumerate(jobs):
+            if i == 1:
+                _fake_render(j, self.paths, status="failed")
+            elif i == 4:
+                _fake_render(j, self.paths, lufs=-60)
+            elif i == 8:
+                _fake_render(j, self.paths, spec="deadbeef")
+            else:
+                _fake_render(j, self.paths)
+        verdicts = validate_jobs(jobs, self.paths, thorough=False, workers=8)
+        self.assertEqual([v.ok for v in verdicts], [i not in (1, 4, 8) for i in range(9)])
+        docs = []
+        for workers in (1, 8):
+            build_manifests(self.paths, [self.song], self.variants, self.settings, ENGINES_JSON,
+                            {self.song["id"]: jobs}, workers=workers, echo=lambda *_: None)
+            sj = json.loads((self.paths.public / "songs.json").read_text())
+            docs.append((self.paths.public / sj["songs"][0]["set"].lstrip("/")).read_bytes())
+        self.assertEqual(docs[0], docs[1])
+        sset = json.loads(docs[1])
+        self.assertEqual([e["id"] for e in sset["excluded"]],
+                         [jobs[1].variant_id, jobs[4].variant_id, jobs[8].variant_id])
+        self.assertEqual([e["reason"] for e in sset["excluded"]], ["failed", "silent", "stale-spec"])
+        self.assertEqual(len(sset["order"]), 6)
 
     def test_build_catalog_facets(self):
         cat = build_catalog(self.variants, ENGINES_JSON)

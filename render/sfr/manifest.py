@@ -7,16 +7,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from .config import Paths, RenderSettings
 from .jobs import Job, now_iso, read_meta
 from .pack import pack_song
-from .validate import validate_job
+from .validate import Verdict, validate_job
 
 SCHEMA = 1
+DEFAULT_WORKERS = max(4, min(24, os.cpu_count() or 4))
 
 
 def _dump(obj: Any) -> bytes:
@@ -132,9 +136,25 @@ def build_set(song: dict, settings: RenderSettings, order: list[str], groups: li
     }
 
 
+def validate_jobs(jobs: list[Job], paths: Paths, *, thorough: bool, workers: int) -> list[Verdict]:
+    """validate_job over every job on a thread pool (the work is one opusdec process per segment under
+    --thorough: ~65-90k spawns per song, trivially parallel). Verdicts come back in job order because
+    `excluded[]` is part of the content-addressed set document — reordering it would rehash every set."""
+    if workers <= 1 or len(jobs) <= 1:
+        return [validate_job(j, paths, thorough=thorough) for j in jobs]
+    ex = ThreadPoolExecutor(max_workers=min(workers, len(jobs)), thread_name_prefix="validate")
+    try:
+        return list(ex.map(lambda j: validate_job(j, paths, thorough=thorough), jobs))
+    except BaseException:
+        ex.shutdown(wait=False, cancel_futures=True)   # Ctrl-C: drop the queue, do not wait for it
+        raise
+    finally:
+        ex.shutdown(wait=True)
+
+
 def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], settings: RenderSettings,
                     engines_json: dict, jobs_by_song: dict[str, list[Job]], *, thorough: bool = False,
-                    defaults: dict | None = None, echo=print) -> dict:
+                    workers: int = DEFAULT_WORKERS, defaults: dict | None = None, echo=print) -> dict:
     public = paths.public
     catalog = build_catalog(variants, engines_json)
     cblob = _dump(catalog)
@@ -159,8 +179,11 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
         jobs = jobs_by_song.get(sid, [])
         ok_meta: dict[str, dict] = {}
         excluded: list[dict] = []
-        for job in jobs:
-            v = validate_job(job, paths, thorough=thorough)
+        t0 = time.monotonic()
+        verdicts = validate_jobs(jobs, paths, thorough=thorough, workers=workers)
+        echo(f"[manifest] {sid}: validated {len(jobs)} renders{' (thorough)' if thorough else ''} "
+             f"in {time.monotonic() - t0:.0f} s")
+        for job, v in zip(jobs, verdicts):
             if v.ok:
                 ok_meta[job.variant_id] = read_meta(job.meta_path(paths)) or {}
             else:
