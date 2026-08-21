@@ -5,15 +5,23 @@ Member j starts at 8 + 4n + Σ len[0..j).
 
 Layout under out/public/a/<song>/:
   g/<group_hash>/<slice:04d>.pk    — slice i of the ≤24 variants of a group
-  l/<render_hash>/<k:03d>.opus     — listen tier, hard-linked from work/
+  l/<render_hash>/<k:03d>.opus     — listen tier, linked, reflinked or copied from work/
 """
 from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import struct
 from pathlib import Path
 from typing import Sequence
+
+try:
+    import fcntl
+except ImportError:  # not POSIX: reflinks are simply skipped
+    fcntl = None  # type: ignore[assignment]
+
+FICLONE = 0x40049409   # linux/fs.h: share the source's extents (btrfs, xfs); EXDEV/EOPNOTSUPP elsewhere
 
 MAGIC = b"SFPK"
 VERSION = 1
@@ -56,17 +64,35 @@ def groups_of(items: Sequence, size: int) -> list[list]:
     return [list(items[i:i + size]) for i in range(0, len(items), size)]
 
 
+def _reflink(src: Path, dst: Path) -> None:
+    if fcntl is None:
+        raise OSError("no fcntl: reflink unavailable")
+    tmp = dst.with_suffix(dst.suffix + ".tmp")
+    try:
+        with open(src, "rb") as s, open(tmp, "wb") as d:
+            fcntl.ioctl(d.fileno(), FICLONE, s.fileno())
+        tmp.replace(dst)
+    except BaseException:   # OSError falls through to copy; an interrupt must not leave the tmp behind
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def _link_or_copy(src: Path, dst: Path) -> None:
+    """Hard link when work/ and out/ are one mount; otherwise a reflink (the container's /work and
+    /out bind mounts make os.link fail with EXDEV although both live on one btrfs); otherwise copy."""
     if dst.exists():
         if dst.stat().st_size == src.stat().st_size:
             return
         dst.unlink()
     dst.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        os.link(src, dst)
-    except OSError:
-        import shutil
-        shutil.copy2(src, dst)
+    dst.with_suffix(dst.suffix + ".tmp").unlink(missing_ok=True)   # a reflink interrupted by SIGKILL
+    for method in (os.link, _reflink):
+        try:
+            method(src, dst)
+            return
+        except OSError:
+            pass
+    shutil.copy2(src, dst)
 
 
 def pack_song(song_id: str, variants: Sequence[dict], render_dirs: dict[str, Path], render_hashes: dict[str, str],
@@ -81,14 +107,12 @@ def pack_song(song_id: str, variants: Sequence[dict], render_dirs: dict[str, Pat
         gdir.mkdir(parents=True, exist_ok=True)
         for i in range(n_slices):
             out = gdir / f"{i:04d}.pk"
-            members = []
-            for vid in ids:
-                members.append((render_dirs[vid] / "seg" / f"{i:04d}.opus").read_bytes())
-            blob = pack_bytes(members)
-            if out.exists() and out.stat().st_size == len(blob):
+            srcs = [render_dirs[vid] / "seg" / f"{i:04d}.opus" for vid in ids]
+            # idempotent by size (the pack is header + members, and the group hash pins the members)
+            if out.exists() and out.stat().st_size == header_size(len(ids)) + sum(p.stat().st_size for p in srcs):
                 continue
             tmp = out.with_suffix(".pk.tmp")
-            tmp.write_bytes(blob)
+            tmp.write_bytes(pack_bytes([p.read_bytes() for p in srcs]))
             tmp.replace(out)
         groups.append({"hash": gh, "variants": ids})
         for slot, vid in enumerate(ids):

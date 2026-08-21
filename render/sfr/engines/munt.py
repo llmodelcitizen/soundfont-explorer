@@ -18,17 +18,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import RenderSpec
-from ..sched import JobError
+from . import RenderSpec, rom_dir_check, romset_of
 
 MODELS = ("mt32", "cm32l")
-
-
-def romset_of(variant: dict) -> str:
-    rs = variant.get("romset")
-    if not rs or "/" in rs:
-        raise ValueError(f"munt variant {variant.get('id')!r} needs romset=<directory under roms/>")
-    return rs
 
 
 def model_of(variant: dict) -> str:
@@ -43,15 +35,9 @@ def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
     base = list(eng["base_args"])
     if "--record-max-start-silence" not in base:
         raise ValueError("munt base_args must contain --record-max-start-silence -1 (start calibration depends on it)")
-    romset = romset_of(job.variant)
     model = model_of(job.variant)
-    rom_dir = paths.roms / romset
+    rom_dir = paths.roms / romset_of(job.variant, "munt")
     out = tmpdir / "raw.wav"
-
-    def pre():
-        if not rom_dir.is_dir():
-            raise JobError("missing-rom", f"{rom_dir} does not exist (put the {model} control + PCM ROMs there)")
-
     argv = ["mt32emu-smf2wav", *base, "-m", str(rom_dir), "-i", model, "-o", str(out), str(job.midi_path)]
-    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, weight=1, timeout_s=900, pre=[pre],
-                      native_rate=int(eng.get("native_rate", 32000)))
+    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, native_rate=int(eng["native_rate"]),
+                      pre=[rom_dir_check(rom_dir, f"put the {model} control + PCM ROMs there")])

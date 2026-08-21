@@ -178,6 +178,9 @@ COPY --from=rom-engines /opt/rom/bin/ /usr/local/bin/
 COPY --from=rom-engines /opt/rom/licenses/ /opt/licenses/rom-engines/
 COPY scripts/sfr /usr/local/bin/sfr
 COPY sfr/ /opt/sfr/
+# the image carries the engines.json it was built from; the driver bind-mounts the checkout's copy over it
+COPY engines.json /opt/engines.json
+ENV SFR_ENGINES=/opt/engines.json
 
 # default scratch location inside the container is the /work bind mount, never /tmp (tmpfs on the host)
 ENV SFR_WORK=/work SFR_OUT=/out SFR_FONTS=/fonts SFR_SONGS=/songs SFR_CATALOG=/catalog SFR_ROMS=/roms SFR_BANKS=/opt/banks

@@ -6,12 +6,31 @@ scheduler kill the process once the output covers the song (D + 2 s) — the mas
 exactly D anyway, so nothing audible is lost."""
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
-from . import RenderSpec
+from . import MEM_UNIT_BYTES, RenderSpec
 from ..sched import JobError
 
-UNIT = 256 * 1024 * 1024
+
+def weight_units(job) -> int:
+    """ceil(font bytes / unit): FluidSynth keeps the whole SF2 resident (plan §4)."""
+    return max(1, -(-job.source_bytes // MEM_UNIT_BYTES))
+
+
+def preflight(jobs, engines_json: dict) -> list[str]:
+    """Soft version check: a package upgrade would silently change audio behind an unchanged hash."""
+    try:
+        want = engines_json["engines"]["fluidsynth"].get("version")
+        if want:
+            out = subprocess.run(["fluidsynth", "--version"], capture_output=True, text=True).stdout
+            if want not in out:
+                print(f"WARNING: fluidsynth reports {out.strip().splitlines()[0]!r} but engines.json pins {want}; "
+                      f"update engines.json (changes master hashes) or rebuild the image", file=sys.stderr)
+    except Exception:  # noqa: BLE001 - advisory only
+        pass
+    return []
 
 
 def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
@@ -26,10 +45,9 @@ def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
         i = base.index("-T")
         base[i + 1] = "raw"
     argv = ["fluidsynth", "-F", str(out), *base]
-    if nbytes >= int(eng.get("dynamic_sample_loading_above_bytes", 128 * 1024 * 1024)):
+    if nbytes >= int(eng["dynamic_sample_loading_above_bytes"]):
         argv += ["-o", "synth.dynamic-sample-loading=1"]
     argv += [str(font), str(job.midi_path)]
-    weight = max(1, -(-nbytes // UNIT))
     timeout = 1800 if nbytes > 1024 ** 3 else 900
 
     def pre():
@@ -40,8 +58,8 @@ def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
         if nbytes and font.stat().st_size != nbytes:
             raise JobError("font-changed", f"{font.name}: {font.stat().st_size} bytes, catalog says {nbytes}")
 
-    rate = int(eng.get("native_rate", 48000))
+    rate = int(eng["native_rate"])
     cap = (int(job.duration_s) + 2) * rate * 2 * 4
-    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, weight=weight, timeout_s=timeout,
+    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, weight=weight_units(job), timeout_s=timeout,
                       rlimit_as_bytes=8 * 1024 ** 3, native_rate=rate, pre=[pre],
                       raw_format=("f32le", rate, 2), max_out_bytes=cap)

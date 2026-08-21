@@ -13,7 +13,7 @@ from sfr.config import Paths
 from sfr.jobs import Job, write_meta
 from sfr import validate as validate_mod
 from sfr.manifest import build_catalog, build_manifests, build_set, validate_jobs
-from sfr.pack import group_hash, groups_of, header_size, pack_bytes, unpack_bytes
+from sfr.pack import group_hash, groups_of, header_size, pack_bytes, pack_song, unpack_bytes
 from sfr.sched import WeightedSemaphore
 from sfr.validate import validate_job
 from .helpers import ENGINES_JSON, SETTINGS, adl_variant, sf2_variant, song
@@ -49,6 +49,19 @@ class TestSFPK(unittest.TestCase):
             unpack_bytes(blob + b"!")
         with self.assertRaises(ValueError):
             unpack_bytes(b"NOPE" + blob[4:])
+
+    def test_link_or_copy_falls_back_to_reflink_then_copy(self):
+        from sfr import pack
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "src.opus"
+            src.write_bytes(FIX.read_bytes())
+            with mock.patch.object(pack.os, "link", side_effect=OSError("EXDEV")):      # the container's bind mounts
+                pack._link_or_copy(src, Path(td) / "a" / "000.opus")                    # reflink (btrfs/xfs) or copy
+                with mock.patch.object(pack, "_reflink", side_effect=OSError("EOPNOTSUPP")):
+                    pack._link_or_copy(src, Path(td) / "b" / "000.opus")                # plain copy
+            for sub in ("a", "b"):
+                self.assertEqual((Path(td) / sub / "000.opus").read_bytes(), FIX.read_bytes())
+                self.assertEqual(sorted(p.name for p in (Path(td) / sub).iterdir()), ["000.opus"])   # no .tmp left
 
     def test_groups_and_hash(self):
         self.assertEqual([len(g) for g in groups_of(list(range(50)), 24)], [24, 24, 2])
@@ -192,11 +205,34 @@ class TestManifest(unittest.TestCase):
         self.assertTrue((pub / "a" / "joplin" / "g").exists())
         self.assertIn("kept", report["songs"]["joplin"])
 
+    def test_pack_song_skips_by_size_without_rereading_members(self):
+        jobs = self.jobs()[:3]
+        for j in jobs:
+            _fake_render(j, self.paths)
+        args = ("freedoom-e1m1", self.variants[:3], {j.variant_id: j.out_dir(self.paths) for j in jobs},
+                {j.variant_id: j.render_hash for j in jobs}, jobs[0].n_slices, jobs[0].n_listen, self.paths.public, 3)
+        real, reads = Path.read_bytes, []
+
+        def counting(self):
+            reads.append(self)
+            return real(self)
+        with mock.patch.object(Path, "read_bytes", counting):
+            first = pack_song(*args)
+            self.assertEqual(len(reads), 3 * jobs[0].n_slices)        # every member once
+            self.assertEqual(pack_song(*args), first)
+            self.assertEqual(len(reads), 3 * jobs[0].n_slices)        # second run: sizes matched, nothing read
+        gdir = self.paths.public / "a" / "freedoom-e1m1" / "g" / first["groups"][0]["hash"]
+        self.assertEqual(unpack_bytes((gdir / "0001.pk").read_bytes()), [FIX.read_bytes()] * 3)
+        ldir = self.paths.public / "a" / "freedoom-e1m1" / "l" / jobs[1].render_hash
+        self.assertEqual([p.name for p in sorted(ldir.iterdir())], [f"{k:03d}.opus" for k in range(jobs[1].n_listen)])
+        self.assertEqual((ldir / "000.opus").read_bytes(), FIX.read_bytes())
+
     def test_thorough_decodes_through_a_pipe(self):
         jobs = self.jobs()[:1]
         _fake_render(jobs[0], self.paths)
         fake = Path(self.td.name) / "fake_opusdec.py"
         fake.write_text(FAKE_OPUSDEC)
+        before = set(self.paths.work.rglob("*"))
         with mock.patch.object(validate_mod, "OPUSDEC", [sys.executable, str(fake)]):
             v = validate_job(jobs[0], self.paths, thorough=True)
             self.assertTrue(v.ok, v.reason)
@@ -207,8 +243,8 @@ class TestManifest(unittest.TestCase):
             with mock.patch.dict(os.environ, {"FAKE_OPUSDEC": "fail"}):
                 self.assertEqual(validate_job(jobs[0], self.paths, thorough=True).reason,
                                  "decode:0000.opus:opusdec rc=1 boom: corrupt packet")
-        # nothing was written anywhere under work/ by validation
-        self.assertFalse((self.paths.tmp / "validate").exists())
+        # nothing was written anywhere under work/ by validation (it decodes through a pipe)
+        self.assertEqual(set(self.paths.work.rglob("*")), before)
 
     @unittest.skipUnless(shutil.which("opusdec"), "opusdec not installed (runs inside the sfr-render image)")
     def test_thorough_with_real_opusdec(self):

@@ -18,24 +18,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import RenderSpec
-from ..sched import JobError
+from . import RenderSpec, rom_dir_check, romset_of
 
 FAMILIES = ("mk2", "st", "mk1", "cm300", "jv880", "scb55", "rlp3237", "sc155", "sc155mk2")
 
 
-def romset_of(variant: dict) -> str:
-    rs = variant.get("romset")
-    if not rs or "/" in rs:
-        raise ValueError(f"sc55 variant {variant.get('id')!r} needs romset=<directory under roms/>")
-    return rs
-
-
 def family_of(variant: dict, eng: dict) -> str:
     rom = variant.get("rom") or {}
-    fam = rom.get("family") or (eng.get("romset_flag") or {}).get(romset_of(variant))
+    fam = rom.get("family") or (eng.get("romset_flag") or {}).get(romset_of(variant, "sc55"))
     if not fam:
-        rs = romset_of(variant)
+        rs = romset_of(variant, "sc55")
         fam = rs[len("sc55-"):] if rs.startswith("sc55-") else rs
     base = fam.split("-", 1)[0]          # allow pinned versions: mk2-v1.01
     if base not in FAMILIES:
@@ -44,24 +36,16 @@ def family_of(variant: dict, eng: dict) -> str:
 
 
 def native_rate_of(family: str, eng: dict) -> int:
-    table = eng.get("native_rate")
-    if isinstance(table, dict):
-        return int(table.get(family.split("-", 1)[0], 66207))
-    return int(table or 66207)
+    table = eng["native_rate"]      # per-family table (or one number)
+    return int(table.get(family.split("-", 1)[0], 66207) if isinstance(table, dict) else table)
 
 
 def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
     eng = engines_json["engines"]["sc55"]
-    romset = romset_of(job.variant)
     family = family_of(job.variant, eng)
-    rom_dir = paths.roms / romset
+    rom_dir = paths.roms / romset_of(job.variant, "sc55")
     out = tmpdir / "raw.wav"
-
-    def pre():
-        if not rom_dir.is_dir():
-            raise JobError("missing-rom", f"{rom_dir} does not exist (put one complete {family} ROM set there)")
-
     argv = ["nuked-sc55-render", *eng["base_args"], "-d", str(rom_dir), "--romset", family,
             "-o", str(out), str(job.midi_path)]
-    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, weight=1, timeout_s=900, pre=[pre],
-                      native_rate=native_rate_of(family, eng))
+    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, native_rate=native_rate_of(family, eng),
+                      pre=[rom_dir_check(rom_dir, f"put one complete {family} ROM set there")])

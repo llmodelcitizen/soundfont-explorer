@@ -50,12 +50,9 @@ def validate_job(job: Job, paths: Paths, *, thorough: bool = False) -> Verdict:
     g = meta.get("gain_db")
     if g is None or abs(g) > job.settings.gain_clamp_db + 1e-6:
         return Verdict(False, "gain-out-of-range")
-    s = job.settings
-    checks = [(job.seg_dir(paths) / f"{i:04d}.opus", s.segment_samples) for i in range(job.n_slices)]
-    checks += [(job.listen_dir(paths) / f"{k:03d}.opus", s.listen_segment_samples) for k in range(job.n_listen)]
     n = 0
     warnings: list[str] = []
-    for p, want in checks:
+    for p, want in job.segment_files(paths):
         if not p.exists():
             return Verdict(False, f"missing:{p.parent.name}/{p.name}", n)
         try:

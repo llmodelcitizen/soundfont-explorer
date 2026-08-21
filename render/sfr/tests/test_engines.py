@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from sfr import engines
 from sfr.config import Paths
@@ -237,6 +238,27 @@ class TestMunt(Base):
             s.pre[0]()
         (self.paths.roms / "cm32l").mkdir(parents=True)
         s.pre[0]()
+
+
+class TestHooks(Base):
+    def test_weight_units(self):
+        self.assertEqual(engines.weight_units(self.job(sf2_variant(1, bytes_=1200 << 20))), 5)
+        self.assertEqual(engines.weight_units(self.job(sf2_variant(2, bytes_=1))), 1)
+        for v in (adl_variant(58), opn_variant("xg"), edm_variant("all"), gus_variant(), sc55_variant(), munt_variant()):
+            self.assertEqual(engines.weight_units(self.job(v)), 1, v["id"])
+
+    def test_adl_preflight_checks_flags_against_usage(self):
+        from sfr.engines import adl
+        jobs = [self.job(adl_variant(58)), self.job(adl_variant(1, core="esfmu", suffix="-esfmu")), self.job(adl_variant(0))]
+        usage = mock.Mock(stdout="Usage: adlmidiplay ... --emu-nuked --emu-dosbox ...")
+        with mock.patch.object(adl.subprocess, "run", return_value=usage) as run:
+            self.assertEqual(adl.preflight(jobs, ENGINES),
+                             ["adlmidiplay does not know --emu-esfmu (an unknown flag is silently treated as a bank file "
+                              "— MVP footgun)"])
+            run.assert_called_once()
+            self.assertEqual(run.call_args.args[0], ["adlmidiplay", "--help"])
+            usage.stdout += " --emu-esfmu"
+            self.assertEqual(adl.preflight(jobs, ENGINES), [])
 
 
 class TestIdentity(Base):

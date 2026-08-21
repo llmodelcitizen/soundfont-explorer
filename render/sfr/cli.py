@@ -8,13 +8,25 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from . import __version__
+from . import __version__, engines
 from .config import Paths, load_engines, load_settings, load_songs, load_variants
+from .engines import MEM_UNIT_BYTES
 from .jobs import State, classify, plan_jobs, read_meta
+
+PATH_FLAGS = ("fonts", "songs", "catalog", "roms", "work", "out")
+# codec tools every engine shares (the engine binaries come from engines.json)
+CODEC_TOOLS = {"ffmpeg": ["ffmpeg", "-hide_banner", "-version"], "ffprobe": ["ffprobe", "-hide_banner", "-version"],
+               "opusenc": ["opusenc", "--version"], "opusdec": ["opusdec", "--version"]}
+VERSION_FLAG_ENGINES = {"fluidsynth", "timidity"}   # answer --version; the libADLMIDI-style players only --help
+# only for `sfr doctor` when engines.json itself cannot be read (it is the source of truth otherwise)
+FALLBACK_ENGINE_BINARIES = (("adlmidi", "adlmidiplay"), ("fluidsynth", "fluidsynth"), ("opnmidi", "opnmidiplay"),
+                            ("edmidi", "edmidi-render"), ("timidity", "timidity"), ("sc55", "nuked-sc55-render"),
+                            ("munt", "mt32emu-smf2wav"))
 
 
 def add_path_args(p: argparse.ArgumentParser, top: bool = False) -> None:
@@ -22,7 +34,7 @@ def add_path_args(p: argparse.ArgumentParser, top: bool = False) -> None:
     sub-parser from clobbering values given at the top level)."""
     g = p.add_argument_group("paths (defaults from SFR_* env; the image sets them to the bind mounts)")
     d = None if top else argparse.SUPPRESS
-    for name in ("fonts", "songs", "catalog", "roms", "work", "out"):
+    for name in PATH_FLAGS:
         g.add_argument(f"--{name}", type=Path, default=d)
     g.add_argument("--engines", type=Path, dest="engines_json", default=d, help="render/engines.json")
 
@@ -38,7 +50,7 @@ def add_select_args(p: argparse.ArgumentParser) -> None:
 
 
 def paths_from(args) -> Paths:
-    kw = {k: getattr(args, k) for k in ("fonts", "songs", "catalog", "roms", "work", "out") if getattr(args, k, None)}
+    kw = {k: getattr(args, k) for k in PATH_FLAGS if getattr(args, k, None)}
     if getattr(args, "engines_json", None):
         kw["engines_json"] = args.engines_json
     return Paths(**kw)
@@ -68,40 +80,23 @@ def select_jobs(args, paths: Paths):
     return jobs, settings, engines_json, songs, variants
 
 
-def validate_environment(paths: Paths, jobs) -> None:
-    """Startup checks (plan §8.2): tools present, --emu-X flags known, free disk ≥ 100 GB."""
-    engines_needed = {j.engine for j in jobs}
+def validate_environment(paths: Paths, jobs, engines_json: dict) -> None:
+    """Startup checks (plan §8.2): tools present, per-engine preflight (--emu-X flags known, pinned
+    versions), free disk ≥ 100 GB."""
+    engines_needed = sorted({j.engine for j in jobs})
     tools = {"ffmpeg", "opusenc"}
-    ej_engines = load_engines(paths)["engines"]
     for e in engines_needed:
-        b = (ej_engines.get(e) or {}).get("binary")
+        b = (engines_json["engines"].get(e) or {}).get("binary")
         if b:
             tools.add(b)
     missing = [t for t in sorted(tools) if shutil.which(t) is None]
     if missing:
         raise SystemExit(f"missing tools: {', '.join(missing)} (run inside the sfr-render image)")
-    if "adlmidi" in engines_needed:
-        import subprocess
-        from .engines.adl import core_flag
-        usage = subprocess.run(["adlmidiplay", "--help"], capture_output=True, text=True).stdout
-        for j in jobs:
-            if j.engine == "adlmidi":
-                flag = core_flag(j.core)
-                if flag not in usage:
-                    raise SystemExit(f"adlmidiplay does not know {flag} (an unknown flag is silently "
-                                     f"treated as a bank file — MVP footgun)")
-    # soft version check: a package upgrade would silently change audio behind an unchanged hash
-    try:
-        import subprocess
-        ej = load_engines(paths)["engines"]
-        if "fluidsynth" in engines_needed and ej.get("fluidsynth", {}).get("version"):
-            out = subprocess.run(["fluidsynth", "--version"], capture_output=True, text=True).stdout
-            want = ej["fluidsynth"]["version"]
-            if want not in out:
-                print(f"WARNING: fluidsynth reports {out.strip().splitlines()[0]!r} but engines.json pins {want}; "
-                      f"update engines.json (changes master hashes) or rebuild the image", file=sys.stderr)
-    except Exception:  # noqa: BLE001 - advisory only
-        pass
+    for e in engines_needed:
+        preflight = getattr(engines.get(e), "preflight", None)
+        problems = preflight([j for j in jobs if j.engine == e], engines_json) if preflight else []
+        if problems:
+            raise SystemExit("\n".join(problems))
     paths.work.mkdir(parents=True, exist_ok=True)
     st = os.statvfs(paths.work)
     free_gb = st.f_bavail * st.f_frsize / 1e9
@@ -112,15 +107,16 @@ def validate_environment(paths: Paths, jobs) -> None:
 # ---------------------------------------------------------------- commands
 
 def cmd_doctor(args) -> int:
-    import subprocess
-    tools = {
-        "adlmidiplay": ["adlmidiplay", "--help"], "fluidsynth": ["fluidsynth", "--version"],
-        "opnmidiplay": ["opnmidiplay", "--help"], "edmidi-render": ["edmidi-render", "--help"],
-        "timidity": ["timidity", "--version"], "nuked-sc55-render": ["nuked-sc55-render", "--help"],
-        "mt32emu-smf2wav": ["mt32emu-smf2wav", "--help"],
-        "ffmpeg": ["ffmpeg", "-hide_banner", "-version"], "ffprobe": ["ffprobe", "-hide_banner", "-version"],
-        "opusenc": ["opusenc", "--version"], "opusdec": ["opusdec", "--version"],
-    }
+    paths = paths_from(args)
+    tools: dict[str, list[str]] = {}
+    try:
+        engine_bins = [(eid, e["binary"]) for eid, e in load_engines(paths)["engines"].items() if e.get("binary")]
+    except Exception as e:  # noqa: BLE001 — doctor must always finish its report
+        print(f"engines.json unreadable ({e}); probing the built-in engine list instead")
+        engine_bins = FALLBACK_ENGINE_BINARIES
+    for eid, binary in engine_bins:
+        tools[binary] = [binary, "--version" if eid in VERSION_FLAG_ENGINES else "--help"]
+    tools.update(CODEC_TOOLS)
     for name, argv in tools.items():
         path = shutil.which(argv[0])
         if not path:
@@ -132,8 +128,7 @@ def cmd_doctor(args) -> int:
             print(f"{name:18} {path}  {lines[0][:70] if lines else ''}")
         except Exception as e:  # pragma: no cover
             print(f"{name:18} {path}  (error: {e})")
-    paths = paths_from(args)
-    for name in ("fonts", "songs", "catalog", "roms", "work", "out"):
+    for name in PATH_FLAGS:
         p = getattr(paths, name)
         print(f"{name:18} {p}  {'ok' if p.exists() else 'MISSING'}")
     print(f"{'engines.json':18} {paths.engines_json}  {'ok' if paths.engines_json.exists() else 'MISSING'}")
@@ -151,7 +146,7 @@ def cmd_plan(args) -> int:
     print(f"{len(jobs)} jobs; by engine: {dict(by_engine)}; states: {dict(states)}")
     if args.verbose:
         for j in jobs:
-            print(f"  {classify(j, paths):9} {j.key}  w={max(1, -(-j.source_bytes // (256 << 20)))}")
+            print(f"  {classify(j, paths):9} {j.key}  w={engines.weight_units(j)}")
     return 0
 
 
@@ -167,7 +162,7 @@ def cmd_render(args, retry_failed: bool = False) -> int:
     if not jobs:
         print("nothing to do")
         return 0
-    validate_environment(paths, jobs)
+    validate_environment(paths, jobs, engines_json)
     print(f"[sfr] {len(jobs)} jobs, {args.workers} workers, {args.mem_units} memory units")
     logs = Logs(paths.jobs_log, paths.errors_log)
     runner = Runner(args.workers, args.mem_units, logs)
@@ -210,7 +205,7 @@ def cmd_manifest(args) -> int:
     """Validate + pack + write manifests. Only --song narrows the work; every other song keeps its
     current published set, and --variant/--engine/--limit are ignored (a set must always describe
     every rendered variant of a song, never a subset)."""
-    from .manifest import build_manifests
+    from .manifest import DEFAULT_WORKERS, build_manifests
     paths = paths_from(args)
     if args.variant or args.engine or args.limit:
         print("manifest: --variant/--engine/--limit are ignored (sets always cover every variant)", file=sys.stderr)
@@ -225,18 +220,11 @@ def cmd_manifest(args) -> int:
     if args.song:
         for sid in args.song:
             by_song.setdefault(sid, [])   # selected but nothing planned → still rebuilt (possibly empty)
-    from .manifest import DEFAULT_WORKERS
     report = build_manifests(paths, songs, variants, settings, engines_json, by_song, thorough=args.thorough,
                              workers=args.workers or DEFAULT_WORKERS,
                              defaults={"song": args.default_song, "variant": args.default_variant})
     print(json.dumps(report, indent=1))
     return 0
-
-
-def cmd_pack(args) -> int:
-    # pack is part of manifest (idempotent); kept as an alias that skips writing songs.json? No —
-    # keep one code path so order/groups can never diverge from the manifest.
-    return cmd_manifest(args)
 
 
 def cmd_publish(args) -> int:
@@ -281,9 +269,11 @@ def build_parser() -> argparse.ArgumentParser:
     for name, help_ in (("render", "render + encode selected jobs"), ("retry-failed", "re-run failed jobs")):
         s = sub.add_parser(name, help=help_); add_path_args(s); add_select_args(s)
         s.add_argument("--workers", type=int, default=32)
-        s.add_argument("--mem-units", type=int, default=64, help="256 MB admission units")
+        s.add_argument("--mem-units", type=int, default=64, help=f"{MEM_UNIT_BYTES >> 20} MB admission units")
         s.add_argument("--retry", action="store_true", help="also re-run previously failed jobs")
         s.add_argument("--keep-tmp", action="store_true")
+    # `pack` is an alias of `manifest`: packing is part of the manifest and idempotent, and a single
+    # code path keeps order/groups from ever diverging from the set documents
     for name in ("manifest", "pack"):
         s = sub.add_parser(name, help="validate, pack and write /c /s /songs.json under out/public")
         add_path_args(s); add_select_args(s)

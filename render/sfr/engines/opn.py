@@ -14,10 +14,9 @@ which resolves to <paths.banks>/wopn/<file> (/opt/banks/wopn in the image).
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-from . import RenderSpec
+from . import RenderSpec, core_flag, symlinked_input
 
 CORE_FLAGS = {
     "nuked-3438": "--emu-nuked-3438",
@@ -29,18 +28,6 @@ CORE_FLAGS = {
     "mame-opna": "--emu-mame-opna",
     "ymfm-opna": "--emu-ymfm-opna",
 }
-
-
-def core_flag(core: str, engines_json: dict | None = None) -> str:
-    table = dict(CORE_FLAGS)
-    try:
-        table.update((engines_json or {})["engines"]["opnmidi"]["cores"])
-    except (KeyError, TypeError):
-        pass
-    try:
-        return table[core]
-    except KeyError:
-        raise ValueError(f"unknown libOPNMIDI core {core!r}; known: {sorted(table)}") from None
 
 
 def bank_path(variant: dict, paths) -> Path:
@@ -55,17 +42,7 @@ def bank_path(variant: dict, paths) -> Path:
 
 def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
     eng = engines_json["engines"]["opnmidi"]
-    midi_src = job.midi_path
-    link = tmpdir / midi_src.name
-    out = tmpdir / (midi_src.name + ".wav")
-
-    def pre():
-        if link.exists() or link.is_symlink():
-            link.unlink()
-        os.symlink(midi_src, link)
-
-    chips = int(eng.get("chips", 2))
-    argv = ["opnmidiplay", *eng["base_args"], eng.get("chips_flag", "--chips"), str(chips),
-            core_flag(job.core, engines_json), str(bank_path(job.variant, paths)), link.name]
-    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, weight=1, timeout_s=900,
-                      pre=[pre], native_rate=int(eng.get("native_rate", 44100)))
+    link, out, pre = symlinked_input(job, tmpdir)
+    argv = ["opnmidiplay", *eng["base_args"], eng["chips_flag"], str(int(eng["chips"])),
+            core_flag("opnmidi", CORE_FLAGS, job.core, engines_json), str(bank_path(job.variant, paths)), link.name]
+    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, pre=[pre], native_rate=int(eng["native_rate"]))

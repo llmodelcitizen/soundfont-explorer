@@ -40,12 +40,17 @@ def _write(path: Path, blob: bytes) -> None:
     tmp.replace(path)
 
 
-def _sweep(dirpath: Path, keep: set[str]) -> None:
-    """Remove stale content-addressed siblings so out/public mirrors the current state."""
+def _sweep(dirpath: Path, keep: set[str], *, dirs: bool = False) -> None:
+    """Remove stale content-addressed siblings (files, or directories with dirs=True) so out/public
+    mirrors the current state."""
     if not dirpath.exists():
         return
     for p in dirpath.iterdir():
-        if p.is_file() and p.name not in keep:
+        if p.name in keep:
+            continue
+        if dirs and p.is_dir():
+            shutil.rmtree(p)
+        elif not dirs and p.is_file():
             p.unlink()
 
 
@@ -91,7 +96,6 @@ def build_catalog(variants: list[dict], engines_json: dict) -> dict:
         f.setdefault("engine", v["engine"])
         f.setdefault("chip", v.get("chip") or v.get("chip_family"))
         f.setdefault("type", v.get("type"))
-        q = f.get("quality")
         for k in FACET_KEYS:
             val = f.get(k)
             vals = val if isinstance(val, list) else ([val] if val is not None else [])
@@ -104,7 +108,6 @@ def build_catalog(variants: list[dict], engines_json: dict) -> dict:
             "legal_note": v.get("legal_note"), "requires_rom": bool(v.get("requires_rom")),
             "aliases": v.get("aliases") or [],
         })
-        _ = q
     return {"schema": SCHEMA, "engines": engines,
             "facets": {k: [{"value": val, "count": c} for val, c in sorted(facets[k].items())] for k in FACET_KEYS},
             "variants": out_variants}
@@ -162,6 +165,7 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
     _write(public / "c" / f"{chash}.json", cblob)
     _sweep(public / "c", {f"{chash}.json"})
 
+    vmap = {v["id"]: v for v in variants}
     song_entries = []
     report: dict[str, Any] = {"catalog": f"/c/{chash}.json", "songs": {}}
     for song in songs:
@@ -176,7 +180,7 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
             song_entries.append(_song_entry(song, sdoc["duration_s"], len(sdoc["order"]), f"/s/{sid}/{shash}.json"))
             report["songs"][sid] = {"kept": f"/s/{sid}/{shash}.json", "variants": len(sdoc["order"])}
             continue
-        jobs = jobs_by_song.get(sid, [])
+        jobs = jobs_by_song[sid]
         ok_meta: dict[str, dict] = {}
         excluded: list[dict] = []
         t0 = time.monotonic()
@@ -186,16 +190,15 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
         for job, v in zip(jobs, verdicts):
             if v.ok:
                 ok_meta[job.variant_id] = read_meta(job.meta_path(paths)) or {}
-            else:
-                if v.reason not in ("no-meta",):
-                    excluded.append({"id": job.variant_id, "reason": v.reason})
+            elif v.reason != "no-meta":
+                excluded.append({"id": job.variant_id, "reason": v.reason})
+        warnings = sum(len(v.warnings) for v in verdicts)
         # canonical order = catalog order filtered to ok renders
         order = [v["id"] for v in variants if v["id"] in ok_meta]
         if not order:
             echo(f"[manifest] {sid}: no valid renders, skipping")
-            report["songs"][sid] = {"variants": 0, "excluded": len(excluded)}
+            report["songs"][sid] = {"variants": 0, "excluded": len(excluded), "warnings": warnings}
             continue
-        vmap = {v["id"]: v for v in variants}
         render_dirs = {vid: paths.render_dir(sid, vid) for vid in order}
         render_hashes = {vid: ok_meta[vid]["render_hash"] for vid in order}
         D = int(song["duration_s"])
@@ -206,22 +209,12 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
         shash = _content_hash(sblob)
         _write(public / "s" / sid / f"{shash}.json", sblob)
         _sweep(public / "s" / sid, {f"{shash}.json"})
-        # prune pack groups that are no longer referenced
-        live = {g["hash"] for g in packed["groups"]}
-        gdir = public / "a" / sid / "g"
-        if gdir.exists():
-            for p in gdir.iterdir():
-                if p.is_dir() and p.name not in live:
-                    shutil.rmtree(p)
-        live_l = set(render_hashes.values())
-        ldir = public / "a" / sid / "l"
-        if ldir.exists():
-            for p in ldir.iterdir():
-                if p.is_dir() and p.name not in live_l:
-                    shutil.rmtree(p)
+        # prune pack groups and listen tiers that are no longer referenced
+        _sweep(public / "a" / sid / "g", {g["hash"] for g in packed["groups"]}, dirs=True)
+        _sweep(public / "a" / sid / "l", set(render_hashes.values()), dirs=True)
         song_entries.append(_song_entry(song, D, len(order), f"/s/{sid}/{shash}.json"))
         report["songs"][sid] = {"variants": len(order), "excluded": len(excluded), "set": f"/s/{sid}/{shash}.json",
-                               "groups": len(packed["groups"]),
+                               "groups": len(packed["groups"]), "warnings": warnings,
                                "excluded_reasons": sorted({e["reason"].split(":")[0] for e in excluded})}
         echo(f"[manifest] {sid}: {len(order)} variants, {len(packed['groups'])} groups, {len(excluded)} excluded")
 

@@ -31,12 +31,6 @@
       "binary": "adlmidiplay",
       "native_rate": 44100,
       "build_notes": "MIDIPLAY_WAVE_ONLY=ON: no -w/-nl flags (always writes <input>.wav, never loops); output rate fixed at 44100 Hz; still links libasound2.",
-      "cores": {
-        "nuked": "--emu-nuked",
-        "dosbox-opl2": "--emu-dosbox-opl2",
-        "esfmu": "--emu-esfmu",
-        "nuked-cqm": "--emu-nuked-cqm"
-      },
       "base_args": [
         "-f32",
         "-vm",

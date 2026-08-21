@@ -1,36 +1,24 @@
 """Per-job pipeline (plan §8.3): render → measure → gain → master → decode → two Opus tiers → meta."""
 from __future__ import annotations
 
-import os
 import shutil
 import time
-from pathlib import Path
+import traceback
 
 from . import PIPELINE_VERSION, engines
 from .engines import ffmpeg_input_args
 from .config import Paths, load_engines
-from .jobs import Job, State, classify, now_iso, write_meta
+from .jobs import Job, State, classify, clean_dir, now_iso, read_meta, write_meta
 from .loudness import gain_db, is_silent, measure, write_master
 from .ogg import OggError, opus_info
 from .encode import decode_padded, encode_tiers
 from .sched import JobError, Outcome, WeightedSemaphore, run
 
 
-def _clean_dir(p: Path) -> None:
-    if p.exists():
-        shutil.rmtree(p)
-    p.mkdir(parents=True, exist_ok=True)
-
-
-def _fail(job: Job, paths: Paths, reason: str, detail: str, t0: float, extra: dict | None = None) -> Outcome:
-    meta = {
-        "status": "failed", "reason": reason, "detail": detail[-4000:],
-        "song": job.song_id, "variant": job.variant_id, "engine": job.engine, "core": job.core,
-        "spec_hash": job.spec_hash, "master_hash": job.master_hash, "render_hash": job.render_hash,
-        "created": now_iso(), "pipeline_version": PIPELINE_VERSION, "seconds": round(time.monotonic() - t0, 2),
-    }
-    if extra:
-        meta.update(extra)
+def _fail(job: Job, paths: Paths, meta: dict, reason: str, detail: str, t0: float) -> Outcome:
+    """Write the in-progress meta as failed (whatever was measured so far stays for diagnosis)."""
+    meta.update({"status": "failed", "reason": reason, "detail": detail[-4000:],
+                 "created": now_iso(), "seconds": round(time.monotonic() - t0, 2)})
     write_meta(job.meta_path(paths), meta)
     return Outcome(job.key, "failed", reason, time.monotonic() - t0)
 
@@ -48,7 +36,7 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
     out_dir = job.out_dir(paths)
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp = job.tmp_dir(paths)
-    _clean_dir(tmp)
+    clean_dir(tmp)
     timings: dict[str, float] = {}
     meta: dict = {
         "status": "running", "song": job.song_id, "variant": job.variant_id, "engine": job.engine,
@@ -60,9 +48,7 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
     }
     try:
         if state == State.REENCODE:
-            old = job.meta_path(paths)
-            from .jobs import read_meta
-            prev = read_meta(old) or {}
+            prev = read_meta(job.meta_path(paths)) or {}
             for k in ("lufs", "tp", "lra", "gain_db", "cmd", "render_seconds", "render_cpu_seconds",
                       "start_offset_s", "drift_ppm"):
                 if k in prev:
@@ -80,7 +66,7 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                 tr = time.monotonic()
                 stop_when = (spec.out_wav, spec.max_out_bytes) if spec.max_out_bytes else None
                 res = run(spec.argv, cwd=spec.cwd, timeout_s=spec.timeout_s, rlimit_as=spec.rlimit_as_bytes,
-                          env=spec.env, what=job.engine, stop_when=stop_when)
+                          what=job.engine, stop_when=stop_when)
                 if res.truncated:
                     meta["render_truncated"] = True   # engine would not stop on its own (non-decaying voice)
                 timings["render_s"] = round(time.monotonic() - tr, 2)
@@ -98,8 +84,7 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                 if is_silent(meas["input_i"], job.settings):
                     if logs:
                         logs.job(f"failed {job.key} silent ({meas['input_i']} LUFS)")
-                    return _fail(job, paths, "silent", f"integrated loudness {meas['input_i']} LUFS", t0,
-                                 {"lufs": meas["input_i"], "tp": meas["input_tp"]})
+                    return _fail(job, paths, meta, "silent", f"integrated loudness {meas['input_i']} LUFS", t0)
                 # ---- 3. gain, 4. master -----------------------------------
                 g = gain_db(meas["input_i"], meas["input_tp"], job.settings)
                 meta["gain_db"] = round(g, 3)
@@ -123,17 +108,16 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
         # ---- 5/6. encode tiers ------------------------------------------
         te = time.monotonic()
         seg_dir, lis_dir = job.seg_dir(paths), job.listen_dir(paths)
-        _clean_dir(seg_dir)
-        _clean_dir(lis_dir)
+        clean_dir(seg_dir)
+        clean_dir(lis_dir)
         pcm = decode_padded(job.master_path(paths), job.settings, job.duration_s)
         sizes = encode_tiers(pcm, seg_dir, lis_dir, job.settings, job.duration_s)
         del pcm
         timings["encode_s"] = round(time.monotonic() - te, 2)
         # quick structural check of the first/last segment of each tier
-        for p, want in ((seg_dir / "0000.opus", job.settings.segment_samples),
-                        (seg_dir / f"{job.n_slices - 1:04d}.opus", job.settings.segment_samples),
-                        (lis_dir / "000.opus", job.settings.listen_segment_samples),
-                        (lis_dir / f"{job.n_listen - 1:03d}.opus", job.settings.listen_segment_samples)):
+        files = job.segment_files(paths)
+        n = job.n_slices
+        for p, want in (files[0], files[n - 1], files[n], files[-1]):
             try:
                 info = opus_info(p)
             except OggError as e:
@@ -154,14 +138,13 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
         if logs:
             logs.error(job.key, e.reason, e.detail)
             logs.job(f"failed {job.key} {e.reason}")
-        return _fail(job, paths, e.reason, e.detail, t0)
+        return _fail(job, paths, meta, e.reason, e.detail, t0)
     except Exception as e:  # noqa: BLE001 — a bug must still leave a failed meta + a log line
-        import traceback
         detail = traceback.format_exc()
         if logs:
             logs.error(job.key, "exception", detail)
             logs.job(f"failed {job.key} exception {type(e).__name__}")
-        return _fail(job, paths, "exception", detail, t0)
+        return _fail(job, paths, meta, "exception", detail, t0)
     finally:
         if not keep_tmp:
             shutil.rmtree(tmp, ignore_errors=True)

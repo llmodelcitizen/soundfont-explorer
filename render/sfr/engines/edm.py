@@ -31,5 +31,4 @@ def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
     eng = engines_json["engines"]["edmidi"]
     out = tmpdir / "raw.wav"
     argv = ["edmidi-render", *eng["base_args"], "-m", module_of(job.variant), "-o", str(out), str(job.midi_path)]
-    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, weight=1, timeout_s=900,
-                      native_rate=int(eng.get("native_rate", 48000)))
+    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, native_rate=int(eng["native_rate"]))

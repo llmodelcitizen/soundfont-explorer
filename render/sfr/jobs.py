@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -142,6 +143,14 @@ class Job:
     def n_listen(self) -> int:
         return self.settings.n_listen(self.duration_s)
 
+    def segment_files(self, paths: Paths) -> list[tuple[Path, int]]:
+        """Every encoded segment with its exact sample count: the scrub tier seg/<i:04d>.opus,
+        then the listen tier listen/<k:03d>.opus."""
+        s = self.settings
+        seg, lis = self.seg_dir(paths), self.listen_dir(paths)
+        return ([(seg / f"{i:04d}.opus", s.segment_samples) for i in range(self.n_slices)]
+                + [(lis / f"{k:03d}.opus", s.listen_segment_samples) for k in range(self.n_listen)])
+
     # ---- weight for ordering -------------------------------------------
     @property
     def source_bytes(self) -> int:
@@ -167,18 +176,15 @@ def write_meta(path: Path, meta: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def clean_dir(p: Path) -> None:
+    """Start from an empty directory."""
+    if p.exists():
+        shutil.rmtree(p)
+    p.mkdir(parents=True, exist_ok=True)
+
+
 def outputs_complete(job: Job, paths: Paths) -> bool:
-    seg = job.seg_dir(paths)
-    lis = job.listen_dir(paths)
-    if not job.master_path(paths).exists():
-        return False
-    for i in range(job.n_slices):
-        if not (seg / f"{i:04d}.opus").exists():
-            return False
-    for k in range(job.n_listen):
-        if not (lis / f"{k:03d}.opus").exists():
-            return False
-    return True
+    return job.master_path(paths).exists() and all(p.exists() for p, _ in job.segment_files(paths))
 
 
 class State:

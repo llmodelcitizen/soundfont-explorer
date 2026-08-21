@@ -26,12 +26,11 @@ from __future__ import annotations
 
 import array
 import json
-import shutil
 from pathlib import Path
 
 from . import engines
 from .config import Paths, RenderSettings
-from .jobs import Job
+from .jobs import Job, clean_dir
 from .midi import click_track
 from .sched import run
 
@@ -106,9 +105,7 @@ def calibrate(paths: Paths, settings: RenderSettings, engines_json: dict, varian
         emeta = engines_json["engines"][eid]
         job = Job(song, variant, settings, emeta)
         tmp = cdir / eid
-        if tmp.exists():
-            shutil.rmtree(tmp)
-        tmp.mkdir(parents=True)
+        clean_dir(tmp)
         spec = engines.get(eid).spec(job, paths, engines_json, tmp)
         for pre in spec.pre:
             pre()

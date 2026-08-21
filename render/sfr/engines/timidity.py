@@ -28,5 +28,4 @@ def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
         raise ValueError("timidity base_args must name a config with -c (trixie's default cfg is broken)")
     out = tmpdir / "raw.wav"
     argv = ["timidity", *base, "-o", str(out), str(job.midi_path)]
-    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, weight=1, timeout_s=900,
-                      native_rate=int(eng.get("native_rate", 48000)))
+    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, native_rate=int(eng["native_rate"]))

@@ -19,11 +19,11 @@ def resolve_targets(paths: Paths, bucket: str | None, distribution: str | None) 
     distribution = distribution or os.environ.get("SFR_DISTRIBUTION")
     if not bucket:
         # written by web/scripts/deploy.sh / terraform output -json > infra/live/outputs.json
-        for cand in (paths.out.parent / "infra" / "live" / "outputs.json",):
-            if cand.exists():
-                o = json.loads(cand.read_text())
-                bucket = bucket or o.get("bucket", {}).get("value")
-                distribution = distribution or o.get("distribution_id", {}).get("value")
+        outputs = paths.out.parent / "infra" / "live" / "outputs.json"
+        if outputs.exists():
+            o = json.loads(outputs.read_text())
+            bucket = o.get("bucket", {}).get("value")
+            distribution = distribution or o.get("distribution_id", {}).get("value")
     if not bucket:
         raise SystemExit("publish: need --bucket (or SFR_BUCKET / infra/live/outputs.json)")
     return bucket, distribution

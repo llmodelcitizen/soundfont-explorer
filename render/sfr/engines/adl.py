@@ -6,10 +6,10 @@ We symlink the song into the job's scratch dir and run there (MVP trick).
 """
 from __future__ import annotations
 
-import os
+import subprocess
 from pathlib import Path
 
-from . import RenderSpec
+from . import RenderSpec, core_flag, symlinked_input
 
 CORE_FLAGS = {
     "nuked": "--emu-nuked",
@@ -27,13 +27,6 @@ CORE_FLAGS = {
 }
 
 
-def core_flag(core: str) -> str:
-    try:
-        return CORE_FLAGS[core]
-    except KeyError:
-        raise ValueError(f"unknown libADLMIDI core {core!r}; known: {sorted(CORE_FLAGS)}") from None
-
-
 def bank_arg(variant: dict, paths) -> str:
     bank = variant.get("bank") or {}
     if bank.get("kind", "embedded") == "embedded":
@@ -42,17 +35,22 @@ def bank_arg(variant: dict, paths) -> str:
     return str(paths.banks / "wopl" / bank["file"])
 
 
+def preflight(jobs, engines_json: dict) -> list[str]:
+    """An unknown --emu-X flag is silently treated as a bank file by adlmidiplay (MVP footgun):
+    every core flag these jobs need must appear in the binary's usage text."""
+    usage = subprocess.run(["adlmidiplay", "--help"], capture_output=True, text=True).stdout
+    problems: list[str] = []
+    for j in jobs:
+        flag = core_flag("adlmidi", CORE_FLAGS, j.core, engines_json)
+        msg = f"adlmidiplay does not know {flag} (an unknown flag is silently treated as a bank file — MVP footgun)"
+        if flag not in usage and msg not in problems:
+            problems.append(msg)
+    return problems
+
+
 def spec(job, paths, engines_json: dict, tmpdir: Path) -> RenderSpec:
     eng = engines_json["engines"]["adlmidi"]
-    midi_src = job.midi_path
-    link = tmpdir / midi_src.name
-    out = tmpdir / (midi_src.name + ".wav")
-
-    def pre():
-        if link.exists() or link.is_symlink():
-            link.unlink()
-        os.symlink(midi_src, link)
-
-    argv = ["adlmidiplay", link.name, *eng["base_args"], core_flag(job.core), bank_arg(job.variant, paths), str(eng.get("chips", 1))]
-    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, weight=1, timeout_s=900,
-                      pre=[pre], native_rate=int(eng.get("native_rate", 44100)))
+    link, out, pre = symlinked_input(job, tmpdir)
+    argv = ["adlmidiplay", link.name, *eng["base_args"], core_flag("adlmidi", CORE_FLAGS, job.core, engines_json),
+            bank_arg(job.variant, paths), str(eng["chips"])]
+    return RenderSpec(argv=argv, cwd=tmpdir, out_wav=out, pre=[pre], native_rate=int(eng["native_rate"]))
