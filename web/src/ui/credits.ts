@@ -63,6 +63,7 @@ export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement
     { class: 'credits' },
     h('p', null, h('a', { href: '#', class: 'btn link' }, '← back to the player')),
     h('h1', null, 'About'),
+    h('p', { class: 'tagline' }, 'The voices of your PC through the decades <3'),
     h(
       'p',
       null,

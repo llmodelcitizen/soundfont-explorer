@@ -6,7 +6,8 @@ const errors = [];
 p.on('pageerror', (e) => errors.push(String(e)));
 p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await p.goto('https://soundfonts.ericq.com/', { waitUntil: 'networkidle' });
-await p.tap('.gate .btn');
+await p.waitForSelector('.rows .row', { timeout: 20000 });
+  await p.tap('.rows .row:nth-child(3)');
 await p.waitForFunction(() => document.querySelector('.row.audible') !== null, null, { timeout: 20000 });
 const layout = await p.evaluate(() => {
   const r = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), visible: b.width > 0 && b.height > 0 && getComputedStyle(e).display !== 'none' }; };

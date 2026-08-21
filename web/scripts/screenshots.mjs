@@ -5,8 +5,8 @@ const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-requ
 for (const theme of ['modern', 'win95']) {
   const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
   await p.goto(`${url}?theme=${theme}`, { waitUntil: 'networkidle' });
-  await p.screenshot({ path: `${out}/${theme}-gate.png` });
-  await p.click('.gate .btn');
+  await p.waitForSelector('.rows .row', { timeout: 20000 });
+  await p.keyboard.press(' ');
   await p.waitForFunction(() => document.querySelector('.row.audible') !== null, null, { timeout: 20000 });
   await p.keyboard.press('f');
   await p.keyboard.press('ArrowDown');
@@ -20,7 +20,8 @@ for (const theme of ['modern', 'win95']) {
 }
 const m = await b.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
 await m.goto(url, { waitUntil: 'networkidle' });
-await m.tap('.gate .btn');
+await m.waitForSelector('.rows .row', { timeout: 20000 });
+  await m.tap('.rows .row:nth-child(3)');
 await m.waitForFunction(() => document.querySelector('.row.audible') !== null, null, { timeout: 20000 });
 await m.waitForTimeout(1000);
 await m.screenshot({ path: `${out}/mobile.png` });

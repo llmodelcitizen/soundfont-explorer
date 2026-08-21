@@ -280,6 +280,12 @@ select:focus-visible {
 }
 .rows {
   display: block;
+  min-width: var(--row-min, 0);
+}
+.row.head,
+.row.sticky {
+  min-width: var(--row-min, 0);
+  box-sizing: border-box;
 }
 .row {
   display: grid;
@@ -470,8 +476,6 @@ select:focus-visible {
   height: var(--row-h);
   line-height: var(--row-h);
   white-space: nowrap;
-  border: 0;
-  background: none;
 }
 .row .cell.badge,
 .row .cell.fav,

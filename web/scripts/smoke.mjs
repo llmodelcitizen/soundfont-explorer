@@ -24,8 +24,8 @@ page.on('pageerror', (e) => errors.push(String(e)));
 const results = { url, ok: true, steps: {} };
 try {
   await page.goto(url, { waitUntil: 'networkidle' });
-  await page.waitForSelector('.gate .btn', { timeout: 20000 });
-  await page.click('.gate .btn');
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  await page.keyboard.press(' '); // no gate any more: the first ▶ (Space) starts playback
   await page.waitForSelector('.rows .row', { timeout: 20000 });
   await page.waitForFunction(() => document.querySelector('.row.audible') !== null, null, { timeout: 20000 });
   results.steps.boot = { audible: await page.$eval('.row.audible .label', (e) => e.textContent), rows: await page.$$eval('.rows .row', (r) => r.length) };
@@ -78,9 +78,9 @@ try {
   results.steps.url = href;
   const page2 = await browser.newPage();
   await page2.goto(href.replace(/([?&])t=\d+/, '$1t=30'), { waitUntil: 'networkidle' });
-  await page2.waitForSelector('.gate .btn', { timeout: 20000 });
+  await page2.waitForSelector('.rows .row', { timeout: 20000 });
   const theme2 = await page2.evaluate(() => document.documentElement.dataset.theme);
-  await page2.click('.gate .btn');
+  await page2.keyboard.press(' ');
   await page2.waitForFunction(() => document.querySelector('.row.audible') !== null, null, { timeout: 20000 });
   const audible2 = await page2.$eval('.row.audible', (e) => e.dataset.id);
   const clock2 = await page2.$eval('.clock', (e) => e.textContent);

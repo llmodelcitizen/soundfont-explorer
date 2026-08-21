@@ -60,6 +60,8 @@ export class App {
   private nowPlaying!: NowPlaying;
   private picker!: SongPicker;
   private volTop: HTMLInputElement | null = null;
+  /** set once the user has started playback in this page load (first ▶ or first row tap) */
+  private everPlayed = false;
   private tracks!: TrackList;
   private rightPane!: HTMLElement;
   private debug = new DebugPanel();
@@ -131,12 +133,10 @@ export class App {
     }
     const known = (id: string | null | undefined) => !!id && this.songs.songs.some((s) => s.id === id);
     const songId = known(this.url.song) ? this.url.song! : known(this.songs.defaults.song) ? this.songs.defaults.song! : this.songs.songs[0]!.id;
-    await showGate(this.root, 'Soundfont Explorer', 'The voices of your PC through the decades <3', 'Start Listening', () => {
-      // inside the tap: create + unlock the context synchronously (iOS requirement)
-      this.ctx = createContextInGesture();
-    });
-    if (!this.ctx) this.ctx = createContextInGesture();
-    if (this.ctx.state !== 'running') await this.ctx.resume().catch(() => undefined);
+    // No gate: the context is created now (browsers allow that, suspended) and unlocked by the
+    // first real gesture — ▶, a tap on a list row, any key — through installResumeOnGesture().
+    // Nothing plays until the user asks.
+    this.ctx = createContextInGesture();
     this.diag.ctxCreatedState = this.ctx.state;
     await this.pickDecoder();
     this.installGlobalListeners();
@@ -257,7 +257,7 @@ export class App {
     if (target) this.engine.select(target);
     const pos = Math.min(prevPos, set.duration_s);
     this.engine.seek(pos);
-    if (wasPlaying || opts.initial) this.engine.play();
+    if (wasPlaying) this.engine.play();
     this.transport.setMuted(muted);
     this.transport.setVolume(volume);
     if (this.volTop) this.volTop.value = String(volume);
@@ -272,7 +272,10 @@ export class App {
       this.catalog,
       this.set,
       {
-        onClick: (i) => this.policy.jump(i, performance.now()),
+        onClick: (i) => {
+          this.policy.jump(i, performance.now());
+          if (!this.everPlayed) this.engine.play(); // the tap that picked a font is also the tap that starts the music
+        },
         onStickyClick: (id) => {
           this.filters.clearAll();
           const i = this.visible.indexOf(id);
@@ -452,7 +455,10 @@ export class App {
     });
     this.refreshListened();
     this.list.setFavorites(this.favorites.all());
-    this.engine.on('status', (s) => this.onStatus(s));
+    this.engine.on('status', (s) => {
+      if (s.kind === 'playing') this.everPlayed = true;
+      this.onStatus(s);
+    });
     this.engine.on('audible', (v) => {
       this.list.setAudible(v);
       this.nowPlaying.show(v);

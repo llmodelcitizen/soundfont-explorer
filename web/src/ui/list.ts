@@ -72,6 +72,10 @@ export class VariantList {
     const want = new Set(keys);
     this.cols = COLUMNS.filter((c) => c.always || want.has(c.key));
     this.el.style.setProperty('--cols', this.cols.map((c) => c.width).join(' '));
+    // every column keeps its width; when they do not fit, the list scrolls sideways instead of squeezing the name away
+    const em = parseFloat(getComputedStyle(this.el).fontSize) || 14;
+    const minPx = this.cols.reduce((n, c) => n + (/^minmax\(([\d.]+)em/.exec(c.width)?.[1] ? parseFloat(/^minmax\(([\d.]+)em/.exec(c.width)![1]!) * em : parseFloat(c.width) * em), 0) + 8 * (this.cols.length - 1) + 26;
+    this.el.style.setProperty('--row-min', `${Math.round(minPx)}px`);
     this.renderHead();
     this.setItems(this.ids);
   }

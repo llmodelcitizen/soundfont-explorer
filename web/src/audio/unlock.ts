@@ -78,12 +78,16 @@ export function startSilentMediaElement(): string {
   }
 }
 
+/** Create the context. Inside a gesture this also unlocks it; outside one it comes up suspended
+ *  and installResumeOnGesture() unlocks it on the first pointer/touch/key event. */
 export function createContextInGesture(): AudioContext {
   requestPlaybackSession();
-  startSilentMediaElement();
   const Ctor = (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)!;
   const ctx = new Ctor({ latencyHint: 'interactive' });
-  unlock(ctx);
+  if (navigator.userActivation?.isActive) {
+    startSilentMediaElement();
+    unlock(ctx);
+  }
   return ctx;
 }
 

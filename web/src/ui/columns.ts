@@ -23,7 +23,7 @@ export interface ColumnDef {
 export const COLUMNS: ColumnDef[] = [
   { key: 'idx', label: '#', title: 'position in the current list', width: '3.2em', align: 'center', always: true, compact: true, defaultOn: true },
   { key: 'chip', label: 'chip', title: 'sound chip / format', width: '4.6em', compact: true, defaultOn: true },
-  { key: 'label', label: 'name', title: 'name', width: 'minmax(0, 1fr)', always: true, compact: true, defaultOn: true },
+  { key: 'label', label: 'name', title: 'name', width: 'minmax(14em, 1fr)', always: true, compact: true, defaultOn: true },
   { key: 'engine', label: 'engine', title: 'render engine', width: '7.5em', defaultOn: true },
   { key: 'id', label: 'id', title: 'stable variant id', width: '9em', defaultOn: false },
   { key: 'bank', label: 'bank', title: 'FM bank family', width: '5.2em', defaultOn: false },
