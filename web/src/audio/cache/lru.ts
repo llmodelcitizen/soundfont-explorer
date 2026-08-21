@@ -28,8 +28,12 @@ export class ByteLRU<V> {
     return e.v;
   }
 
+  /** like get() but does not refresh recency; still counted as hit/miss for the debug panel */
   peek(k: string): V | undefined {
-    return this.map.get(k)?.v;
+    const e = this.map.get(k);
+    if (e) this.hits++;
+    else this.misses++;
+    return e?.v;
   }
 
   has(k: string): boolean {

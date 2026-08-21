@@ -18,10 +18,10 @@ export default defineConfig({
     port: 5173,
     // During development the manifests/audio come from `python3 -m http.server` on out/public
     proxy: {
-      '/songs.json': 'http://127.0.0.1:8000',
-      '/c': 'http://127.0.0.1:8000',
-      '/s': 'http://127.0.0.1:8000',
-      '/a': 'http://127.0.0.1:8000',
+      '^/songs\\.json$': 'http://127.0.0.1:8000',
+      '^/c/': 'http://127.0.0.1:8000',
+      '^/s/': 'http://127.0.0.1:8000',
+      '^/a/': 'http://127.0.0.1:8000',
     },
   },
   test: {
