@@ -326,3 +326,11 @@
 [data-theme='win95'] .hsplit::after {
   display: none;
 }
+
+[data-theme='win95'] .btn.danger {
+  color: #800000;
+}
+[data-theme='win95'] .btn.danger:hover {
+  background: #c0c0c0;
+  color: #800000;
+}

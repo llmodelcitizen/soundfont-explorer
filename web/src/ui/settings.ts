@@ -2,6 +2,7 @@
 import { clear, h } from './dom';
 import { DEFAULT_PREFS, type Prefs } from '../state/prefs';
 import { COLUMNS } from './columns';
+import { clearAllSiteData } from '../state/wipe';
 
 export interface SettingsCallbacks {
   onChange(p: Prefs): void;
@@ -75,6 +76,10 @@ export class SettingsModal {
     });
     const close = h('button', { class: 'btn close-settings', type: 'button' }, 'close');
     close.addEventListener('click', () => this.toggle(false));
+    const wipe = h('button', { class: 'btn danger', type: 'button', title: 'Forget everything this site stored in this browser (settings, favourites, listened marks, pane sizes) and reload' }, 'clear all site data');
+    wipe.addEventListener('click', () => {
+      if (confirm('Clear everything this site stored in this browser — settings, favourites, listened marks, pane sizes — and reload?')) void clearAllSiteData();
+    });
     this.box.append(
       h('h2', { id: 'settings-title' }, 'settings'),
       h(
@@ -109,7 +114,7 @@ export class SettingsModal {
         ),
         h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order.')),
       ),
-      h('div', { class: 'btnrow' }, close),
+      h('div', { class: 'btnrow' }, close, wipe),
     );
   }
 }
