@@ -70,7 +70,7 @@ pre {
 .top .title {
   flex: 1 1 auto;
   min-width: 0;
-  text-align: center;
+  text-align: left;
   /* bigger type, but a line-height that keeps the header at its previous height (buttons set it) */
   font-size: 1.45em;
   line-height: 29px;
@@ -242,7 +242,7 @@ select:focus-visible {
 }
 .row {
   display: grid;
-  grid-template-columns: 3.2em 4.6em minmax(0, 1fr) auto 4.6em 1em 0.9em;
+  grid-template-columns: var(--cols, 3.2em 4.6em minmax(0, 1fr));
   gap: 8px;
   align-items: center;
   padding: 2px 8px;
@@ -310,26 +310,6 @@ select:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.row .meta {
-  color: var(--fg-dim);
-  font-size: 0.85em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 28vw;
-}
-.row.sel .meta {
-  color: inherit;
-  opacity: 0.8;
-}
-.row .gain {
-  font: var(--mono);
-  font-size: 0.8em;
-  text-align: right;
-  color: var(--fg-dim);
-}
-.row.sel .gain {
-  color: inherit;
-}
 .row .fav {
   visibility: hidden;
   color: var(--heart);
@@ -382,10 +362,73 @@ select:focus-visible {
 }
 .row.sticky {
   position: sticky;
-  top: 0;
+  top: var(--row-h);
   z-index: 1;
   background: var(--panel);
   border-bottom: 1px solid var(--accent);
+}
+.row.head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  cursor: default;
+  user-select: none;
+}
+.row.head:hover {
+  background: var(--panel);
+}
+.hcell {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--fg-dim);
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hcell:hover,
+.hcell.sorted {
+  color: var(--accent);
+}
+.hcell .arrow {
+  margin-left: 3px;
+  font-size: 0.8em;
+}
+.cell.right,
+.hcell.right {
+  text-align: right;
+}
+.cell.center,
+.hcell.center {
+  text-align: center;
+}
+.row .cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.row .meta {
+  color: var(--fg-dim);
+  font-size: 0.85em;
+}
+.row .num {
+  font: var(--mono);
+  font-size: 0.8em;
+}
+.row.sel .meta,
+.row.sel .num {
+  color: inherit;
+}
+.fav-filter.on {
+  color: var(--heart);
+  border-color: var(--heart);
 }
 
 /* right pane: tracks (rest) / split handle / now playing (--np-h, default = its content) */
@@ -462,20 +505,15 @@ select:focus-visible {
   color: inherit;
   opacity: 0.8;
 }
-/* desktop: the header dropdown is replaced by the list; the title is centred on the whole header */
+/* desktop: the header dropdown is replaced by the list */
 @media (min-width: 721px) {
   .top .songpicker {
     display: none;
   }
-  .top .title {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    max-width: calc(100% - 700px);
-    flex: none;
-    pointer-events: none;
-  }
+}
+.top .domain {
+  color: var(--fg-dim);
+  font-weight: 400;
 }
 
 /* now playing */
@@ -672,6 +710,18 @@ kbd {
 .settings .small {
   font-size: 0.85em;
 }
+.settings .setting-title {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  margin-bottom: 6px;
+}
+.settings .colgrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 12px;
+}
 
 @media (pointer: coarse) {
   /* iOS zooms into focused inputs smaller than 16 px */
@@ -796,13 +846,7 @@ kbd {
   .nowplaying {
     border-top: 0;
   }
-  .row {
-    grid-template-columns: 2.6em 4em minmax(0, 1fr) 1em 0.8em;
-  }
-  .row .meta,
-  .row .gain {
-    display: none;
-  }
+
   .transport {
     flex-wrap: wrap;
     padding-bottom: max(6px, env(safe-area-inset-bottom));

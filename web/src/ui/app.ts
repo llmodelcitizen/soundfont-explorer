@@ -22,6 +22,7 @@ import { FilterBar } from './filters';
 import { showGate } from './gate';
 import { KeymapOverlay } from './keymapOverlay';
 import { VariantList } from './list';
+import { sortIds, type ColKey } from './columns';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { TrackList } from './tracklist';
@@ -70,6 +71,10 @@ export class App {
       savePrefs(p);
       this.refreshListened();
       if (this.tracks) this.tracks.preserveBox.checked = p.preserveTrackPosition;
+      if (this.list) {
+        this.list.setColumns(this.effectiveColumns());
+        this.applyHighlightsAfterColumns();
+      }
     },
     onResetTrack: () => {
       this.ledger.resetSong(this.song.id);
@@ -86,6 +91,9 @@ export class App {
   private policy!: InputPolicy;
   private theme: ThemeName;
   private pinnedA: string | null = null;
+  private sort: { key: ColKey | null; dir: 1 | -1 } = { key: null, dir: 1 };
+  private favoritesOnly = false;
+  private canonicalIndex = new Map<string, number>();
   private url: UrlState;
   private urlTimer: ReturnType<typeof setTimeout> | null = null;
   private decodeKind = 'native';
@@ -257,26 +265,45 @@ export class App {
   private buildUi(sel: Selection, query: string): void {
     if (this.uninstallKeys) this.uninstallKeys();
     clear(this.root);
-    this.list = new VariantList(this.catalog, this.set, {
-      onClick: (i) => this.policy.jump(i, performance.now()),
-      onStickyClick: (id) => {
-        this.filters.clearAll();
-        const i = this.visible.indexOf(id);
-        if (i >= 0) this.policy.jump(i, performance.now());
+    this.canonicalIndex = new Map(this.set.order.map((id, i) => [id, i]));
+    this.list = new VariantList(
+      this.catalog,
+      this.set,
+      {
+        onClick: (i) => this.policy.jump(i, performance.now()),
+        onStickyClick: (id) => {
+          this.filters.clearAll();
+          const i = this.visible.indexOf(id);
+          if (i >= 0) this.policy.jump(i, performance.now());
+        },
+        onSort: (key) => this.toggleSort(key),
       },
-    });
+      {
+        isFavorite: (id) => this.favorites.has(id),
+        listenedSeconds: (id) => this.ledger.seconds(this.song.id, id),
+        listened: (id) => this.ledger.seconds(this.song.id, id) >= this.prefs.listenedAfterS,
+      },
+    );
+    this.list.setColumns(this.effectiveColumns());
+    this.list.setSort(this.sort);
     this.filters = new FilterBar(this.index, sel, query, {
       onChange: (s, q) => this.applyFilters(s, q),
       onSearchEnter: () => {
         if (this.visible.length) this.policy.jump(0, performance.now());
         this.focusList();
       },
+      onFavoritesOnly: (on) => {
+        this.favoritesOnly = on;
+        this.applyFilters(this.filters.sel, this.filters.query);
+      },
     });
+    this.filters.setFavoritesOnly(this.favoritesOnly);
     this.nowPlaying = new NowPlaying(this.catalog, this.set, this.song, {
       isFavorite: (id) => this.favorites.has(id),
       toggleFavorite: (id) => {
         const on = this.favorites.toggle(id);
         this.list.setFavorites(this.favorites.all());
+        if (this.favoritesOnly || this.sort.key === 'fav') this.applyFilters(this.filters.sel, this.filters.query);
         return on;
       },
     });
@@ -329,7 +356,7 @@ export class App {
     this.header = h(
       'header',
       { class: 'top' },
-      h('div', { class: 'title' }, h('span', { class: 'brand' }, 'Soundfont Explorer')),
+      h('div', { class: 'title' }, h('span', { class: 'brand' }, 'Soundfont Explorer'), h('span', { class: 'domain' }, ` - ${location.host}`)),
       this.picker.el,
       h('div', { class: 'spacer' }),
       themeSel,
@@ -504,9 +531,38 @@ export class App {
     return this.cursor;
   }
 
+  private effectiveColumns(): ColKey[] {
+    const compact = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches;
+    if (compact) return ['chip', 'fav', 'dot'];
+    return this.prefs.columns as ColKey[];
+  }
+
+  private toggleSort(key: ColKey): void {
+    if (this.sort.key !== key) this.sort = { key, dir: 1 };
+    else if (this.sort.dir === 1) this.sort = { key, dir: -1 };
+    else this.sort = { key: null, dir: 1 };
+    this.list.setSort(this.sort);
+    this.applyFilters(this.filters.sel, this.filters.query);
+  }
+
+  private orderVisible(ids: string[]): string[] {
+    let out = ids;
+    if (this.favoritesOnly) out = out.filter((id) => this.favorites.has(id));
+    if (this.sort.key) {
+      out = sortIds(out, this.sort.key, this.sort.dir, this.canonicalIndex, {
+        catalog: this.catalog,
+        set: this.set,
+        isFavorite: (id) => this.favorites.has(id),
+        listenedSeconds: (id) => this.ledger.seconds(this.song.id, id),
+        listened: (id) => this.ledger.seconds(this.song.id, id) >= this.prefs.listenedAfterS,
+      });
+    }
+    return out;
+  }
+
   private applyFilters(sel: Selection, query: string, initial = false): void {
     const audible = this.engine.audible;
-    this.visible = this.index.apply(sel, query);
+    this.visible = this.orderVisible(this.index.apply(sel, query));
     this.list.setItems(this.visible);
     this.filters.updateHidden(this.set.order.length, this.visible.length);
     const keep = audible ?? this.visible[this.cursor];
@@ -570,6 +626,14 @@ export class App {
     if (!v || !this.engine.playing || this.ctx.state !== 'running' || this.engine.status.kind !== 'playing' || dt <= 0 || dt > 1) return;
     const total = this.ledger.add(this.song.id, v, dt);
     if (total >= this.prefs.listenedAfterS) this.list.markListened(v);
+  }
+
+  /** setColumns() rebuilds rows: restore cursor/audible/listened/favourite marks */
+  private applyHighlightsAfterColumns(): void {
+    this.list.setFavorites(this.favorites.all());
+    this.refreshListened();
+    this.list.setAudible(this.engine.audible);
+    this.list.select(this.cursor, false);
   }
 
   private refreshListened(): void {

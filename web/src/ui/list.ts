@@ -1,49 +1,32 @@
 /**
- * Variant list: plain DOM rows (index · engine/chip badge · label · meta · status dot).
- * Two highlights: .sel = cursor, .audible = what you hear. A filtered-out-but-playing variant
- * stays visible in a sticky row at the top.
+ * Variant list: plain DOM rows over a column model (ui/columns.ts) with a sticky, clickable
+ * header for sorting. Two highlights: .sel = cursor, .audible = what you hear. A filtered-out-
+ * but-playing variant stays visible in a sticky row at the top.
  */
 import type { CatalogDoc, Variant } from '../contracts/catalog';
 import type { SetDoc } from '../contracts/set';
-import { clear, fmtBytes, h } from './dom';
+import { COLUMNS, cellText, chipLabel, displayLabel, type CellContext, type ColKey, type ColumnDef } from './columns';
+import { clear, h } from './dom';
 
 export interface ListCallbacks {
   onClick(index: number): void;
   onStickyClick(variantId: string): void;
+  onSort(key: ColKey): void;
 }
 
-export function engineBadge(v: Variant | undefined): string {
-  if (!v) return '?';
-  const chip = (v.chip || '').toUpperCase();
-  switch (v.engine) {
-    case 'fluidsynth':
-      return 'SF2';
-    case 'adlmidi':
-      return chip || 'OPL3';
-    case 'opnmidi':
-      return chip || 'OPN2';
-    case 'edmidi':
-      return chip || 'OPLL';
-    case 'timidity':
-      return 'GUS';
-    case 'sc55':
-      return 'SC-55';
-    case 'munt':
-      return chip === 'LA' ? 'MT-32' : chip || 'LA';
-    default:
-      return chip || v.engine.toUpperCase();
-  }
+export interface SortState {
+  key: ColKey | null;
+  dir: 1 | -1;
 }
+
+export { chipLabel as engineBadge };
 
 export function metaLine(v: Variant | undefined): string {
   if (!v) return '';
   const parts: string[] = [];
-  if (v.source?.bytes) parts.push(fmtBytes(v.source.bytes));
   const f = v.facets ?? {};
   if (f.completeness && f.completeness !== 'full_gm') parts.push(String(f.completeness).replace('_', ' '));
   if (f.lineage && f.lineage !== 'generic' && f.lineage !== 'fm_bank') parts.push(String(f.lineage));
-  if (f.decade && f.decade !== 'unknown') parts.push(String(f.decade));
-  if (v.bank && typeof v.bank['family'] === 'string') parts.push(String(v.bank['family']));
   return parts.join(' · ');
 }
 
@@ -52,17 +35,28 @@ export class VariantList {
   private rows: HTMLElement[] = [];
   private ids: string[] = [];
   private sticky: HTMLElement;
+  private head: HTMLElement;
   private body: HTMLElement;
   private selIndex = -1;
   private audibleId: string | null = null;
   private loadingId: string | null = null;
   private listened = new Set<string>();
   private favorites = new Set<string>();
+  private cols: ColumnDef[] = [];
+  private sort: SortState = { key: null, dir: 1 };
+  private ctx: CellContext;
 
-  constructor(private catalog: CatalogDoc, private set: SetDoc, private cb: ListCallbacks) {
+  constructor(
+    private catalog: CatalogDoc,
+    private set: SetDoc,
+    private cb: ListCallbacks,
+    hooks: { isFavorite(id: string): boolean; listenedSeconds(id: string): number; listened(id: string): boolean },
+  ) {
+    this.ctx = { catalog, set, ...hooks };
+    this.head = h('div', { class: 'row head', role: 'row' });
     this.sticky = h('div', { class: 'row sticky hidden', role: 'option' });
     this.body = h('div', { class: 'rows', role: 'listbox', 'aria-label': 'variants' });
-    this.el = h('div', { class: 'list' }, this.sticky, this.body);
+    this.el = h('div', { class: 'list' }, this.head, this.sticky, this.body);
     this.body.addEventListener('click', (e) => {
       const row = (e.target as HTMLElement).closest('.row') as HTMLElement | null;
       if (row && row.dataset.index) this.cb.onClick(Number(row.dataset.index));
@@ -70,6 +64,40 @@ export class VariantList {
     this.sticky.addEventListener('click', () => {
       if (this.audibleId) this.cb.onStickyClick(this.audibleId);
     });
+    this.setColumns(COLUMNS.filter((c) => c.defaultOn).map((c) => c.key));
+  }
+
+  /** choose visible columns (always-on ones are forced) and rebuild */
+  setColumns(keys: ColKey[]): void {
+    const want = new Set(keys);
+    this.cols = COLUMNS.filter((c) => c.always || want.has(c.key));
+    this.el.style.setProperty('--cols', this.cols.map((c) => c.width).join(' '));
+    this.renderHead();
+    this.setItems(this.ids);
+  }
+
+  get columns(): ColKey[] {
+    return this.cols.map((c) => c.key);
+  }
+
+  setSort(sort: SortState): void {
+    this.sort = sort;
+    this.renderHead();
+  }
+
+  private renderHead(): void {
+    clear(this.head);
+    for (const c of this.cols) {
+      const active = this.sort.key === c.key;
+      const cell = h(
+        'button',
+        { type: 'button', class: `cell col-${c.key} hcell${c.align ? ' ' + c.align : ''}${active ? ' sorted' : ''}`, title: `${c.title} — click to sort`, 'aria-sort': active ? (this.sort.dir === 1 ? 'ascending' : 'descending') : 'none' },
+        c.label,
+        active ? h('span', { class: 'arrow' }, this.sort.dir === 1 ? '▲' : '▼') : '',
+      );
+      cell.addEventListener('click', () => this.cb.onSort(c.key));
+      this.head.appendChild(cell);
+    }
   }
 
   setItems(ids: string[]): void {
@@ -94,18 +122,19 @@ export class VariantList {
 
   private makeRow(id: string, i: number): HTMLElement {
     const v = this.catalog.byId.get(id);
-    const sv = this.set.variants[id];
-    const row = h(
-      'div',
-      { class: 'row', role: 'option', dataset: { index: String(i), id }, title: v?.label ?? id },
-      h('span', { class: 'idx' }, String(i + 1)),
-      h('span', { class: `badge e-${v?.engine ?? 'x'}` }, engineBadge(v)),
-      h('span', { class: 'label' }, v?.label ?? id),
-      h('span', { class: 'meta' }, metaLine(v)),
-      h('span', { class: 'gain', title: 'applied gain' }, sv ? `${sv.gain_db >= 0 ? '+' : ''}${sv.gain_db.toFixed(1)} dB` : ''),
-      h('span', { class: 'fav', title: 'favourite', 'aria-hidden': 'true' }, '♥'),
-      h('span', { class: 'dot', 'aria-hidden': 'true' }),
-    );
+    const row = h('div', { class: 'row', role: 'option', dataset: { index: String(i), id }, title: v?.label ?? id });
+    for (const c of this.cols) {
+      const txt = cellText(c.key, id, i, this.ctx);
+      const cell = h('span', { class: `cell col-${c.key}${c.align ? ' ' + c.align : ''}` }, c.key === 'fav' ? '♥' : c.key === 'dot' ? '' : txt);
+      if (c.key === 'chip') cell.classList.add('badge', `e-${v?.engine ?? 'x'}`);
+      if (c.key === 'label') cell.classList.add('label');
+      if (c.key === 'fav') cell.classList.add('fav');
+      if (c.key === 'dot') cell.classList.add('dot');
+      if (c.key === 'idx') cell.classList.add('idx');
+      if (c.key === 'gain' || c.key === 'lufs') cell.classList.add('num');
+      if (c.key !== 'label' && c.key !== 'chip' && c.key !== 'idx' && c.key !== 'fav' && c.key !== 'dot') cell.classList.add('meta');
+      row.appendChild(cell);
+    }
     return row;
   }
 
@@ -117,6 +146,11 @@ export class VariantList {
 
   setAudible(id: string | null): void {
     this.audibleId = id;
+    this.applyHighlights();
+  }
+
+  setLoading(id: string | null): void {
+    this.loadingId = id;
     this.applyHighlights();
   }
 
@@ -138,11 +172,6 @@ export class VariantList {
     if (i >= 0) this.rows[i]?.classList.add('cached');
   }
 
-  setLoading(id: string | null): void {
-    this.loadingId = id;
-    this.applyHighlights();
-  }
-
   private applyHighlights(): void {
     this.rows.forEach((r, i) => {
       const id = this.ids[i]!;
@@ -154,16 +183,15 @@ export class VariantList {
       if (i === this.selIndex) r.setAttribute('aria-selected', 'true');
       else r.removeAttribute('aria-selected');
     });
-    // sticky row when the audible variant is filtered out
     const visible = this.audibleId !== null && this.ids.includes(this.audibleId);
     if (this.audibleId && !visible) {
       const v = this.catalog.byId.get(this.audibleId);
       clear(this.sticky);
+      this.sticky.style.gridTemplateColumns = '3.2em 4.6em minmax(0, 1fr)';
       this.sticky.append(
-        h('span', { class: 'idx' }, '▶'),
-        h('span', { class: `badge e-${v?.engine ?? 'x'}` }, engineBadge(v)),
-        h('span', { class: 'label' }, v?.label ?? this.audibleId),
-        h('span', { class: 'meta' }, 'playing (hidden by filters)'),
+        h('span', { class: 'cell idx' }, '▶'),
+        h('span', { class: `cell badge e-${v?.engine ?? 'x'}` }, chipLabel(v)),
+        h('span', { class: 'cell label' }, displayLabel(v, this.audibleId), h('span', { class: 'meta' }, ' — playing (hidden by filters)')),
       );
       this.sticky.classList.remove('hidden');
       this.sticky.classList.add('audible');

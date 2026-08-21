@@ -53,8 +53,22 @@
   padding: 3px 6px;
   position: relative;
 }
-[data-theme='win95'] .top .brand {
+[data-theme='win95'] .top .brand,
+[data-theme='win95'] .top .domain {
   color: #fff;
+}
+[data-theme='win95'] .row.head {
+  background: #c0c0c0;
+  box-shadow: var(--bevel-out);
+}
+[data-theme='win95'] .hcell {
+  color: #000;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+[data-theme='win95'] .hcell.sorted {
+  color: #000080;
 }
 [data-theme='win95'] .top .title {
   font-size: 16px;

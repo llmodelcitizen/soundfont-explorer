@@ -1,6 +1,7 @@
 /** Settings modal (⚙ / S). First option: the "listened" threshold; plus reset buttons. */
 import { clear, h } from './dom';
 import type { Prefs } from '../state/prefs';
+import { COLUMNS } from './columns';
 
 export interface SettingsCallbacks {
   onChange(p: Prefs): void;
@@ -87,6 +88,28 @@ export class SettingsModal {
         'section',
         { class: 'setting' },
         h('label', { class: 'preserve', title: 'When unchecked, always start from the beginning after stepping to a new track.' }, preserve, ' Preserve track position when stepping to another track'),
+      ),
+      h(
+        'section',
+        { class: 'setting' },
+        h('div', { class: 'setting-title' }, 'List columns'),
+        h(
+          'div',
+          { class: 'colgrid' },
+          COLUMNS.filter((c) => !c.always).map((c) => {
+            const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
+            box.checked = this.prefs.columns.includes(c.key);
+            box.addEventListener('change', () => {
+              const cols = new Set(this.prefs.columns);
+              if (box.checked) cols.add(c.key);
+              else cols.delete(c.key);
+              this.prefs = { ...this.prefs, columns: COLUMNS.filter((x) => cols.has(x.key)).map((x) => x.key) };
+              this.cb.onChange(this.prefs);
+            });
+            return h('label', { class: 'preserve', title: c.title }, box, ` ${c.label}`);
+          }),
+        ),
+        h('p', { class: 'muted small' }, '# and name are always shown. Click a column header to sort; click again to reverse, a third time to restore the catalog order.'),
       ),
       h('div', { class: 'btnrow' }, close),
     );

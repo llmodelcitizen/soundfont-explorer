@@ -5,6 +5,7 @@ import { clear, h } from './dom';
 export interface FilterCallbacks {
   onChange(sel: Selection, query: string): void;
   onSearchEnter(): void;
+  onFavoritesOnly(on: boolean): void;
 }
 
 export const VALUE_LABELS: Record<string, string> = {
@@ -49,6 +50,8 @@ export class FilterBar {
   private hiddenChip: HTMLElement;
   sel: Selection = {};
   query = '';
+  favoritesOnly = false;
+  private favBtn!: HTMLButtonElement;
   private open = false;
 
   constructor(private index: FilterIndex, initial: Selection, initialQuery: string, private cb: FilterCallbacks) {
@@ -75,8 +78,14 @@ export class FilterBar {
     this.hiddenChip.addEventListener('click', () => this.clearAll());
     const toggle = h('button', { class: 'btn', type: 'button', title: 'filters (F)' }, 'filters ▾');
     toggle.addEventListener('click', () => this.toggle());
+    this.favBtn = h('button', { class: 'btn toggle fav-filter', type: 'button', title: 'show favourites only', 'aria-pressed': 'false' }, '♥ favorites') as HTMLButtonElement;
+    this.favBtn.addEventListener('click', () => {
+      this.setFavoritesOnly(!this.favoritesOnly);
+      this.cb.onFavoritesOnly(this.favoritesOnly);
+      this.favBtn.blur();
+    });
     this.groups = h('div', { class: 'facets hidden' });
-    this.el = h('div', { class: 'filterbar' }, h('div', { class: 'filterrow' }, toggle, this.hiddenChip, this.search), this.groups);
+    this.el = h('div', { class: 'filterbar' }, h('div', { class: 'filterrow' }, toggle, this.favBtn, this.hiddenChip, this.search), this.groups);
     this.render();
   }
 
@@ -92,7 +101,15 @@ export class FilterBar {
 
   clearAll(): void {
     this.sel = {};
+    this.setFavoritesOnly(false);
+    this.cb.onFavoritesOnly(false);
     this.emit();
+  }
+
+  setFavoritesOnly(on: boolean): void {
+    this.favoritesOnly = on;
+    this.favBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    this.favBtn.classList.toggle('on', on);
   }
 
   private emit(): void {

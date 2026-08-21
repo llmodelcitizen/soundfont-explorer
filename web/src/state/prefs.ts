@@ -8,9 +8,11 @@ export interface Prefs {
   listenedAfterS: number;
   /** keep the playhead position when stepping to another track (false = start from the beginning) */
   preserveTrackPosition: boolean;
+  /** visible list columns (keys from ui/columns.ts); always-on columns are implied */
+  columns: string[];
 }
 
-export const DEFAULT_PREFS: Prefs = { listenedAfterS: 3, preserveTrackPosition: true };
+export const DEFAULT_PREFS: Prefs = { listenedAfterS: 3, preserveTrackPosition: true, columns: ['chip', 'bank', 'size', 'decade', 'gain', 'fav', 'dot'] };
 const PREFS_KEY = 'sfp.prefs.v1';
 const LISTENED_KEY = 'sfp.listened.v1';
 
@@ -37,6 +39,7 @@ export function loadPrefs(): Prefs {
   return {
     listenedAfterS: Number.isFinite(n) && n >= 0 ? Math.min(60, n) : DEFAULT_PREFS.listenedAfterS,
     preserveTrackPosition: typeof p.preserveTrackPosition === 'boolean' ? p.preserveTrackPosition : DEFAULT_PREFS.preserveTrackPosition,
+    columns: Array.isArray(p.columns) ? p.columns.map(String) : [...DEFAULT_PREFS.columns],
   };
 }
 
