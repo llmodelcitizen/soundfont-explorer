@@ -661,6 +661,17 @@ select:focus-visible {
 .transport .break {
   display: none;
 }
+/* all transport buttons: same 16 px SVG icons (currentColor), centred, no text metrics involved */
+.transport .btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+.transport .steps .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 /* the five transport buttons share one fixed width, glyphs centred — play/pause must not change width */
 .transport > .btn,
 .transport .toggle {
@@ -944,8 +955,7 @@ kbd {
     gap: 6px;
   }
   .transport .steps .btn {
-    padding: 6px 10px;
-    font-size: 1.2em;
+    padding: 8px 12px;
   }
   .transport > .btn,
   .transport .toggle {

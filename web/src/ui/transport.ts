@@ -1,5 +1,6 @@
 /** Transport: ◀◀ ▶ ▶▶, clock, seek, loop, volume, mute. Sliders blur back to the list (MVP lesson). */
 import { fmtTime, h } from './dom';
+import { ICONS, setIcon } from './icons';
 
 export interface TransportCallbacks {
   onToggle(): void;
@@ -26,17 +27,20 @@ export class Transport {
   private repeatTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private duration: number, private cb: TransportCallbacks, private returnFocus: () => void) {
-    this.playBtn = h('button', { class: 'btn play', type: 'button', title: 'play/pause (Space)' }, '▶');
+    this.playBtn = h('button', { class: 'btn play', type: 'button', title: 'play/pause (Space)', 'aria-label': 'play/pause' });
+    setIcon(this.playBtn, 'play');
     this.playBtn.addEventListener('click', () => {
       cb.onToggle();
       returnFocus();
     });
-    const back = h('button', { class: 'btn', type: 'button', title: '−5 s (←)' }, '◀◀');
+    const back = h('button', { class: 'btn', type: 'button', title: '−5 s (←)', 'aria-label': 'back 5 seconds' });
+    back.innerHTML = ICONS.back;
     back.addEventListener('click', () => {
       cb.onSkip(-5);
       returnFocus();
     });
-    const fwd = h('button', { class: 'btn', type: 'button', title: '+5 s (→)' }, '▶▶');
+    const fwd = h('button', { class: 'btn', type: 'button', title: '+5 s (→)', 'aria-label': 'forward 5 seconds' });
+    fwd.innerHTML = ICONS.fwd;
     fwd.addEventListener('click', () => {
       cb.onSkip(5);
       returnFocus();
@@ -73,8 +77,9 @@ export class Transport {
     this.vol.addEventListener('change', () => returnFocus());
     this.status = h('span', { class: 'status' }, '');
     // touch ▲/▼ repeat buttons (33 ms through the same policy)
-    const mkStep = (delta: number, glyph: string) => {
-      const b = h('button', { class: 'btn step', type: 'button', title: delta < 0 ? 'previous variant (↑)' : 'next variant (↓)' }, glyph);
+    const mkStep = (delta: number, icon: 'up' | 'down') => {
+      const b = h('button', { class: 'btn step', type: 'button', title: delta < 0 ? 'previous variant (↑)' : 'next variant (↓)', 'aria-label': delta < 0 ? 'previous variant' : 'next variant' });
+      setIcon(b, icon);
       const start = (e: Event) => {
         e.preventDefault();
         cb.onStep(delta, false);
@@ -96,7 +101,7 @@ export class Transport {
     this.el = h(
       'div',
       { class: 'transport' },
-      h('div', { class: 'steps' }, mkStep(-1, '▲'), mkStep(1, '▼')),
+      h('div', { class: 'steps' }, mkStep(-1, 'up'), mkStep(1, 'down')),
       back,
       this.playBtn,
       fwd,
@@ -123,7 +128,11 @@ export class Transport {
   update(pos: number, playing: boolean): void {
     this.clock.textContent = `${fmtTime(pos)} / ${fmtTime(this.duration)}`;
     if (!this.seeking) this.seek.value = String(pos);
-    this.playBtn.textContent = playing ? '❚❚' : '▶';
+    const want = playing ? 'pause' : 'play';
+    if (this.playBtn.dataset.icon !== want) {
+      setIcon(this.playBtn, want);
+      this.playBtn.dataset.icon = want;
+    }
   }
 
   setLoop(on: boolean): void {

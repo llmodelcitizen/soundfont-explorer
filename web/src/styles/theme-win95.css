@@ -271,3 +271,8 @@
   align-items: center;
   justify-content: center;
 }
+
+/* win95: plain black icons on the grey buttons */
+[data-theme='win95'] .transport .btn svg {
+  color: #000;
+}
