@@ -276,3 +276,26 @@
 [data-theme='win95'] .transport .btn svg {
   color: #000;
 }
+
+@media (max-width: 720px) and (orientation: portrait) {
+  /* centre the song dropdown between the button row and the bottom edge of the title bar */
+  [data-theme='win95'] .top .songpicker {
+    margin-bottom: 3px;
+  }
+  [data-theme='win95'] .top .vol-top {
+    accent-color: #000080;
+  }
+}
+
+/* win95 dropdowns: a bevelled ▼ button as the indicator (iOS Safari drops the native arrow on styled selects) */
+[data-theme='win95'] select.themepick,
+[data-theme='win95'] select.songpicker {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 24px;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='17' height='17' viewBox='0 0 17 17'><rect width='17' height='17' fill='%23c0c0c0'/><path d='M0 0h16v1H0zM0 0h1v16H0z' fill='%23fff'/><path d='M1 15h15V1h1v16H1z' fill='%23000'/><path d='M2 14h13V2h1v13H2z' fill='%23808080'/><path d='M5 7h7l-3.5 4z' fill='%23000'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 2px center;
+  background-size: 17px 17px;
+}

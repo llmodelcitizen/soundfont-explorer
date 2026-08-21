@@ -549,6 +549,18 @@ select:focus-visible {
   color: var(--fg-dim);
   font-weight: 400;
 }
+/* header volume exists only in phone portrait */
+.top .vol-top {
+  display: none;
+  width: 64px;
+  accent-color: var(--accent);
+  margin-left: 4px;
+}
+@media (max-width: 720px) and (orientation: portrait) {
+  .top .vol-top {
+    display: inline-block;
+  }
+}
 
 /* now playing */
 .nowplaying {

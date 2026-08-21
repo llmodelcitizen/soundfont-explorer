@@ -59,6 +59,7 @@ export class App {
   private transport!: Transport;
   private nowPlaying!: NowPlaying;
   private picker!: SongPicker;
+  private volTop: HTMLInputElement | null = null;
   private tracks!: TrackList;
   private rightPane!: HTMLElement;
   private debug = new DebugPanel();
@@ -259,6 +260,7 @@ export class App {
     if (wasPlaying || opts.initial) this.engine.play();
     this.transport.setMuted(muted);
     this.transport.setVolume(volume);
+    if (this.volTop) this.volTop.value = String(volume);
     this.syncUrl(true);
   }
 
@@ -321,6 +323,7 @@ export class App {
         onVolume: (v) => {
           this.volume = v;
           this.engine.setVolume(v);
+          if (this.volTop) this.volTop.value = String(v);
         },
         onMute: () => {
           this.engine.setMuted(!this.engine.isMuted);
@@ -341,6 +344,15 @@ export class App {
     });
     const helpBtn = h('button', { class: 'btn', type: 'button', title: 'keys (?)' }, '?');
     helpBtn.addEventListener('click', () => this.keymap.toggle());
+    // phone-portrait volume (the transport's slider is hidden there); mirrors the transport's value
+    const volTop = h('input', { type: 'range', class: 'vol vol-top', min: '0', max: '1', step: '0.01', value: String(this.volume), 'aria-label': 'volume' }) as HTMLInputElement;
+    volTop.addEventListener('input', () => {
+      this.volume = Number(volTop.value);
+      this.engine.setVolume(this.volume);
+      this.transport.setVolume(this.volume);
+    });
+    volTop.addEventListener('change', () => volTop.blur());
+    this.volTop = volTop;
     const dbgBtn = h('button', { class: 'btn icon dbg-btn', type: 'button', title: 'debug panel (D)', 'aria-label': 'debug panel' });
     dbgBtn.innerHTML =
       '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -365,6 +377,7 @@ export class App {
       dbgBtn,
       helpBtn,
       h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
+      volTop,
     );
     this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined }), {
       value: this.prefs.preserveTrackPosition,
