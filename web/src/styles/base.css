@@ -478,8 +478,7 @@ select:focus-visible {
   white-space: nowrap;
 }
 .row .cell.badge,
-.row .cell.fav,
-.row .cell.dot {
+.row .cell.fav {
   height: auto;
   line-height: 1.3;
   align-self: center;
@@ -487,6 +486,15 @@ select:focus-visible {
 .row .cell.fav {
   line-height: 10px;
   height: 10px;
+}
+/* the dot is a 10 px circle, not a text cell */
+.row .cell.dot {
+  width: 10px;
+  height: 10px;
+  line-height: 0;
+  align-self: center;
+  justify-self: center;
+  padding: 0;
 }
 .hcell {
   height: var(--row-h);
