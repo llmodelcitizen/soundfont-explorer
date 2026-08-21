@@ -22,15 +22,16 @@ function soundfontSources(catalog: CatalogDoc): HTMLElement[] {
   }
   const out: HTMLElement[] = [];
   for (const { c, n } of byColl.values()) {
+    void n;
     out.push(
       h(
         'p',
         null,
-        `${n} of the ${sf2.length} SoundFonts here come from the Internet Archive item `,
-        h('a', { href: c.url, target: '_blank', rel: 'noopener' }, c.title.replace(/\s*\(Internet Archive\)$/, '')),
-        ' — thanks to the Archive and to the collector who assembled it',
-        c.torrent ? [' (', h('a', { href: c.torrent, target: '_blank', rel: 'noopener' }, 'torrent'), ')'] : '',
-        '. Those variants say so in the now-playing panel ("from"), next to the authorship and copyright notices embedded in the file.',
+        'Most SoundFonts showcased here come from ',
+        h('a', { href: c.url, target: '_blank', rel: 'noopener' }, c.url),
+        '. Huge thanks to the Archive and to the collector(s) who assembled it! ',
+        c.torrent ? ['(', h('a', { href: c.torrent, target: '_blank', rel: 'noopener' }, 'torrent'), ')'] : '',
+        ' Those variants say so in the now-playing panel ("from"), next to the authorship and copyright notices embedded in the file.',
       ),
     );
   }
@@ -40,21 +41,6 @@ function soundfontSources(catalog: CatalogDoc): HTMLElement[] {
 }
 
 export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement {
-  const songRows = songs.songs.map((s) =>
-    h(
-      'li',
-      null,
-      h('strong', null, s.title),
-      s.composer ? ` — ${s.composer}` : '',
-      s.sequencer ? ` (sequenced/typeset by ${s.sequencer})` : '',
-      ' · ',
-      s.source_url ? h('a', { href: s.source_url, target: '_blank', rel: 'noopener' }, 'source') : '',
-      ' · ',
-      s.license.url ? h('a', { href: s.license.url, target: '_blank', rel: 'noopener' }, s.license.id) : s.license.id,
-      s.modifications && s.modifications !== 'none' ? h('div', { class: 'muted' }, `modifications: ${s.modifications}`) : '',
-      s.license.notice_text ? h('details', null, h('summary', null, 'license notice'), h('pre', { class: 'notice' }, s.license.notice_text)) : '',
-    ),
-  );
   const engineRows = catalog.engines.map((e) =>
     h('li', null, h('strong', null, e.label), e.version ? ` ${e.version}` : '', e.commit ? ` (${e.commit})` : '', e.url ? [' · ', h('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.url)] : '', e.license ? h('div', { class: 'muted' }, e.license) : ''),
   );
@@ -71,8 +57,6 @@ export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement
       'measured with EBU R128 and brought to −16 LUFS integrated / −1.5 dBTP with a pure linear gain (no limiter, no dynamics). ',
       'Reverb and chorus are switched off on every engine so the comparison is fair. Audio is 48 kHz Opus.',
     ),
-    h('h2', null, 'Songs'),
-    h('ul', { class: 'songs' }, songRows),
     h('h2', null, 'Engines'),
     h('ul', { class: 'engines' }, engineRows),
     h('h2', null, 'SoundFonts and banks'),
@@ -85,7 +69,13 @@ export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement
     h('h2', null, 'Takedown / DMCA'),
     h('p', null, `If you hold rights to something here and want it removed, email ${CONTACT} with the variant id (shown in the now-playing panel) and the work concerned; it will be taken down promptly.`),
     h('h2', null, 'Privacy'),
-    h('p', null, 'No analytics, no cookies, no accounts. The debug panel (D) only shows numbers in your browser.'),
+    h('p', null, 'No analytics, no tracking, no selling your information.'),
+    h(
+      'p',
+      { class: 'muted' },
+      'Your settings, favourites and listened marks live only in your browser (localStorage) — nothing is sent anywhere; the settings dialog can wipe them. ',
+      'There are no cookies and no accounts today; if accounts arrive, this section will say exactly what is stored and why.',
+    ),
     h('p', { class: 'muted' }, `songs.json generated ${songs.generated_at}`),
   );
 }
