@@ -122,7 +122,7 @@ export class App {
     }
     const known = (id: string | null | undefined) => !!id && this.songs.songs.some((s) => s.id === id);
     const songId = known(this.url.song) ? this.url.song! : known(this.songs.defaults.song) ? this.songs.defaults.song! : this.songs.songs[0]!.id;
-    await showGate(this.root, 'soundfonts.ericq.com', 'One song, hundreds of sound cards. Same notes, different decade — switch instruments mid-phrase and hear what your PC could have sounded like.', 'Start Listening', () => {
+    await showGate(this.root, 'Soundfont Explorer', 'One song, hundreds of sound cards. Same notes, different decade — switch instruments mid-phrase and hear what your PC could have sounded like.', 'Start Listening', () => {
       // inside the tap: create + unlock the context synchronously (iOS requirement)
       this.ctx = createContextInGesture();
     });
@@ -174,7 +174,7 @@ export class App {
 
   private fatal(msg: string): void {
     clear(this.root);
-    this.root.appendChild(h('div', { class: 'fatal' }, h('h1', null, 'soundfonts.ericq.com'), h('p', null, msg)));
+    this.root.appendChild(h('div', { class: 'fatal' }, h('h1', null, 'Soundfont Explorer'), h('p', null, msg)));
   }
 
   private async pickDecoder(): Promise<void> {
@@ -329,7 +329,7 @@ export class App {
     this.header = h(
       'header',
       { class: 'top' },
-      h('div', { class: 'title' }, h('span', { class: 'brand' }, 'soundfonts.ericq.com'), h('span', { class: 'sub' }, 'one MIDI · every synth')),
+      h('div', { class: 'title' }, h('span', { class: 'brand' }, 'Soundfont Explorer')),
       this.picker.el,
       h('div', { class: 'spacer' }),
       themeSel,

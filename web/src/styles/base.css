@@ -64,19 +64,24 @@ pre {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
+.top {
+  position: relative;
+}
 .top .title {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.1;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  /* bigger type, but a line-height that keeps the header at its previous height (buttons set it) */
+  font-size: 1.45em;
+  line-height: 29px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .top .brand {
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--accent);
-}
-.top .sub {
-  font-size: 0.8em;
-  color: var(--fg-dim);
 }
 .top .spacer {
   flex: 1;
@@ -457,10 +462,19 @@ select:focus-visible {
   color: inherit;
   opacity: 0.8;
 }
-/* desktop: the header dropdown is replaced by the list */
+/* desktop: the header dropdown is replaced by the list; the title is centred on the whole header */
 @media (min-width: 721px) {
   .top .songpicker {
     display: none;
+  }
+  .top .title {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    max-width: calc(100% - 700px);
+    flex: none;
+    pointer-events: none;
   }
 }
 
@@ -734,7 +748,8 @@ kbd {
     gap: 6px 8px;
   }
   .top .title {
-    flex: 1 1 auto;
+    font-size: 1.25em;
+    text-align: left;
   }
   .top .spacer {
     display: none;
@@ -812,9 +827,7 @@ kbd {
   .transport .status {
     display: none;
   }
-  .top .sub {
-    display: none;
-  }
+
   .debug {
     right: 4px;
     left: 4px;
