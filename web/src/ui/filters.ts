@@ -6,6 +6,8 @@ export interface FilterCallbacks {
   onChange(sel: Selection, query: string): void;
   onSearchEnter(): void;
   onFavoritesOnly(on: boolean): void;
+  /** the facet panel opened/closed (the app hides Now Playing and arms a tap-to-close scrim on mobile) */
+  onOpenChange?(open: boolean): void;
 }
 
 export const VALUE_LABELS: Record<string, string> = {
@@ -95,8 +97,15 @@ export class FilterBar {
   }
 
   toggle(force?: boolean): void {
-    this.open = force ?? !this.open;
+    const next = force ?? !this.open;
+    if (next === this.open) return;
+    this.open = next;
     this.groups.classList.toggle('hidden', !this.open);
+    this.cb.onOpenChange?.(this.open);
+  }
+
+  get isOpen(): boolean {
+    return this.open;
   }
 
   clearAll(): void {

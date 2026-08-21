@@ -834,6 +834,22 @@ kbd {
   .left {
     min-width: 0;
   }
+  /* open filters: Now Playing gets out of the way; a scrim below the panel closes it on tap */
+  .filters-open .right {
+    display: none;
+  }
+  .filters-open .facets {
+    max-height: 60vh;
+  }
+  .filter-scrim {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4;
+    background: transparent;
+    touch-action: none;
+  }
   /* mobile keeps the header dropdown: no track list, no split */
   .right {
     display: block;

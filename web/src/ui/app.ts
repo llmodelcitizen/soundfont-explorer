@@ -296,6 +296,7 @@ export class App {
         this.favoritesOnly = on;
         this.applyFilters(this.filters.sel, this.filters.query);
       },
+      onOpenChange: (open) => this.onFiltersOpen(open),
     });
     this.filters.setFavoritesOnly(this.favoritesOnly);
     this.nowPlaying = new NowPlaying(this.catalog, this.set, this.song, {
@@ -516,6 +517,45 @@ export class App {
       const h2 = Math.min(content, Math.round(pane * 0.7));
       this.rightPane.style.setProperty('--np-h', `${Math.max(80, h2)}px`);
     });
+  }
+
+  // ---- mobile: filters panel hides Now Playing and closes on a tap anywhere below it ---------
+  private scrim: HTMLElement | null = null;
+
+  private onFiltersOpen(open: boolean): void {
+    const compact = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches;
+    this.root.classList.toggle('filters-open', open);
+    if (!open || !compact) {
+      this.scrim?.remove();
+      this.scrim = null;
+      return;
+    }
+    // a transparent layer over everything below the filter bar: the tap only closes the panel
+    const scrim = h('div', { class: 'filter-scrim', 'aria-hidden': 'true' });
+    const place = () => {
+      const r = this.filters.el.getBoundingClientRect();
+      scrim.style.top = `${r.bottom}px`;
+    };
+    const close = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.filters.toggle(false);
+    };
+    scrim.addEventListener('pointerdown', close);
+    scrim.addEventListener('click', close);
+    scrim.addEventListener('touchstart', close, { passive: false });
+    place();
+    this.root.appendChild(scrim);
+    this.scrim = scrim;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(place) : null;
+    ro?.observe(this.filters.el);
+    const obs = new MutationObserver(() => {
+      if (!scrim.isConnected) {
+        ro?.disconnect();
+        obs.disconnect();
+      }
+    });
+    obs.observe(this.root, { childList: true });
   }
 
   private focusList(): void {
