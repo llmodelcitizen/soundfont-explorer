@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 WORKERS=${WORKERS:-32}
 THOROUGH=${THOROUGH:-0}
-LOG=work/full-run.log
+LOG=${LOG:-work/full-run.log}
 mkdir -p work out
 SFR=(docker run --rm --user "$(id -u):$(id -g)"
      -v "$PWD/soundfonts:/fonts:ro" -v "$PWD/songs:/songs:ro" -v "$PWD/catalog:/catalog:ro"
