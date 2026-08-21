@@ -310,7 +310,11 @@ export class App {
     helpBtn.addEventListener('click', () => this.keymap.toggle());
     const dbgBtn = h('button', { class: 'btn dbg-btn', type: 'button', title: 'debug panel (D)' }, 'dbg');
     dbgBtn.addEventListener('click', () => this.debug.toggle());
-    const settingsBtn = h('button', { class: 'btn', type: 'button', title: 'settings (S)', 'aria-label': 'settings' }, '⚙');
+    const settingsBtn = h('button', { class: 'btn icon', type: 'button', title: 'settings (S)', 'aria-label': 'settings' });
+    settingsBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="3.2"/>' +
+      '<path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
     settingsBtn.addEventListener('click', () => this.settings.toggle());
     this.header = h(
       'header',

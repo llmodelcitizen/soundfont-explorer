@@ -151,3 +151,29 @@
 [data-theme='win95'] .row.sel .gain {
   color: #fff;
 }
+
+/* debug pane: the shared dialog rule strips padding; give it a real frame and centre its header */
+[data-theme='win95'] .debug {
+  padding: 10px 12px 14px;
+}
+[data-theme='win95'] .dbg-head {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #808080;
+}
+[data-theme='win95'] .dbg-head strong {
+  font-size: 12px;
+}
+[data-theme='win95'] .dbg-actions {
+  justify-content: center;
+}
+[data-theme='win95'] .dbg-body {
+  padding: 8px 10px;
+  margin: 0;
+}
+[data-theme='win95'] .btn.icon {
+  padding: 3px 7px;
+}
