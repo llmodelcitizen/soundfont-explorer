@@ -1,6 +1,6 @@
 /** Filter bar: facet groups with live counts, OR within / AND across; search box; hidden chip. */
 import { FACET_KEYS, FACET_LABELS, type FacetKey, type FilterIndex, type Selection } from '../state/filterIndex';
-import { clear, h } from './dom';
+import { clear, h, setPressed } from './dom';
 
 export interface FilterCallbacks {
   onChange(sel: Selection, query: string): void;
@@ -55,8 +55,10 @@ export class FilterBar {
   favoritesOnly = false;
   private favBtn!: HTMLButtonElement;
   private open = false;
+  /** the facet panel is rebuilt lazily: only while open, or on opening if filters changed meanwhile */
+  private stale = true;
 
-  constructor(private index: FilterIndex, initial: Selection, initialQuery: string, private cb: FilterCallbacks) {
+  constructor(private readonly index: FilterIndex, initial: Selection, initialQuery: string, private cb: FilterCallbacks) {
     this.sel = initial;
     this.query = initialQuery;
     this.search = h('input', { type: 'search', class: 'search', placeholder: 'search  ( / )', value: initialQuery, 'aria-label': 'search variants' });
@@ -88,24 +90,15 @@ export class FilterBar {
     });
     this.groups = h('div', { class: 'facets hidden' });
     this.el = h('div', { class: 'filterbar' }, h('div', { class: 'filterrow' }, toggle, this.favBtn, this.hiddenChip, this.search), this.groups);
-    this.render();
-  }
-
-  setIndex(index: FilterIndex): void {
-    this.index = index;
-    this.render();
   }
 
   toggle(force?: boolean): void {
     const next = force ?? !this.open;
     if (next === this.open) return;
     this.open = next;
-    this.groups.classList.toggle('hidden', !this.open);
-    this.cb.onOpenChange?.(this.open);
-  }
-
-  get isOpen(): boolean {
-    return this.open;
+    if (next && this.stale) this.render();
+    this.groups.classList.toggle('hidden', !next);
+    this.cb.onOpenChange?.(next);
   }
 
   clearAll(): void {
@@ -117,12 +110,12 @@ export class FilterBar {
 
   setFavoritesOnly(on: boolean): void {
     this.favoritesOnly = on;
-    this.favBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    this.favBtn.classList.toggle('on', on);
+    setPressed(this.favBtn, on);
   }
 
   private emit(): void {
-    this.render();
+    if (this.open) this.render();
+    else this.stale = true;
     this.cb.onChange(this.sel, this.query);
   }
 
@@ -133,10 +126,12 @@ export class FilterBar {
     this.hiddenChip.classList.toggle('hidden', hidden <= 0);
   }
 
-  render(): void {
+  private render(): void {
+    this.stale = false;
     clear(this.groups);
+    const all = this.index.allCounts(this.sel, this.query);
     for (const key of FACET_KEYS) {
-      const counts = this.index.counts(key, this.sel, this.query);
+      const counts = all[key];
       if (counts.length <= 1 && !(this.sel[key]?.size)) continue;
       const chosen = this.sel[key] ?? new Set<string>();
       const opts = counts.map(({ value, count }) => {

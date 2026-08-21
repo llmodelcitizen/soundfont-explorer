@@ -1,5 +1,5 @@
 /** Desktop track list (right pane, above Now Playing). Mobile keeps the header dropdown. */
-import type { SongEntry } from '../contracts/songs';
+import { songTitle, type SongEntry } from '../contracts/songs';
 import { clear, h } from './dom';
 
 export class TrackList {
@@ -36,7 +36,7 @@ export class TrackList {
       const ss = String(Math.round(s.duration_s % 60)).padStart(2, '0');
       const row = h(
         'div',
-        { class: 'track', role: 'option', dataset: { id: s.id }, title: `${s.title}${s.composer ? ' — ' + s.composer : ''}` },
+        { class: 'track', role: 'option', dataset: { id: s.id }, title: songTitle(s) },
         h('span', { class: 'track-title' }, s.title),
         h('span', { class: 'track-meta' }, [`${mm}:${ss}`, `${s.variant_count} variants`, s.composer ?? ''].filter(Boolean).join(' · ')),
       );

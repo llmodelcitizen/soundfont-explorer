@@ -11,7 +11,7 @@ import { listenUrl, packUrl } from '../contracts/set';
 import { ByteLRU } from './cache/lru';
 import type { Decoder } from './decode';
 import { AbortedError, Fetcher } from './net/fetcher';
-import { headerBytesFor, parseHeader, splitPack, MAX_HEADER_PROBE } from './net/packs';
+import { headerBytesFor, memberCount, memberRange, parseHeader, splitPack, type PackHeader } from './net/packs';
 import { bufferBytes, keyStr, type BufferLike, type SegKey } from './types';
 
 export interface Want {
@@ -36,12 +36,14 @@ export class SegmentStore {
   readonly decoded: ByteLRU<BufferLike>;
   readonly compressed: ByteLRU<ArrayBuffer>;
   private decoding = new Map<string, Promise<BufferLike>>();
-  private packHeaders = new Map<string, ReturnType<typeof parseHeader>>();
+  private packHeaders = new Map<string, PackHeader>();
   private listeners = new Set<(key: SegKey, buf: BufferLike) => void>();
   /** negative cache: key → {fails, until(ms)} so a 404/decoder error is not retried every tick */
   private failed = new Map<string, { fails: number; until: number }>();
   stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0, backedOff: 0 };
   lastError: string | null = null;
+  /** Range for a blind header probe: a full-size pack's header (the length table may be shorter) */
+  private readonly headerProbe: { start: number; end: number };
 
   constructor(
     public readonly set: SetDoc,
@@ -52,6 +54,7 @@ export class SegmentStore {
   ) {
     this.decoded = new ByteLRU<BufferLike>(budgets.decodedBytes, bufferBytes);
     this.compressed = new ByteLRU<ArrayBuffer>(budgets.compressedBytes, (b) => b.byteLength);
+    this.headerProbe = { start: 0, end: headerBytesFor(set.scrub.pack_size) - 1 };
   }
 
   // ---- lookup ---------------------------------------------------------------
@@ -71,16 +74,8 @@ export class SegmentStore {
     return { url, slot: v.slot, cid: `${url}#${v.slot}` };
   }
 
-  get(key: SegKey): BufferLike | undefined {
-    return this.decoded.get(keyStr(key));
-  }
-
   peek(key: SegKey): BufferLike | undefined {
     return this.decoded.peek(keyStr(key));
-  }
-
-  has(key: SegKey): boolean {
-    return this.decoded.has(keyStr(key));
   }
 
   pin(key: SegKey): void {
@@ -129,10 +124,7 @@ export class SegmentStore {
       // already on its way: make sure the underlying fetch is not stuck behind lower priorities
       this.fetcher.reprioritize(loc.url, priority);
       const h = this.packHeaders.get(loc.url);
-      if (loc.slot >= 0 && h) {
-        const start = h.offsets[loc.slot]!;
-        this.fetcher.reprioritize(loc.url, priority, { start, end: start + h.lengths[loc.slot]! - 1 });
-      }
+      if (loc.slot >= 0 && h) this.fetcher.reprioritize(loc.url, priority, memberRange(h, loc.slot));
       return live;
     }
     const wait = this.backoffMs(key);
@@ -204,9 +196,7 @@ export class SegmentStore {
 
   private memberRangePending(loc: Located): boolean {
     const h = this.packHeaders.get(loc.url);
-    if (!h) return this.fetcher.isPending(loc.url, { start: 0, end: MAX_HEADER_PROBE - 1 });
-    const start = h.offsets[loc.slot]!;
-    return this.fetcher.isPending(loc.url, { start, end: start + h.lengths[loc.slot]! - 1 });
+    return this.fetcher.isPending(loc.url, h ? memberRange(h, loc.slot) : this.headerProbe);
   }
 
   private async bytesFor(loc: Located, priority: number, opts: { whole?: boolean; tag?: string }): Promise<ArrayBuffer> {
@@ -240,17 +230,14 @@ export class SegmentStore {
     // Range per member: header (cached per URL) then the member
     let h = this.packHeaders.get(loc.url);
     if (!h) {
-      const head = await this.fetcher.get(loc.url, { priority, range: { start: 0, end: MAX_HEADER_PROBE - 1 }, sticky: true, tag: 'pack' });
-      const count = new DataView(head).getUint8(5);
-      const need = headerBytesFor(count);
+      const head = await this.fetcher.get(loc.url, { priority, range: this.headerProbe, sticky: true, tag: 'pack' });
+      const need = headerBytesFor(memberCount(head));
       const full = head.byteLength >= need ? head : await this.fetcher.get(loc.url, { priority, range: { start: 0, end: need - 1 }, sticky: true, tag: 'pack' });
       h = parseHeader(full);
       this.packHeaders.set(loc.url, h);
     }
-    const start = h.offsets[loc.slot]!;
-    const end = start + h.lengths[loc.slot]! - 1;
     try {
-      const member = await this.fetcher.get(loc.url, { priority, range: { start, end }, tag: opts.tag ?? 'prefetch' });
+      const member = await this.fetcher.get(loc.url, { priority, range: memberRange(h, loc.slot), tag: opts.tag ?? 'prefetch' });
       this.compressed.set(loc.cid, member);
       this.stats.rangeMembers++;
       return member;

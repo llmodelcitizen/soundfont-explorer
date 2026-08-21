@@ -1,5 +1,6 @@
 /** Transport: ◀◀ ▶ ▶▶, clock, seek, loop, volume, mute. Sliders blur back to the list (MVP lesson). */
-import { fmtTime, h } from './dom';
+import { POLICY } from '../config';
+import { fmtTime, h, setPressed } from './dom';
 import { ICONS, setIcon } from './icons';
 
 export interface TransportCallbacks {
@@ -26,7 +27,7 @@ export class Transport {
   private lastSeekEmit = 0;
   private repeatTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private duration: number, private cb: TransportCallbacks, private returnFocus: () => void) {
+  constructor(private readonly duration: number, private cb: TransportCallbacks, private returnFocus: () => void) {
     this.playBtn = h('button', { class: 'btn play', type: 'button', title: 'play/pause (Space)', 'aria-label': 'play/pause' });
     setIcon(this.playBtn, 'play');
     this.playBtn.addEventListener('click', () => {
@@ -76,7 +77,7 @@ export class Transport {
     this.vol.addEventListener('input', () => cb.onVolume(Number(this.vol.value)));
     this.vol.addEventListener('change', () => returnFocus());
     this.status = h('span', { class: 'status' }, '');
-    // touch ▲/▼ repeat buttons (33 ms through the same policy)
+    // touch ▲/▼ repeat buttons (same repeat rate as a held key, through the same policy)
     const mkStep = (delta: number, icon: 'up' | 'down') => {
       const b = h('button', { class: 'btn step', type: 'button', title: delta < 0 ? 'previous variant (↑)' : 'next variant (↓)', 'aria-label': delta < 0 ? 'previous variant' : 'next variant' });
       setIcon(b, icon);
@@ -84,7 +85,7 @@ export class Transport {
         e.preventDefault();
         cb.onStep(delta, false);
         this.stopRepeat();
-        this.repeatTimer = setInterval(() => cb.onStep(delta, true), 33);
+        this.repeatTimer = setInterval(() => cb.onStep(delta, true), POLICY.touchRepeatMs);
       };
       const stop = () => {
         if (this.repeatTimer) {
@@ -120,11 +121,6 @@ export class Transport {
     this.repeatTimer = null;
   }
 
-  setDuration(d: number): void {
-    this.duration = d;
-    this.seek.max = String(d);
-  }
-
   update(pos: number, playing: boolean): void {
     this.clock.textContent = `${fmtTime(pos)} / ${fmtTime(this.duration)}`;
     if (!this.seeking) this.seek.value = String(pos);
@@ -136,13 +132,11 @@ export class Transport {
   }
 
   setLoop(on: boolean): void {
-    this.loopBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    this.loopBtn.classList.toggle('on', on);
+    setPressed(this.loopBtn, on);
   }
 
   setMuted(on: boolean): void {
-    this.muteBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    this.muteBtn.classList.toggle('on', on);
+    setPressed(this.muteBtn, on);
   }
 
   setVolume(v: number): void {

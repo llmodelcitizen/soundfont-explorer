@@ -1,7 +1,8 @@
 /** Settings modal (⚙ / S). First option: the "listened" threshold; plus reset buttons. */
 import { clear, h } from './dom';
 import { DEFAULT_PREFS, type Prefs } from '../state/prefs';
-import { COLUMNS } from './columns';
+import { COLUMNS, columnTitle } from './columns';
+import { isCompact } from '../config';
 import { clearAllSiteData } from '../state/wipe';
 
 export interface SettingsCallbacks {
@@ -48,7 +49,7 @@ export class SettingsModal {
 
   private render(): void {
     clear(this.box);
-    const compact = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches;
+    const compact = isCompact();
     const input = h('input', { type: 'number', min: '0', max: '60', step: '0.5', value: String(this.prefs.listenedAfterS), class: 'num', 'aria-label': 'seconds' }) as HTMLInputElement;
     const range = h('input', { type: 'range', min: '0', max: '30', step: '0.5', value: String(Math.min(30, this.prefs.listenedAfterS)), 'aria-label': 'seconds' }) as HTMLInputElement;
     const commit = (v: number) => {
@@ -109,7 +110,7 @@ export class SettingsModal {
               this.prefs = { ...this.prefs, [field]: COLUMNS.filter((x) => cols.has(x.key)).map((x) => x.key) };
               this.cb.onChange(this.prefs);
             });
-            return h('label', { class: 'preserve', title: c.title }, box, ` ${c.label}`);
+            return h('label', { class: 'preserve', title: columnTitle(c) }, box, ` ${c.label}`);
           }),
         ),
         h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order.')),

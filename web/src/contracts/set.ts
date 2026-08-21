@@ -1,4 +1,4 @@
-import { ContractError } from './songs';
+import { ContractError, isObj } from './songs';
 
 export interface SetVariant {
   render_hash: string;
@@ -28,7 +28,6 @@ export interface SetDoc {
   excluded: { id: string; reason: string }[];
 }
 
-const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null;
 const num = (x: unknown, what: string): number => {
   if (typeof x !== 'number' || !Number.isFinite(x)) throw new ContractError(`set: bad ${what}`);
   return x;

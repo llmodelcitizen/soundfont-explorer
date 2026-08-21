@@ -8,6 +8,10 @@ export const IS_TOUCH =
   (/iPhone|iPad|Android/i.test(navigator.userAgent) ||
     (navigator.maxTouchPoints > 0 && typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches));
 
+/** the compact (phone) layout; the same breakpoint as the CSS media queries in styles/ */
+export const COMPACT_MQ = '(max-width: 720px)';
+export const isCompact = (): boolean => typeof matchMedia !== 'undefined' && matchMedia(COMPACT_MQ).matches;
+
 export const AUDIO = {
   /** commit lead: how far ahead of "now" a switch is scheduled */
   COMMIT_LEAD: 0.015,
@@ -21,7 +25,6 @@ export const AUDIO = {
   SWITCH_TIMEOUT_MS: 8000,
   LOOKAHEAD: 4,
   VOICES: 8,
-  FILL_TICK_MS: 250,
   RETRY_TICK_MS: 60,
 } as const;
 
@@ -42,7 +45,6 @@ export const NET = {
 } as const;
 
 export const POLICY = {
-  mode: 'adaptive' as const,
   commitHz: 12,
   minDwellMs: 83,
   settleMs: 120,
@@ -51,5 +53,3 @@ export const POLICY = {
   pageStep: 10,
   touchRepeatMs: 33,
 } as const;
-
-export const LOUDNESS = { lufsTarget: -16, tpCeiling: -1.5 } as const;

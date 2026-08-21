@@ -27,13 +27,20 @@ export interface SongsDoc {
 
 export class ContractError extends Error {}
 
+/** shape guards shared by the three contract parsers */
+export const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null;
+export const isStr = (x: unknown): x is string => typeof x === 'string';
+export const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+
 function req<T>(v: unknown, pred: (x: unknown) => boolean, what: string): T {
   if (!pred(v)) throw new ContractError(`bad ${what}: ${JSON.stringify(v)?.slice(0, 80)}`);
   return v as T;
 }
-const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null;
-const isStr = (x: unknown): x is string => typeof x === 'string';
-const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+
+/** "Title — Composer" (composer omitted when unknown) */
+export function songTitle(s: Pick<SongEntry, 'title' | 'composer'>): string {
+  return s.composer ? `${s.title} — ${s.composer}` : s.title;
+}
 
 export function parseSongs(raw: unknown): SongsDoc {
   const d = req<Record<string, unknown>>(raw, isObj, 'songs.json');

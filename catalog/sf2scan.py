@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Scan a directory of SoundFont 2 files and write ``catalog/soundfonts.json``.
 
 Stdlib only (Python >= 3.12).  The scanner never reads sample data: it walks the
@@ -19,13 +18,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import os
 import struct
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+
+from ._util import write_json
 
 SCHEMA = 1
 INFO_CAP = 1 << 20  # 1 MiB: never slurp more of LIST/INFO than this
@@ -309,14 +309,6 @@ def _safe_sha256(path: str):
         return sha256_file(path)
     except OSError as exc:  # pragma: no cover - disk errors
         return exc
-
-
-def write_json(doc: dict, out: str) -> None:
-    tmp = out + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=1, ensure_ascii=False, sort_keys=False)
-        fh.write("\n")
-    os.replace(tmp, out)
 
 
 def main(argv=None) -> int:

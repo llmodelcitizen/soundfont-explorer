@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseCatalog } from '../../src/contracts/catalog';
-import { cellText, displayLabel, sortIds, type CellContext } from '../../src/ui/columns';
+import { DEFAULT_PREFS } from '../../src/state/prefs';
+import { COLUMNS, cellText, columnDef, displayLabel, sortIds, visibleColumns, type CellContext, type ColKey } from '../../src/ui/columns';
 import { makeSet } from './fakes';
 
 const catalog = parseCatalog({
@@ -25,6 +26,20 @@ describe('columns', () => {
     expect(cellText('size', 'b', 1, ctx)).toBe('2.9 MB');
     expect(cellText('decade', 'b', 1, ctx)).toBe('');
     expect(cellText('engine', 'b', 1, ctx)).toBe('FluidSynth');
+  });
+
+  it('keeps the cell classes the stylesheet keys on and renders fav/dot as fixed glyphs', () => {
+    const expected: Record<ColKey, string> = { idx: 'idx', chip: 'badge', label: 'label', engine: 'meta', id: 'meta', bank: 'meta', size: 'meta', decade: 'meta', lineage: 'meta', coverage: 'meta', lufs: 'num meta', gain: 'num meta', fav: 'fav', dot: 'dot' };
+    for (const c of COLUMNS) expect([c.key, c.cls]).toEqual([c.key, expected[c.key]]);
+    expect(columnDef('fav').glyph).toBe('♥');
+    expect(columnDef('dot').glyph).toBe('');
+    expect(COLUMNS.filter((c) => c.glyph !== undefined).map((c) => c.key)).toEqual(['fav', 'dot']);
+  });
+
+  it('visibleColumns forces the always-on columns and keeps model order', () => {
+    expect(visibleColumns(DEFAULT_PREFS.columns).map((c) => c.key)).toEqual(['idx', 'chip', 'label', 'engine', 'decade', 'fav', 'dot']);
+    expect(visibleColumns(DEFAULT_PREFS.mobileColumns).map((c) => c.key)).toEqual(['idx', 'chip', 'label', 'fav', 'dot']);
+    expect(visibleColumns(['dot', 'size', 'bogus']).map((c) => c.key)).toEqual(['idx', 'label', 'size', 'dot']);
   });
 
   it('sorts numbers/strings with blanks last in both directions, ties by catalog order', () => {

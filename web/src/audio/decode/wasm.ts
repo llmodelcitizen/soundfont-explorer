@@ -8,6 +8,13 @@ interface WorkerLike {
   terminate(): void;
 }
 
+interface Slot {
+  w: WorkerLike;
+  busy: boolean;
+  /** id of the job the worker is decoding */
+  current: number | null;
+}
+
 const DECODE_TIMEOUT_MS = 15000;
 
 export type WorkerFactory = () => WorkerLike;
@@ -18,7 +25,7 @@ const defaultFactory: WorkerFactory = () => new Worker(new URL('./worker.ts', im
 export class WasmDecoder implements Decoder {
   readonly kind = 'wasm' as const;
   readonly stats = { decoded: 0, msTotal: 0, errors: 0, queued: 0, active: 0 };
-  private workers: { w: WorkerLike; busy: boolean; current: number | null }[] = [];
+  private workers: Slot[] = [];
   private q: DecodeQueue;
   private nextId = 1;
   private waiting = new Map<number, { resolve: (v: { channelData: Float32Array[]; sampleRate: number }) => void; reject: (e: unknown) => void }>();
@@ -28,9 +35,9 @@ export class WasmDecoder implements Decoder {
     this.q = new DecodeQueue(poolSize);
   }
 
-  private spawn(): { w: WorkerLike; busy: boolean; current: number | null } {
+  private spawn(): Slot {
     const w = this.factory();
-    const slot = { w, busy: false, current: null as number | null };
+    const slot: Slot = { w, busy: false, current: null };
     w.onmessage = (ev: MessageEvent) => {
       const { id, error, channelData, sampleRate } = ev.data as { id: number; error?: string; channelData?: Float32Array[]; sampleRate?: number };
       const p = this.waiting.get(id);
@@ -46,7 +53,7 @@ export class WasmDecoder implements Decoder {
     return slot;
   }
 
-  private replace(slot: { w: WorkerLike; busy: boolean; current: number | null }, why: string): void {
+  private replace(slot: Slot, why: string): void {
     const idx = this.workers.indexOf(slot);
     try {
       slot.w.terminate();

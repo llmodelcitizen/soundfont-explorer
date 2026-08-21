@@ -3,9 +3,9 @@
  * header for sorting. Two highlights: .sel = cursor, .audible = what you hear. A filtered-out-
  * but-playing variant stays visible in a sticky row at the top.
  */
-import type { CatalogDoc, Variant } from '../contracts/catalog';
+import type { CatalogDoc } from '../contracts/catalog';
 import type { SetDoc } from '../contracts/set';
-import { COLUMNS, cellText, chipLabel, displayLabel, type CellContext, type ColKey, type ColumnDef } from './columns';
+import { cellText, chipLabel, columnDef, columnTitle, displayLabel, visibleColumns, type CellContext, type ColKey, type ColumnDef } from './columns';
 import { clear, h } from './dom';
 
 export interface ListCallbacks {
@@ -19,21 +19,14 @@ export interface SortState {
   dir: 1 | -1;
 }
 
-export { chipLabel as engineBadge };
-
-export function metaLine(v: Variant | undefined): string {
-  if (!v) return '';
-  const parts: string[] = [];
-  const f = v.facets ?? {};
-  if (f.completeness && f.completeness !== 'full_gm') parts.push(String(f.completeness).replace('_', ' '));
-  if (f.lineage && f.lineage !== 'generic' && f.lineage !== 'fm_bank') parts.push(String(f.lineage));
-  return parts.join(' · ');
-}
+/** the sticky row shows #, chip and name at the same widths as the body rows */
+const STICKY_COLS = [columnDef('idx').width, columnDef('chip').width, 'minmax(0, 1fr)'].join(' ');
 
 export class VariantList {
   readonly el: HTMLElement;
   private rows: HTMLElement[] = [];
   private ids: string[] = [];
+  private pos = new Map<string, number>();
   private sticky: HTMLElement;
   private head: HTMLElement;
   private body: HTMLElement;
@@ -42,6 +35,7 @@ export class VariantList {
   private loadingId: string | null = null;
   private listened = new Set<string>();
   private favorites = new Set<string>();
+  /** empty until setColumns(); the app passes the user's column preference right after construction */
   private cols: ColumnDef[] = [];
   private sort: SortState = { key: null, dir: 1 };
   private ctx: CellContext;
@@ -55,6 +49,7 @@ export class VariantList {
     this.ctx = { catalog, set, ...hooks };
     this.head = h('div', { class: 'row head', role: 'row' });
     this.sticky = h('div', { class: 'row sticky hidden', role: 'option' });
+    this.sticky.style.gridTemplateColumns = STICKY_COLS;
     this.body = h('div', { class: 'rows', role: 'listbox', 'aria-label': 'variants' });
     this.el = h('div', { class: 'list' }, this.head, this.sticky, this.body);
     this.body.addEventListener('click', (e) => {
@@ -64,17 +59,19 @@ export class VariantList {
     this.sticky.addEventListener('click', () => {
       if (this.audibleId) this.cb.onStickyClick(this.audibleId);
     });
-    this.setColumns(COLUMNS.filter((c) => c.defaultOn).map((c) => c.key));
   }
 
   /** choose visible columns (always-on ones are forced) and rebuild */
   setColumns(keys: ColKey[]): void {
-    const want = new Set(keys);
-    this.cols = COLUMNS.filter((c) => c.always || want.has(c.key));
+    this.cols = visibleColumns(keys);
     this.el.style.setProperty('--cols', this.cols.map((c) => c.width).join(' '));
     // every column keeps its width; when they do not fit, the list scrolls sideways instead of squeezing the name away
     const em = parseFloat(getComputedStyle(this.el).fontSize) || 14;
-    const minPx = this.cols.reduce((n, c) => n + (/^minmax\(([\d.]+)em/.exec(c.width)?.[1] ? parseFloat(/^minmax\(([\d.]+)em/.exec(c.width)![1]!) * em : parseFloat(c.width) * em), 0) + 8 * (this.cols.length - 1) + 26;
+    const colsPx = this.cols.reduce((n, c) => {
+      const min = /^minmax\(([\d.]+)em/.exec(c.width)?.[1]; // 'minmax(14em, 1fr)' counts its minimum
+      return n + parseFloat(min ?? c.width) * em;
+    }, 0);
+    const minPx = colsPx + 8 * (this.cols.length - 1) + 26; // column gaps + row padding
     this.el.style.setProperty('--row-min', `${Math.round(minPx)}px`);
     this.renderHead();
     this.setItems(this.ids);
@@ -95,7 +92,7 @@ export class VariantList {
       const active = this.sort.key === c.key;
       const cell = h(
         'button',
-        { type: 'button', class: `cell col-${c.key} hcell${c.align ? ' ' + c.align : ''}${active ? ' sorted' : ''}`, title: `${c.title} — click to sort`, 'aria-sort': active ? (this.sort.dir === 1 ? 'ascending' : 'descending') : 'none' },
+        { type: 'button', class: `cell col-${c.key} hcell${c.align ? ' ' + c.align : ''}${active ? ' sorted' : ''}`, title: `${columnTitle(c, this.set)} — click to sort`, 'aria-sort': active ? (this.sort.dir === 1 ? 'ascending' : 'descending') : 'none' },
         c.label,
         active && !c.noArrow ? h('span', { class: 'arrow' }, this.sort.dir === 1 ? '▲' : '▼') : '',
       );
@@ -106,62 +103,62 @@ export class VariantList {
 
   setItems(ids: string[]): void {
     this.ids = ids;
+    this.pos = new Map(ids.map((id, i) => [id, i]));
     clear(this.body);
     this.rows = ids.map((id, i) => this.makeRow(id, i));
     for (const r of this.rows) this.body.appendChild(r);
     this.applyHighlights();
   }
 
-  get length(): number {
-    return this.ids.length;
-  }
-
-  indexOf(id: string): number {
-    return this.ids.indexOf(id);
-  }
-
-  idAt(i: number): string | undefined {
-    return this.ids[i];
-  }
-
   private makeRow(id: string, i: number): HTMLElement {
     const v = this.catalog.byId.get(id);
     const row = h('div', { class: 'row', role: 'option', dataset: { index: String(i), id }, title: v?.label ?? id });
     for (const c of this.cols) {
-      const txt = cellText(c.key, id, i, this.ctx);
-      const cell = h('span', { class: `cell col-${c.key}${c.align ? ' ' + c.align : ''}` }, c.key === 'fav' ? '♥' : c.key === 'dot' ? '' : txt);
-      if (c.key === 'chip') cell.classList.add('badge', `e-${v?.engine ?? 'x'}`);
-      if (c.key === 'label') cell.classList.add('label');
-      if (c.key === 'fav') cell.classList.add('fav');
-      if (c.key === 'dot') cell.classList.add('dot');
-      if (c.key === 'idx') cell.classList.add('idx');
-      if (c.key === 'gain' || c.key === 'lufs') cell.classList.add('num');
-      if (c.key !== 'label' && c.key !== 'chip' && c.key !== 'idx' && c.key !== 'fav' && c.key !== 'dot') cell.classList.add('meta');
+      const cell = h('span', { class: `cell col-${c.key}${c.align ? ' ' + c.align : ''} ${c.cls}` }, c.glyph ?? cellText(c.key, id, i, this.ctx));
+      if (c.key === 'chip') cell.classList.add(`e-${v?.engine ?? 'x'}`);
       row.appendChild(cell);
     }
     return row;
   }
 
+  private rowOf(id: string | null): HTMLElement | undefined {
+    const i = id === null ? undefined : this.pos.get(id);
+    return i === undefined ? undefined : this.rows[i];
+  }
+
+  /** move a single-row class from the row that had it to `next` (either may be missing) */
+  private static move(cls: string, prev: HTMLElement | undefined, next: HTMLElement | undefined): void {
+    prev?.classList.remove(cls);
+    next?.classList.add(cls);
+  }
+
   select(index: number, scroll = true): void {
+    const prev = this.rows[this.selIndex];
     this.selIndex = index;
-    this.applyHighlights();
-    if (scroll) this.rows[index]?.scrollIntoView({ block: 'nearest' });
+    const next = this.rows[index];
+    VariantList.move('sel', prev, next);
+    prev?.removeAttribute('aria-selected');
+    next?.setAttribute('aria-selected', 'true');
+    if (scroll) next?.scrollIntoView({ block: 'nearest' });
   }
 
   setAudible(id: string | null): void {
+    const prev = this.rowOf(this.audibleId);
     this.audibleId = id;
-    this.applyHighlights();
+    VariantList.move('audible', prev, this.rowOf(id));
+    this.updateSticky();
   }
 
   setLoading(id: string | null): void {
+    const prev = this.rowOf(this.loadingId);
     this.loadingId = id;
-    this.applyHighlights();
+    VariantList.move('loading', prev, this.rowOf(id));
   }
 
   /** variants whose dot is lit (listened ≥ threshold) */
   setListened(ids: Set<string>): void {
     this.listened = ids;
-    this.applyHighlights();
+    this.rows.forEach((r, i) => r.classList.toggle('cached', this.listened.has(this.ids[i]!)));
   }
 
   setFavorites(ids: Set<string>): void {
@@ -172,10 +169,10 @@ export class VariantList {
   markListened(id: string): void {
     if (this.listened.has(id)) return;
     this.listened.add(id);
-    const i = this.ids.indexOf(id);
-    if (i >= 0) this.rows[i]?.classList.add('cached');
+    this.rowOf(id)?.classList.add('cached');
   }
 
+  /** full pass over fresh rows (setItems); the single-row marks are moved incrementally afterwards */
   private applyHighlights(): void {
     this.rows.forEach((r, i) => {
       const id = this.ids[i]!;
@@ -187,11 +184,14 @@ export class VariantList {
       if (i === this.selIndex) r.setAttribute('aria-selected', 'true');
       else r.removeAttribute('aria-selected');
     });
-    const visible = this.audibleId !== null && this.ids.includes(this.audibleId);
-    if (this.audibleId && !visible) {
+    this.updateSticky();
+  }
+
+  /** the audible variant is hidden by the filters: show it in the sticky row */
+  private updateSticky(): void {
+    if (this.audibleId && !this.pos.has(this.audibleId)) {
       const v = this.catalog.byId.get(this.audibleId);
       clear(this.sticky);
-      this.sticky.style.gridTemplateColumns = '3.2em 4.6em minmax(0, 1fr)';
       this.sticky.append(
         h('span', { class: 'cell idx' }, '▶'),
         h('span', { class: `cell badge e-${v?.engine ?? 'x'}` }, chipLabel(v)),

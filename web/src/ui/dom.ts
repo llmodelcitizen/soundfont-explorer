@@ -33,6 +33,12 @@ export function clear(el: Element): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
+/** toggle-button state: aria-pressed for AT, `.on` for the stylesheet */
+export function setPressed(el: Element, on: boolean): void {
+  el.setAttribute('aria-pressed', on ? 'true' : 'false');
+  el.classList.toggle('on', on);
+}
+
 export function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) s = 0;
   const m = Math.floor(s / 60);

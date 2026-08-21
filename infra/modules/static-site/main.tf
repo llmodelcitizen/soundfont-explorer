@@ -155,17 +155,15 @@ resource "aws_cloudfront_distribution" "site" {
     # no origin-request policy: same-origin site, Range requests pass through to S3
   }
 
-  custom_error_response {
-    error_code            = 403
-    response_code         = 404
-    response_page_path    = "/404.html"
-    error_caching_min_ttl = 60
-  }
-  custom_error_response {
-    error_code            = 404
-    response_code         = 404
-    response_page_path    = "/404.html"
-    error_caching_min_ttl = 60
+  # S3 answers a missing key with 403 (no ListBucket), so both codes map to the 404 page.
+  dynamic "custom_error_response" {
+    for_each = [403, 404]
+    content {
+      error_code            = custom_error_response.value
+      response_code         = 404
+      response_page_path    = "/404.html"
+      error_caching_min_ttl = 60
+    }
   }
 
   restrictions {

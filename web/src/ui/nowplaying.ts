@@ -1,8 +1,8 @@
 /** Now playing panel: provenance, render command, gain/LUFS, legal note, song license, tier, status. */
-import type { CatalogDoc, Variant } from '../contracts/catalog';
+import { engineLabel, SF2_INFO_KEYS, type CatalogDoc } from '../contracts/catalog';
 import type { SetDoc } from '../contracts/set';
-import type { SongEntry } from '../contracts/songs';
-import { clear, fmtBytes, h } from './dom';
+import { songTitle, type SongEntry } from '../contracts/songs';
+import { clear, fmtBytes, h, setPressed } from './dom';
 
 export interface NowPlayingActions {
   isFavorite(id: string): boolean;
@@ -14,24 +14,16 @@ export class NowPlaying {
   private tierEl: HTMLElement;
   private statusEl: HTMLElement;
   private body: HTMLElement;
-  private current: string | null = null;
-  private favBtn: HTMLButtonElement | null = null;
 
-  constructor(private catalog: CatalogDoc, private set: SetDoc, private song: SongEntry, private actions: NowPlayingActions) {
-    this.tierEl = h('span', { class: 'tier', title: 'audio tier: scrub (48 kbps) or listen (96 kbps)' }, '');
+  constructor(private readonly catalog: CatalogDoc, private readonly set: SetDoc, private readonly song: SongEntry, private actions: NowPlayingActions) {
+    this.tierEl = h('span', { class: 'tier', title: `audio tier: scrub (${set.scrub.bitrate} kbps) or listen (${set.listen.bitrate} kbps)` }, '');
     this.statusEl = h('span', { class: 'np-status' }, '');
     this.body = h('div', { class: 'np-body' }, h('p', { class: 'muted' }, 'Select a variant (↑/↓) to hear the song through it.'));
     this.el = h('section', { class: 'nowplaying', 'aria-live': 'polite' }, h('div', { class: 'np-head' }, h('span', { class: 'np-title' }, 'now playing'), this.tierEl, this.statusEl), this.body);
   }
 
-  setContext(catalog: CatalogDoc, set: SetDoc, song: SongEntry): void {
-    this.catalog = catalog;
-    this.set = set;
-    this.song = song;
-  }
-
   setTier(t: 's' | 'l' | null): void {
-    this.tierEl.textContent = t === 'l' ? 'listen · 96k' : t === 's' ? 'scrub · 48k' : '';
+    this.tierEl.textContent = t === 'l' ? `listen · ${this.set.listen.bitrate}k` : t === 's' ? `scrub · ${this.set.scrub.bitrate}k` : '';
     this.tierEl.className = `tier ${t ?? ''}`;
   }
 
@@ -40,16 +32,10 @@ export class NowPlaying {
     this.statusEl.className = `np-status ${kind}`;
   }
 
-  /** re-render the favorite button (favorites changed elsewhere) */
-  refreshActions(): void {
-    if (this.current && this.favBtn) this.paintFav(this.favBtn, this.current);
-  }
-
   private paintFav(btn: HTMLButtonElement, id: string): void {
     const on = this.actions.isFavorite(id);
     btn.textContent = on ? '♥ remove from favorites' : '♡ add to favorites';
-    btn.classList.toggle('on', on);
-    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    setPressed(btn, on);
   }
 
   private actionsBar(id: string): HTMLElement {
@@ -60,40 +46,34 @@ export class NowPlaying {
       this.paintFav(fav, id);
       fav.blur();
     });
-    this.favBtn = fav;
     const dl = h('button', { class: 'btn', type: 'button', disabled: true, title: 'downloads are coming in a later release' }, '⤓ download') as HTMLButtonElement;
     return h('div', { class: 'np-actions' }, fav, dl);
   }
 
   show(id: string | null): void {
     clear(this.body);
-    this.current = id;
-    this.favBtn = null;
     if (!id) return;
     const v = this.catalog.byId.get(id);
     const sv = this.set.variants[id];
     const eng = this.catalog.engines.find((e) => e.id === v?.engine);
     const rows: [string, Node | string | null | undefined][] = [];
     rows.push(['id', h('code', null, id)]);
-    rows.push(['engine', eng ? `${eng.label}${eng.version ? ' ' + eng.version : ''}${eng.commit ? ' (' + eng.commit + ')' : ''}` : (v?.engine ?? '')]);
+    rows.push(['engine', eng ? engineLabel(eng) : (v?.engine ?? '')]);
     if (v?.chip) rows.push(['chip', `${v.chip}${v.render?.core ? ' · core ' + v.render.core : ''}`]);
     if (v?.bank) {
       const b = v.bank;
-      const rawTags = b['tags'];
-      const tags = Array.isArray(rawTags) ? rawTags.map(String) : rawTags && typeof rawTags === 'object' ? Object.entries(rawTags as Record<string, unknown>).filter(([, on]) => on).map(([k]) => k) : [];
-      rows.push(['bank', `${b['kind'] === 'embedded' ? '#' + String(b['number']) + ' ' : ''}${String(b['family'] ?? '')} ${String(b['name'] ?? '')}`.trim()]);
-      if (tags.length) rows.push(['tags', h('span', null, tags.map((t) => h('span', { class: 'tag', title: tagHelp(t) }, t)))]);
+      rows.push(['bank', `${b.kind === 'embedded' ? `#${b.number} ` : ''}${b.family ?? ''} ${b.name ?? ''}`.trim()]);
+      if (b.tags.length) rows.push(['tags', h('span', null, b.tags.map((t) => h('span', { class: 'tag', title: tagHelp(t) }, t)))]);
     }
     const src = v?.source;
     if (src?.file) rows.push(['file', h('code', null, src.file)]);
-    const sf2 = (src as Record<string, unknown> | null)?.['sf2'] as Record<string, unknown> | undefined;
-    const info = (src?.info ?? sf2 ?? null) as Record<string, string> | null;
-    if (info) {
-      for (const k of ['INAM', 'IENG', 'ICRD', 'IPRD', 'ICOP', 'ISFT']) if (info[k]) rows.push([k, info[k]]);
-      if (info['ICMT']) rows.push(['ICMT', h('span', { class: 'icmt' }, info['ICMT'].slice(0, 600))]);
+    const sf2 = src?.sf2;
+    if (sf2) {
+      for (const k of SF2_INFO_KEYS) if (sf2[k]) rows.push([k, sf2[k]]);
+      if (sf2.ICMT) rows.push(['ICMT', h('span', { class: 'icmt' }, sf2.ICMT.slice(0, 600))]);
     }
     if (src?.bytes) rows.push(['size', fmtBytes(src.bytes)]);
-    if (sf2) rows.push(['presets', `${String(sf2['preset_count'] ?? '?')} presets · ${String(sf2['melodic_bank0'] ?? '?')} melodic in bank 0 · ${sf2['has_drums'] ? 'drums' : 'no drums'}${sf2['ifil'] ? ' · sf ' + String(sf2['ifil']) : ''}`]);
+    if (sf2) rows.push(['presets', `${sf2.preset_count ?? '?'} presets · ${sf2.melodic_bank0 ?? '?'} melodic in bank 0 · ${sf2.has_drums ? 'drums' : 'no drums'}${sf2.ifil ? ` · sf ${sf2.ifil}` : ''}`]);
     if (v?.facets) {
       const f = v.facets;
       rows.push(['facets', ['completeness', 'bank_map', 'lineage', 'decade', 'size'].map((k) => (f[k] ? `${k}=${String(f[k])}` : '')).filter(Boolean).join('  ')]);
@@ -106,7 +86,7 @@ export class NowPlaying {
       const c = src.collection;
       rows.push(['from', h('span', null, 'Internet Archive · ', h('a', { href: c.url, target: '_blank', rel: 'noopener' }, c.title), c.torrent ? [' · ', h('a', { href: c.torrent, target: '_blank', rel: 'noopener' }, 'torrent')] : '')]);
     } else if (src?.url) rows.push(['source', h('a', { href: src.url, target: '_blank', rel: 'noopener' }, src.url)]);
-    rows.push(['song', `${this.song.title}${this.song.composer ? ' — ' + this.song.composer : ''} · ${this.song.license.id}`]);
+    rows.push(['song', `${songTitle(this.song)} · ${this.song.license.id}`]);
     const dl = h('dl', { class: 'kv' });
     for (const [k, val] of rows) {
       if (val === null || val === undefined || val === '') continue;

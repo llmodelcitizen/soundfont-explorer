@@ -1,5 +1,6 @@
 /**
- * App: loads songs.json → catalog → set, gates the AudioContext, wires engine ⇄ UI ⇄ URL.
+ * App: loads songs.json, then catalog + decoder probe + set concurrently; creates the AudioContext
+ * at boot (suspended, unlocked by the first gesture) and wires engine ⇄ UI ⇄ URL.
  * Song switches keep variant id (or nearest index), position and filters (plan §10).
  */
 import { Engine, type Status } from '../audio/engine';
@@ -7,7 +8,7 @@ import { NativeDecoder, WasmDecoder, probeNative, type Decoder } from '../audio/
 import { Fetcher } from '../audio/net/fetcher';
 import { SegmentStore } from '../audio/store';
 import type { ContextLike, Tier } from '../audio/types';
-import { NET, POLICY } from '../config';
+import { NET, POLICY, isCompact } from '../config';
 import { parseCatalog, type CatalogDoc } from '../contracts/catalog';
 import { parseSet, type SetDoc } from '../contracts/set';
 import { parseSongs, type SongEntry, type SongsDoc } from '../contracts/songs';
@@ -22,14 +23,14 @@ import { FilterBar } from './filters';
 import { showGate } from './gate';
 import { KeymapOverlay } from './keymapOverlay';
 import { VariantList } from './list';
-import { sortIds, type ColKey } from './columns';
+import { sortIds, visibleColumns, type CellContext, type ColKey } from './columns';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { Favorites, ListenedLedger, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
-import { audioSession, createContextInGesture, installResumeOnGesture, unlock } from '../audio/unlock';
+import { audioSession, createContext, installResumeOnGesture, unlock } from '../audio/unlock';
 import { Transport } from './transport';
 
 import probeUrl from '../assets/probe-1k-40ms.opus?url';
@@ -39,6 +40,8 @@ async function getJson(url: string): Promise<unknown> {
   if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
   return r.json();
 }
+
+const sameKeys = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((k, i) => k === b[i]);
 
 export class App {
   private root: HTMLElement;
@@ -74,8 +77,10 @@ export class App {
       savePrefs(p);
       this.refreshListened();
       if (this.tracks) this.tracks.preserveBox.checked = p.preserveTrackPosition;
-      if (this.list) {
-        this.list.setColumns(this.effectiveColumns());
+      // the 'listened after' slider fires this on every tick: rebuild the rows only when the column set changed
+      const cols = this.effectiveColumns();
+      if (this.list && !sameKeys(this.list.columns, visibleColumns(cols).map((c) => c.key))) {
+        this.list.setColumns(cols);
         this.applyHighlightsAfterColumns();
       }
     },
@@ -91,6 +96,12 @@ export class App {
   });
   private lastListenTick = 0;
   private favorites = new Favorites();
+  /** per-row state the list and the sorter ask for (favorite / listened seconds / listened ≥ threshold) */
+  private readonly rowHooks: Pick<CellContext, 'isFavorite' | 'listenedSeconds' | 'listened'> = {
+    isFavorite: (id) => this.favorites.has(id),
+    listenedSeconds: (id) => this.ledger.seconds(this.song.id, id),
+    listened: (id) => this.ledger.seconds(this.song.id, id) >= this.prefs.listenedAfterS,
+  };
   private policy!: InputPolicy;
   private theme: ThemeName;
   private pinnedA: string | null = null;
@@ -125,22 +136,28 @@ export class App {
       this.fatal('No songs have been published yet.');
       return;
     }
-    try {
-      this.catalog = parseCatalog(await getJson(this.songs.catalog));
-    } catch (e) {
-      this.fatal(`Could not load the catalog: ${(e as Error).message}`);
-      return;
-    }
     const known = (id: string | null | undefined) => !!id && this.songs.songs.some((s) => s.id === id);
     const songId = known(this.url.song) ? this.url.song! : known(this.songs.defaults.song) ? this.songs.defaults.song! : this.songs.songs[0]!.id;
+    const entry = this.songs.songs.find((s) => s.id === songId)!;
     // No gate: the context is created now (browsers allow that, suspended) and unlocked by the
     // first real gesture — ▶, a tap on a list row, any key — through installResumeOnGesture().
     // Nothing plays until the user asks.
-    this.ctx = createContextInGesture();
+    this.ctx = createContext();
     this.diag.ctxCreatedState = this.ctx.state;
-    await this.pickDecoder();
+    // catalog, decoder probe and the first set only depend on songs.json: fetch them together
+    const [catalog, decoder, set] = await Promise.allSettled([getJson(this.songs.catalog).then(parseCatalog), this.pickDecoder(), getJson(entry.set).then(parseSet)]);
+    if (catalog.status === 'rejected') {
+      this.fatal(`Could not load the catalog: ${(catalog.reason as Error).message}`);
+      return;
+    }
+    if (decoder.status === 'rejected') throw decoder.reason;
+    if (set.status === 'rejected') {
+      this.fatal(`Could not load the song set for ${songId}: ${(set.reason as Error).message}`);
+      return;
+    }
+    this.catalog = catalog.value;
     this.installGlobalListeners();
-    await this.loadSong(songId, { variant: this.url.variant, t: this.url.t, initial: true });
+    await this.loadSong(songId, { setDoc: set.value, variant: this.url.variant, t: this.url.t });
     this.tickUi();
     this.onHashChange();
   }
@@ -148,8 +165,10 @@ export class App {
   /** window/document/AudioContext listeners — installed exactly once, not per song. */
   private installGlobalListeners(): void {
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && this.ctx.state !== 'running') unlock(this.ctx);
+      if (document.visibilityState === 'hidden') this.ledger.flush();
+      else if (document.visibilityState === 'visible' && this.ctx.state !== 'running') unlock(this.ctx);
     });
+    window.addEventListener('pagehide', () => this.ledger.flush());
     let gateUp = false;
     this.ctx.addEventListener?.('statechange', () => {
       this.diag.ctxState = this.ctx.state;
@@ -186,6 +205,11 @@ export class App {
     this.root.appendChild(h('div', { class: 'fatal' }, h('h1', null, 'Soundfont Explorer'), h('p', null, msg)));
   }
 
+  /** the audio side sees the context through the narrower, test-friendly ContextLike */
+  private get ctxLike(): ContextLike {
+    return this.ctx as unknown as ContextLike;
+  }
+
   private async pickDecoder(): Promise<void> {
     let bytes: ArrayBuffer | null = null;
     try {
@@ -193,35 +217,39 @@ export class App {
     } catch {
       /* no probe → assume native */
     }
-    const probe = bytes ? await probeNative(this.ctx as unknown as ContextLike, bytes) : { ok: true, reason: 'no probe', ms: 0 };
+    const probe = bytes ? await probeNative(this.ctxLike, bytes) : { ok: true, reason: 'no probe', ms: 0 };
     this.diag.probe = `${probe.ok ? 'native ok' : 'native FAILED'}: ${probe.reason} (${probe.ms} ms)`;
     if (probe.ok) {
-      this.decoder = new NativeDecoder(this.ctx as unknown as ContextLike, NET.decodeWorkers);
+      this.decoder = new NativeDecoder(this.ctxLike, NET.decodeWorkers);
       this.decodeKind = 'native';
     } else {
-      this.decoder = new WasmDecoder(this.ctx as unknown as ContextLike, NET.decodeWorkers);
+      this.decoder = new WasmDecoder(this.ctxLike, NET.decodeWorkers);
       this.decodeKind = `wasm ×${NET.decodeWorkers} (${probe.reason})`;
     }
   }
 
   // ---------------------------------------------------------------- song lifecycle
 
-  private async loadSong(id: string, opts: { variant?: string; t?: number; initial?: boolean; keepIndex?: number }): Promise<void> {
+  /** switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor */
+  private switchSong(id: string): void {
+    this.ledger.flush();
+    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined });
+  }
+
+  /** `setDoc`: the set boot() already fetched; later switches fetch their own */
+  private async loadSong(id: string, opts: { setDoc?: SetDoc; variant?: string; t?: number; keepIndex?: number }): Promise<void> {
     const entry = this.songs.songs.find((s) => s.id === id);
     if (!entry) return;
-    let set: SetDoc;
-    try {
-      set = parseSet(await getJson(entry.set));
-    } catch (e) {
-      const msg = `could not load ${entry.title}: ${(e as Error).message}`;
-      if (this.engine) {
+    let set = opts.setDoc;
+    if (!set) {
+      try {
+        set = parseSet(await getJson(entry.set));
+      } catch (e) {
         // keep playing the current song; tell the user
-        this.transport.setStatus(msg, 'wontload');
+        this.transport.setStatus(`could not load ${entry.title}: ${(e as Error).message}`, 'wontload');
         this.picker.set(this.song.id);
         return;
       }
-      this.fatal(`Could not load the song set for ${id}: ${(e as Error).message}`);
-      return;
     }
     // stepping to another track: keep the playhead or restart, per the "Preserve track position" preference
     const prevPos = this.engine ? (this.prefs.preserveTrackPosition ? this.engine.position() : 0) : (opts.t ?? 0);
@@ -238,7 +266,7 @@ export class App {
     this.song = entry;
     this.set = set;
     this.store = new SegmentStore(set, this.fetcher, this.decoder);
-    this.engine = new Engine(this.ctx as unknown as ContextLike, set, this.store);
+    this.engine = new Engine(this.ctxLike, set, this.store);
     this.engine.setLoop(loop);
     this.engine.setVolume(volume);
     this.engine.setMuted(muted);
@@ -283,11 +311,7 @@ export class App {
         },
         onSort: (key) => this.toggleSort(key),
       },
-      {
-        isFavorite: (id) => this.favorites.has(id),
-        listenedSeconds: (id) => this.ledger.seconds(this.song.id, id),
-        listened: (id) => this.ledger.seconds(this.song.id, id) >= this.prefs.listenedAfterS,
-      },
+      this.rowHooks,
     );
     this.list.setColumns(this.effectiveColumns());
     this.list.setSort(this.sort);
@@ -319,26 +343,20 @@ export class App {
         onToggle: () => this.engine.toggle(),
         onSeek: (p) => this.engine.seek(p),
         onSkip: (d) => this.engine.seek(this.engine.position() + d),
-        onLoop: (on) => {
-          this.engine.setLoop(on);
-          this.syncUrl();
-        },
+        onLoop: (on) => this.setLoop(on),
         onVolume: (v) => {
           this.volume = v;
           this.engine.setVolume(v);
           if (this.volTop) this.volTop.value = String(v);
         },
-        onMute: () => {
-          this.engine.setMuted(!this.engine.isMuted);
-          this.transport.setMuted(this.engine.isMuted);
-        },
+        onMute: () => this.toggleMute(),
         onStep: (d, rep) => this.policy.step(d, rep, performance.now()),
         onStepEnd: () => this.policy.keyup(performance.now()),
       },
       () => this.focusList(),
     );
     this.transport.setLoop(this.engine.timeline.loop);
-    this.picker = new SongPicker(this.songs.songs, this.song.id, (id) => void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined }));
+    this.picker = new SongPicker(this.songs.songs, this.song.id, (id) => this.switchSong(id));
     const themeSel = h('select', { class: 'themepick', 'aria-label': 'theme', title: 'theme (T)' }, h('option', { value: 'modern' }, 'modern'), h('option', { value: 'win95' }, 'win95')) as HTMLSelectElement;
     themeSel.value = this.theme;
     themeSel.addEventListener('change', () => {
@@ -382,7 +400,7 @@ export class App {
       h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
       volTop,
     );
-    this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined }), {
+    this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => this.switchSong(id), {
       value: this.prefs.preserveTrackPosition,
       onChange: (v) => {
         this.prefs = { ...this.prefs, preserveTrackPosition: v };
@@ -413,15 +431,8 @@ export class App {
       end: (at) => this.policy.jump(this.visible.length - 1, at),
       toggle: () => this.engine.toggle(),
       skip: (s) => this.engine.seek(this.engine.position() + s),
-      loop: () => {
-        this.engine.setLoop(!this.engine.timeline.loop);
-        this.transport.setLoop(this.engine.timeline.loop);
-        this.syncUrl();
-      },
-      mute: () => {
-        this.engine.setMuted(!this.engine.isMuted);
-        this.transport.setMuted(this.engine.isMuted);
-      },
+      loop: () => this.setLoop(!this.engine.timeline.loop),
+      mute: () => this.toggleMute(),
       focusSearch: () => this.filters.search.focus(),
       escape: () => {
         this.keymap.toggle(false);
@@ -554,20 +565,33 @@ export class App {
     }
   }
 
-  private applyPaneSizes(): void {
+  private load(key: string): string | null {
     try {
-      const w = localStorage.getItem(App.RIGHT_W_KEY);
-      if (w) this.main.style.setProperty('--right-w', w);
-      const hh = localStorage.getItem(App.NP_MOBILE_KEY);
-      if (hh) this.main.style.setProperty('--np-mobile-h', hh);
+      return localStorage.getItem(key);
     } catch {
-      /* ignore */
+      return null;
     }
+  }
+
+  private applyPaneSizes(): void {
+    const w = this.load(App.RIGHT_W_KEY);
+    if (w) this.main.style.setProperty('--right-w', w);
+    const hh = this.load(App.NP_MOBILE_KEY);
+    if (hh) this.main.style.setProperty('--np-mobile-h', hh);
   }
 
   // ---- right-pane split (tracks above, now-playing below) ------------------------------
   private static SPLIT_KEY = 'sfp.np-height.v1';
+  /** the user's saved Now Playing height (null = size to content); mirrors localStorage so applySplit() never reads it */
+  private splitSaved: string | null = this.load(App.SPLIT_KEY);
+  private splitMeasurePending = false;
 
+  private rememberSplit(v: string | null): void {
+    this.splitSaved = v;
+    this.save(App.SPLIT_KEY, v);
+  }
+
+  /** custom drag (no pointer capture, no pointercancel) kept as is; unlike dragHandle() it saves once, on release */
   private splitHandle(): HTMLElement {
     const handle = h('div', { class: 'split', role: 'separator', 'aria-orientation': 'horizontal', 'aria-label': 'resize now playing', tabindex: '0', title: 'drag to resize · double-click to reset' });
     let startY = 0;
@@ -579,12 +603,7 @@ export class App {
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      const v = this.rightPane.style.getPropertyValue('--np-h');
-      try {
-        localStorage.setItem(App.SPLIT_KEY, v);
-      } catch {
-        /* ignore */
-      }
+      this.rememberSplit(this.rightPane.style.getPropertyValue('--np-h'));
     };
     handle.addEventListener('pointerdown', (e) => {
       startY = e.clientY;
@@ -594,11 +613,7 @@ export class App {
       e.preventDefault();
     });
     handle.addEventListener('dblclick', () => {
-      try {
-        localStorage.removeItem(App.SPLIT_KEY);
-      } catch {
-        /* ignore */
-      }
+      this.rememberSplit(null);
       this.rightPane.style.removeProperty('--np-h');
       this.applySplit(true);
     });
@@ -613,19 +628,17 @@ export class App {
     return handle;
   }
 
-  /** Default split: Now Playing gets exactly its content height (never cut off, capped at 70 %); the tracks take the rest. */
+  /** Default split: Now Playing gets exactly its content height (never cut off, capped at 70 %); the tracks take the rest.
+   *  Called on every 'audible' event, so the layout measurement is deferred to one coalesced frame. */
   private applySplit(force = false): void {
-    let saved: string | null = null;
-    try {
-      saved = localStorage.getItem(App.SPLIT_KEY);
-    } catch {
-      /* ignore */
-    }
-    if (saved && !force) {
-      this.rightPane.style.setProperty('--np-h', saved);
+    if (this.splitSaved && !force) {
+      this.rightPane.style.setProperty('--np-h', this.splitSaved);
       return;
     }
+    if (this.splitMeasurePending) return;
+    this.splitMeasurePending = true;
     requestAnimationFrame(() => {
+      this.splitMeasurePending = false;
       const pane = this.rightPane.clientHeight;
       if (!pane) return;
       const content = this.nowPlaying.el.scrollHeight + 2;
@@ -638,9 +651,8 @@ export class App {
   private scrim: HTMLElement | null = null;
 
   private onFiltersOpen(open: boolean): void {
-    const compact = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches;
     this.root.classList.toggle('filters-open', open);
-    if (!open || !compact) {
+    if (!open || !isCompact()) {
       this.scrim?.remove();
       this.scrim = null;
       return;
@@ -686,12 +698,19 @@ export class App {
     return this.cursor;
   }
 
-  private get compact(): boolean {
-    return typeof matchMedia !== 'undefined' && matchMedia('(max-width: 720px)').matches;
+  private effectiveColumns(): ColKey[] {
+    return (isCompact() ? this.prefs.mobileColumns : this.prefs.columns) as ColKey[];
   }
 
-  private effectiveColumns(): ColKey[] {
-    return (this.compact ? this.prefs.mobileColumns : this.prefs.columns) as ColKey[];
+  private setLoop(on: boolean): void {
+    this.engine.setLoop(on);
+    this.transport.setLoop(this.engine.timeline.loop);
+    this.syncUrl();
+  }
+
+  private toggleMute(): void {
+    this.engine.setMuted(!this.engine.isMuted);
+    this.transport.setMuted(this.engine.isMuted);
   }
 
   private toggleSort(key: ColKey): void {
@@ -706,13 +725,7 @@ export class App {
     let out = ids;
     if (this.favoritesOnly) out = out.filter((id) => this.favorites.has(id));
     if (this.sort.key) {
-      out = sortIds(out, this.sort.key, this.sort.dir, this.canonicalIndex, {
-        catalog: this.catalog,
-        set: this.set,
-        isFavorite: (id) => this.favorites.has(id),
-        listenedSeconds: (id) => this.ledger.seconds(this.song.id, id),
-        listened: (id) => this.ledger.seconds(this.song.id, id) >= this.prefs.listenedAfterS,
-      });
+      out = sortIds(out, this.sort.key, this.sort.dir, this.canonicalIndex, { catalog: this.catalog, set: this.set, ...this.rowHooks });
     }
     return out;
   }
@@ -732,11 +745,9 @@ export class App {
   }
 
   private stepSong(d: number): void {
-    this.ledger.flush();
     const ids = this.songs.songs.map((s) => s.id);
     const i = ids.indexOf(this.song.id);
-    const next = ids[(i + d + ids.length) % ids.length]!;
-    void this.loadSong(next, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined });
+    this.switchSong(ids[(i + d + ids.length) % ids.length]!);
   }
 
   private setTheme(t: ThemeName): void {
@@ -772,11 +783,8 @@ export class App {
     else this.urlTimer = setTimeout(write, POLICY.settleMs + 30);
   }
 
-  private uiLoopStarted = false;
-
   /** credit the audible variant with real playback time (not while paused, loading or suspended) */
-  private accumulateListened(): void {
-    const now = performance.now();
+  private accumulateListened(now: number): void {
     const dt = this.lastListenTick ? (now - this.lastListenTick) / 1000 : 0;
     this.lastListenTick = now;
     const v = this.engine.audible;
@@ -797,18 +805,19 @@ export class App {
     if (this.list && this.song) this.list.setListened(this.ledger.listened(this.song.id, this.prefs.listenedAfterS));
   }
 
+  /** debug panel refresh rate; the transport and the listened ledger still update every frame */
+  private static DEBUG_HZ = 5;
+  private debugAt = 0;
+
+  /** per-frame UI loop; started once by boot() after the first song (and the engine) exist */
   private tickUi(): void {
-    if (this.uiLoopStarted) return;
-    this.uiLoopStarted = true;
     const loop = () => {
-      if (!this.engine) {
-        requestAnimationFrame(loop);
-        return;
-      }
+      const now = performance.now();
       this.transport.update(this.engine.position(), this.engine.playing);
       if (this.ctx.state !== 'running' && this.engine.playing) this.transport.setStatus(`audio ${this.ctx.state} — tap to resume`, 'wontload');
-      this.accumulateListened();
-      if (this.debug.visible) {
+      this.accumulateListened(now);
+      if (this.debug.visible && now - this.debugAt >= 1000 / App.DEBUG_HZ) {
+        this.debugAt = now;
         const f = this.fetcher.stats;
         const d = this.decoder.stats;
         const proto = (performance.getEntriesByType?.('resource') as PerformanceResourceTiming[] | undefined)?.at(-1)?.nextHopProtocol ?? '';

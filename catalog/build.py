@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Merge ``catalog/soundfonts.json`` with ``catalog/overrides.json`` into facets.
 
 Writes ``catalog/soundfonts.facets.json`` (schema in ``catalog/README.md``):
@@ -24,6 +23,8 @@ import json
 import os
 import re
 import sys
+
+from ._util import count_values, decade_of, write_json
 
 SCHEMA = 1
 
@@ -74,7 +75,6 @@ LINEAGE_VALUES = tuple(DEFAULT_LINEAGE_REGEX) + ("generic",)
 # a hit in the engineer/product/copyright strings, which beats a mention buried in
 # the comment prose (ICMT is long and often names the *target* card, not the source).
 LINEAGE_FIELD_GROUPS = (("INAM", "file"), ("IENG", "IPRD", "ICOP"), ("ICMT",))
-LINEAGE_FIELDS = tuple(f for g in LINEAGE_FIELD_GROUPS for f in g)
 # Values that authoring tools write by default; they say nothing about provenance.
 # (Vienna SoundFont Studio stamps IPRD="SBAWE32" on every font it saves.)
 DEFAULT_IGNORE_VALUES = (
@@ -238,10 +238,6 @@ def year_and_confidence(info: dict, file: str, now_year: int) -> tuple[int | Non
     return None, "unknown", None
 
 
-def decade_of(year: int | None) -> str:
-    return f"{year // 10 * 10}s" if year else "unknown"
-
-
 def license_flag(info: dict) -> tuple[str, str | None]:
     for name, rx in LICENSE_RULES:
         for field in LICENSE_FIELDS:
@@ -255,7 +251,7 @@ def variant_id(sha256: str | None) -> str | None:
     return f"sf2-{sha256[:10]}" if sha256 else None
 
 
-def default_label(info: dict, file: str) -> str:
+def default_label(file: str) -> str:
     """Display label = the file name without extension.
 
     The collection's file names are what people know these fonts by ("SC-55 SoundFont.v1.2b
@@ -263,7 +259,6 @@ def default_label(info: dict, file: str) -> str:
     (16 bit)" ×4) or an older revision string. INAM stays available in source.sf2.INAM and is shown
     in the now-playing panel. An explicit `label` in overrides.json still wins.
     """
-    del info  # kept in the signature for override/test compatibility
     stem = os.path.splitext(file)[0]
     return re.sub(r"\s+", " ", stem).strip() or file
 
@@ -339,13 +334,14 @@ def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
         lin, lin_match = lineage({**info, "file": file}, compiled, ignore_values)
         year, conf, year_src = year_and_confidence(info, file, now_year)
         lic, lic_match = license_flag(info)
+        year_overridden = "year" in ov or "decade" in ov
 
         rec = {
             "file": file,
             "sha256": sha,
             "bytes": f["bytes"],
             "variant_id": variant_id(sha),
-            "label": ov.get("label", default_label(info, file)),
+            "label": ov.get("label", default_label(file)),
             "parse_ok": bool(f.get("parse_ok")),
             "facets": {
                 "completeness": ov.get("completeness", comp),
@@ -368,7 +364,7 @@ def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
             "alias_of": None,
             "sources": {
                 "lineage": "override" if "lineage" in ov else ("regex:" + lin_match if lin_match else "default"),
-                "year": "override" if "year" in ov or "decade" in ov else year_src,
+                "year": "override" if year_overridden else year_src,
                 "license_flag": "override" if "license_flag" in ov else ("regex:" + lic_match if lic_match else "default"),
                 "completeness": "override" if "completeness" in ov else ("filename" if inst else "structure"),
                 "bank_map": "override" if "bank_map" in ov else "structure",
@@ -376,9 +372,7 @@ def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
             "overrides_applied": sorted(k for k in ov),
             "notes": ov.get("notes"),
         }
-        if "year" in ov:
-            rec["facets"]["year_confidence"] = "high"
-        if "decade" in ov and "year" not in ov:
+        if year_overridden:
             rec["facets"]["year_confidence"] = "high"
         if sha and canonical_of.get(sha) != file:
             rec["dup_of"] = canonical_of[sha]
@@ -386,15 +380,10 @@ def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
         out_fonts.append(rec)
 
     facet_names = ("completeness", "bank_map", "size_bucket", "lineage", "decade", "year_confidence", "license_flag")
-    counts = {name: {} for name in facet_names}
-    for rec in out_fonts:
-        for name in facet_names:
-            v = rec["facets"][name]
-            counts[name][v] = counts[name].get(v, 0) + 1
-    counts = {name: dict(sorted(vals.items())) for name, vals in counts.items()}
-    counts["instrument"] = _count(rec["instrument"] for rec in out_fonts if rec["instrument"])
-    counts["completeness_structural"] = _count(rec["completeness_structural"] for rec in out_fonts)
-    counts["publish"] = _count("true" if rec["publish"] else "false" for rec in out_fonts)
+    counts = {name: count_values(rec["facets"][name] for rec in out_fonts) for name in facet_names}
+    counts["instrument"] = count_values(rec["instrument"] for rec in out_fonts if rec["instrument"])
+    counts["completeness_structural"] = count_values(rec["completeness_structural"] for rec in out_fonts)
+    counts["publish"] = count_values("true" if rec["publish"] else "false" for rec in out_fonts)
 
     unused = sorted(k for k in override_fonts if k not in used_override_keys)
     return {
@@ -411,21 +400,6 @@ def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
         "unused_override_keys": unused,
         "fonts": out_fonts,
     }
-
-
-def _count(values) -> dict:
-    c: dict = {}
-    for v in values:
-        c[v] = c.get(v, 0) + 1
-    return dict(sorted(c.items()))
-
-
-def write_json(doc: dict, out: str) -> None:
-    tmp = out + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=1, ensure_ascii=False)
-        fh.write("\n")
-    os.replace(tmp, out)
 
 
 def main(argv=None) -> int:

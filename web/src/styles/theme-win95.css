@@ -35,19 +35,17 @@
   --c-la: #800080;
   --bevel-out: inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
   --bevel-in: inset 1px 1px #000, inset -1px -1px #fff, inset 2px 2px #808080, inset -2px -2px #dfdfdf;
-}
-[data-theme='win95'] body {
-  background: #008080;
+  --titlebar: linear-gradient(90deg, #000080, #1084d0);
 }
 [data-theme='win95'] #app {
-  background: #c0c0c0;
+  background: var(--panel);
   margin: 6px;
   height: calc(100% - 12px);
   box-shadow: var(--bevel-out);
   padding: 3px;
 }
 [data-theme='win95'] .top {
-  background: linear-gradient(90deg, #000080, #1084d0);
+  background: var(--titlebar);
   color: #fff;
   border: 0;
   padding: 3px 6px;
@@ -58,17 +56,17 @@
   color: #fff;
 }
 [data-theme='win95'] .row.head {
-  background: #c0c0c0;
   box-shadow: var(--bevel-out);
 }
+/* header cells: plain black, no hover colour (this rule comes after base's .hcell:hover at equal specificity) */
 [data-theme='win95'] .hcell {
-  color: #000;
+  color: var(--fg);
   text-transform: none;
   letter-spacing: 0;
   font-size: 11px;
 }
 [data-theme='win95'] .hcell.sorted {
-  color: #000080;
+  color: var(--accent);
 }
 [data-theme='win95'] .top .title {
   font-size: 16px;
@@ -77,14 +75,16 @@
 [data-theme='win95'] .top .songpicker,
 [data-theme='win95'] .top .themepick,
 [data-theme='win95'] .top .btn {
-  color: #000;
+  color: var(--fg);
 }
+/* background/colour are restated on purpose: at equal specificity this later rule neutralises base's
+   .btn:hover and .fav-filter.on, so win95 buttons only change through the bevel */
 [data-theme='win95'] .btn,
 [data-theme='win95'] .opt {
   border: 0;
   box-shadow: var(--bevel-out);
-  background: #c0c0c0;
-  color: #000;
+  background: var(--btn-bg);
+  color: var(--fg);
 }
 [data-theme='win95'] .btn:active,
 [data-theme='win95'] .btn.on,
@@ -92,11 +92,11 @@
 [data-theme='win95'] .opt.on {
   box-shadow: var(--bevel-in);
   background: #dfdfdf;
-  color: #000;
+  color: var(--fg);
 }
 [data-theme='win95'] .btn.primary {
-  background: #c0c0c0;
-  color: #000;
+  background: var(--btn-bg);
+  color: var(--fg);
   outline: 1px solid #000;
   outline-offset: -4px;
 }
@@ -109,13 +109,10 @@
 [data-theme='win95'] .dbg-body {
   border: 0;
   box-shadow: var(--bevel-in);
-  background: #fff;
+  background: var(--input-bg);
 }
 [data-theme='win95'] .row {
   border-bottom: 0;
-}
-[data-theme='win95'] .row.audible .label {
-  color: #000080;
 }
 [data-theme='win95'] .gate-box,
 [data-theme='win95'] .overlay-box,
@@ -126,7 +123,7 @@
 }
 [data-theme='win95'] .gate-box h1,
 [data-theme='win95'] .overlay-box h2 {
-  background: linear-gradient(90deg, #000080, #1084d0);
+  background: var(--titlebar);
   color: #fff;
   font-size: 12px;
   font-weight: bold;
@@ -142,22 +139,7 @@
 }
 [data-theme='win95'] .transport,
 [data-theme='win95'] .filterbar {
-  background: #c0c0c0;
   border: 0;
-}
-[data-theme='win95'] .transport .seek,
-[data-theme='win95'] .transport .vol {
-  accent-color: #000080;
-}
-[data-theme='win95'] .tier.l {
-  color: #000080;
-}
-[data-theme='win95'] .row.sel .label,
-[data-theme='win95'] .row.sel.audible .label,
-[data-theme='win95'] .row.sel .idx,
-[data-theme='win95'] .row.sel .meta,
-[data-theme='win95'] .row.sel .gain {
-  color: #fff;
 }
 
 /* debug pane: the shared dialog rule strips padding; give it a real frame and centre its header */
@@ -171,7 +153,7 @@
   gap: 12px;
   padding: 4px 8px 8px;
   margin-bottom: 8px;
-  border-bottom: 1px solid #808080;
+  border-bottom: 1px solid var(--line);
 }
 [data-theme='win95'] .dbg-head strong {
   font-size: 12px;
@@ -204,14 +186,11 @@
   line-height: 2;
 }
 [data-theme='win95'] .settings .num {
-  background: #fff;
   border: 0;
   box-shadow: var(--bevel-in);
-  padding: 2px 6px;
   margin: 0 4px;
 }
 [data-theme='win95'] .settings input[type='range'] {
-  accent-color: #000080;
   margin: 6px 0 10px;
 }
 [data-theme='win95'] .settings p {
@@ -225,10 +204,10 @@
   min-width: 88px;
   padding: 4px 12px;
 }
+/* colour restated on purpose: it also applies on hover (base's .chip:hover is earlier at equal specificity) */
 [data-theme='win95'] .chip {
   border-radius: 0;
-  border: 1px dashed #000080;
-  color: #000080;
+  color: var(--accent);
 }
 
 /* header buttons: 2 px taller at the bottom */
@@ -239,51 +218,36 @@
   padding: 3px 7px 5px;
 }
 
-[data-theme='win95'] .tracks {
-  background: #c0c0c0;
-}
 [data-theme='win95'] .track-rows {
   margin: 0;
 }
 [data-theme='win95'] .track {
   border-bottom: 0;
 }
-[data-theme='win95'] .split {
-  background: #c0c0c0;
+/* split handles: bevelled bars, no grip */
+[data-theme='win95'] .split,
+[data-theme='win95'] .vsplit,
+[data-theme='win95'] .hsplit {
+  background: var(--panel);
   box-shadow: var(--bevel-out);
 }
-[data-theme='win95'] .split::after {
+[data-theme='win95'] .split::after,
+[data-theme='win95'] .vsplit::after,
+[data-theme='win95'] .hsplit::after {
   display: none;
 }
 
 [data-theme='win95'] .preserve {
-  color: #000;
+  color: var(--fg);
 }
 [data-theme='win95'] .preserve input {
-  accent-color: #000;
-  width: 13px;
-  height: 13px;
-}
-
-[data-theme='win95'] .transport > .btn,
-[data-theme='win95'] .transport .toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* win95: plain black icons on the grey buttons */
-[data-theme='win95'] .transport .btn svg {
-  color: #000;
+  accent-color: var(--fg);
 }
 
 @media (max-width: 720px) and (orientation: portrait) {
   /* centre the song dropdown between the button row and the bottom edge of the title bar */
   [data-theme='win95'] .top .songpicker {
     margin-bottom: 3px;
-  }
-  [data-theme='win95'] .top .vol-top {
-    accent-color: #000080;
   }
 }
 
@@ -293,46 +257,27 @@
   -webkit-appearance: none;
   appearance: none;
   padding-right: 24px;
-  background-color: #fff;
+  background-color: var(--input-bg);
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='17' height='17' viewBox='0 0 17 17'><rect width='17' height='17' fill='%23c0c0c0'/><path d='M0 0h16v1H0zM0 0h1v16H0z' fill='%23fff'/><path d='M1 15h15V1h1v16H1z' fill='%23000'/><path d='M2 14h13V2h1v13H2z' fill='%23808080'/><path d='M5 7h7l-3.5 4z' fill='%23000'/></svg>");
   background-repeat: no-repeat;
   background-position: right 2px center;
   background-size: 17px 17px;
 }
 
-/* theme dropdown exactly as tall as the header buttons */
+/* theme dropdown exactly as tall as the header icon buttons (18 px icon + 3 px + 5 px padding) */
 [data-theme='win95'] .top .themepick {
-  height: var(--top-btn-h, 26px);
+  height: 26px;
   padding-top: 0;
   padding-bottom: 0;
   box-sizing: border-box;
   line-height: normal;
-}
-@media (max-width: 720px) and (orientation: portrait) {
-  /* volume takes whatever is left of the button row */
-  [data-theme='win95'] .top .vol-top {
-    flex: 1 1 0;
-    width: 0;
-    min-width: 40px;
-  }
-}
-
-[data-theme='win95'] .vsplit,
-[data-theme='win95'] .hsplit {
-  background: #c0c0c0;
-  box-shadow: var(--bevel-out);
-}
-[data-theme='win95'] .vsplit::after,
-[data-theme='win95'] .hsplit::after {
-  display: none;
 }
 
 [data-theme='win95'] .btn.danger {
   color: #800000;
 }
 [data-theme='win95'] .btn.danger:hover {
-  background: #c0c0c0;
-  color: #800000;
+  background: var(--btn-bg);
 }
 
 /* facet option buttons: 4 px taller, text kept centred, same gaps */

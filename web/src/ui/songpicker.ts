@@ -1,4 +1,4 @@
-import type { SongEntry } from '../contracts/songs';
+import { songTitle, type SongEntry } from '../contracts/songs';
 import { h } from './dom';
 
 export class SongPicker {
@@ -6,7 +6,7 @@ export class SongPicker {
   constructor(songs: SongEntry[], current: string, onChange: (id: string) => void) {
     this.el = h('select', { class: 'songpicker', 'aria-label': 'song', title: 'song ( [ / ] )' });
     for (const s of songs) {
-      const o = h('option', { value: s.id }, `${s.title}${s.composer ? ' — ' + s.composer : ''}  (${s.variant_count})`);
+      const o = h('option', { value: s.id }, `${songTitle(s)}  (${s.variant_count})`);
       if (s.id === current) o.selected = true;
       this.el.appendChild(o);
     }

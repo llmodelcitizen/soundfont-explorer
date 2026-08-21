@@ -57,6 +57,9 @@ export function savePrefs(p: Prefs): void {
 
 type Ledger = Record<string, Record<string, number>>;
 
+/** periodic flush while playing; the app also flushes on song change, visibilitychange→hidden and pagehide */
+const LEDGER_FLUSH_MS = 15_000;
+
 export class ListenedLedger {
   private data: Ledger;
   private dirty = false;
@@ -77,7 +80,7 @@ export class ListenedLedger {
     const v = (s[variant] ?? 0) + dt;
     s[variant] = v;
     this.dirty = true;
-    if (this.now() - this.lastFlush > 2000) this.flush();
+    if (this.now() - this.lastFlush > LEDGER_FLUSH_MS) this.flush();
     return v;
   }
 
@@ -113,7 +116,6 @@ const FAV_KEY = 'sfp.favorites.v1';
 /** Favorite variants (global: a SoundFont you like is a favorite for every track). */
 export class Favorites {
   private ids: Set<string>;
-  private listeners = new Set<(ids: Set<string>) => void>();
 
   constructor() {
     const raw = read<string[]>(FAV_KEY);
@@ -132,12 +134,6 @@ export class Favorites {
     if (this.ids.has(id)) this.ids.delete(id);
     else this.ids.add(id);
     write(FAV_KEY, [...this.ids]);
-    for (const l of this.listeners) l(this.all());
     return this.ids.has(id);
-  }
-
-  onChange(fn: (ids: Set<string>) => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
   }
 }

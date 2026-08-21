@@ -26,7 +26,8 @@ interface Pending {
   reject: (e: unknown) => void;
   promise: Promise<ArrayBuffer>;
   controller?: AbortController;
-  started: boolean;
+  /** order of the last priority assignment: ties are served in that order */
+  seq: number;
   t0: number;
 }
 
@@ -39,8 +40,13 @@ export class AbortedError extends Error {
 
 export class Fetcher {
   private queue: Pending[] = [];
+  /** id → queued entry (same members as `queue`) for O(1) dedup / lookup */
+  private queued = new Map<string, Pending>();
   private inflight = new Map<string, Pending>();
-  stats = { requests: 0, bytes: 0, errors: 0, aborted: 0, msTotal: 0, completed: 0, lastProtocol: '' };
+  /** queue needs re-sorting before the next shift */
+  private dirty = false;
+  private seq = 0;
+  stats = { requests: 0, bytes: 0, errors: 0, aborted: 0, msTotal: 0, completed: 0 };
 
   constructor(
     private readonly cap: number,
@@ -54,12 +60,11 @@ export class Fetcher {
 
   get(url: string, opts: FetchOpts): Promise<ArrayBuffer> {
     const id = Fetcher.id(url, opts.range);
-    const live = this.inflight.get(id) ?? this.queue.find((p) => p.id === id);
+    const live = this.inflight.get(id) ?? this.queued.get(id);
     if (live) {
       if (opts.priority < live.priority) {
-        live.priority = opts.priority;
+        this.setPriority(live, opts.priority);
         live.opts.sticky = live.opts.sticky || opts.sticky;
-        this.sort();
       }
       return live.promise;
     }
@@ -70,22 +75,19 @@ export class Fetcher {
       reject = rej;
     });
     promise.catch(() => undefined); // avoid unhandled rejections for fire-and-forget callers
-    const p: Pending = { id, url, opts: { ...opts }, priority: opts.priority, resolve, reject, promise, started: false, t0: 0 };
+    const p: Pending = { id, url, opts: { ...opts }, priority: opts.priority, resolve, reject, promise, seq: this.seq++, t0: 0 };
     this.queue.push(p);
+    this.queued.set(id, p);
+    this.dirty = true;
     this.stats.requests++;
-    this.sort();
     this.pump();
     return promise;
   }
 
   /** Re-prioritize a queued request (no-op if in flight or unknown). */
   reprioritize(url: string, priority: number, range?: { start: number; end: number }): void {
-    const id = Fetcher.id(url, range);
-    const p = this.queue.find((q) => q.id === id);
-    if (p && priority < p.priority) {
-      p.priority = priority;
-      this.sort();
-    }
+    const p = this.queued.get(Fetcher.id(url, range));
+    if (p && priority < p.priority) this.setPriority(p, priority);
   }
 
   /** Abort queued or in-flight requests matching tag + predicate (sticky ones are skipped). */
@@ -93,6 +95,7 @@ export class Fetcher {
     let n = 0;
     this.queue = this.queue.filter((p) => {
       if ((p.opts.sticky && !force) || !pred(p.url, p.opts)) return true;
+      this.queued.delete(p.id);
       p.reject(new AbortedError(p.url));
       n++;
       return false;
@@ -108,7 +111,7 @@ export class Fetcher {
 
   isPending(url: string, range?: { start: number; end: number }): boolean {
     const id = Fetcher.id(url, range);
-    return this.inflight.has(id) || this.queue.some((p) => p.id === id);
+    return this.inflight.has(id) || this.queued.has(id);
   }
 
   get inflightCount(): number {
@@ -118,19 +121,27 @@ export class Fetcher {
     return this.queue.length;
   }
 
-  private sort(): void {
-    this.queue.sort((a, b) => a.priority - b.priority);
+  /** A (re)prioritised request is served after the ones already at that priority. */
+  private setPriority(p: Pending, priority: number): void {
+    p.priority = priority;
+    p.seq = this.seq++;
+    this.dirty = true;
   }
 
   private pump(): void {
+    if (this.inflight.size >= this.cap || !this.queue.length) return;
+    if (this.dirty) {
+      this.queue.sort((a, b) => a.priority - b.priority || a.seq - b.seq);
+      this.dirty = false;
+    }
     while (this.inflight.size < this.cap && this.queue.length) {
       const p = this.queue.shift()!;
+      this.queued.delete(p.id);
       this.start(p);
     }
   }
 
   private start(p: Pending): void {
-    p.started = true;
     p.t0 = this.now();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
     p.controller = controller;

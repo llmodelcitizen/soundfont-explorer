@@ -59,6 +59,24 @@ describe('Fetcher', () => {
     expect(order).toEqual(['a', 'b', 'c']);
   });
 
+  it('serves equal priorities in the order they were (re)assigned; isPending tracks queue and flight', async () => {
+    const objects = new Map<string, ArrayBuffer>([['/x', new ArrayBuffer(8)], ['/a', new ArrayBuffer(8)], ['/b', new ArrayBuffer(8)], ['/c', new ArrayBuffer(8)]]);
+    const ff = new FakeFetch(objects);
+    ff.latencyMs = 20;
+    const f = new Fetcher(1, ff.fn, () => Date.now());
+    const order: string[] = [];
+    const ps = [f.get('/x', { priority: 0 }), f.get('/a', { priority: 1 }), f.get('/b', { priority: 2 }), f.get('/c', { priority: 1 })].map((p, i) => p.then(() => order.push('xabc'[i]!)));
+    expect(f.isPending('/x')).toBe(true); // in flight
+    expect(f.isPending('/b')).toBe(true); // queued
+    expect(f.isPending('/nope')).toBe(false);
+    f.reprioritize('/b', 1); // joins priority 1 behind a and c
+    await vi.advanceTimersByTimeAsync(200);
+    await Promise.all(ps);
+    expect(order).toEqual(['x', 'a', 'c', 'b']);
+    expect(f.isPending('/b')).toBe(false);
+    expect(f.queuedCount).toBe(0);
+  });
+
   it('aborts matching queued + in-flight requests except sticky ones', async () => {
     const objects = new Map<string, ArrayBuffer>([['/l1', new ArrayBuffer(8)], ['/l2', new ArrayBuffer(8)], ['/p', new ArrayBuffer(8)]]);
     const ff = new FakeFetch(objects);

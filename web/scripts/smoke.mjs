@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Playwright smoke (plan M6 / §14.3): gate → hold ↓ (30 presses at 33 ms) → audible === end point,
+ * Playwright smoke (plan M6 / §14.3): Space starts playback → hold ↓ (30 presses at 33 ms) → audible === end point,
  * warm switch p95 < 20 ms scheduled, no console errors, theme toggle, deep link.
  *
  *   node scripts/smoke.mjs [--url http://127.0.0.1:5173/] [--headed]
@@ -25,8 +25,7 @@ const results = { url, ok: true, steps: {} };
 try {
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForSelector('.rows .row', { timeout: 20000 });
-  await page.keyboard.press(' '); // no gate any more: the first ▶ (Space) starts playback
-  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  await page.keyboard.press(' '); // there is no start gate: the first ▶ (Space) starts playback
   await page.waitForFunction(() => document.querySelector('.row.audible') !== null, null, { timeout: 20000 });
   results.steps.boot = { audible: await page.$eval('.row.audible .label', (e) => e.textContent), rows: await page.$$eval('.rows .row', (r) => r.length) };
 

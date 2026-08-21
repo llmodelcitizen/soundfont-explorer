@@ -43,26 +43,20 @@ resource "aws_budgets_budget" "monthly" {
 
   depends_on = [aws_ce_cost_allocation_tag.project]
 
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 50
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.alert_email]
-  }
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 80
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.alert_email]
-  }
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 100
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_email_addresses = [var.alert_email]
+  # 50 % and 80 % of actual spend, 100 % of the forecast
+  dynamic "notification" {
+    for_each = [
+      { threshold = 50, type = "ACTUAL" },
+      { threshold = 80, type = "ACTUAL" },
+      { threshold = 100, type = "FORECASTED" },
+    ]
+    content {
+      comparison_operator        = "GREATER_THAN"
+      threshold                  = notification.value.threshold
+      threshold_type             = "PERCENTAGE"
+      notification_type          = notification.value.type
+      subscriber_email_addresses = [var.alert_email]
+    }
   }
 }
 

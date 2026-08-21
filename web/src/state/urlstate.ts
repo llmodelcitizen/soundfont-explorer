@@ -12,7 +12,6 @@ export interface UrlState {
   q?: string;
   theme?: string;
   loop?: boolean;
-  u?: string; // phase 2: /u/<ulid>/song.json descriptor
 }
 
 const encV = (s: string) => encodeURIComponent(s).replace(/%20/g, '+');
@@ -64,14 +63,12 @@ export function parseUrl(search: string = typeof location !== 'undefined' ? loca
   if (p.get('q')) st.q = p.get('q')!;
   if (p.get('theme')) st.theme = p.get('theme')!;
   if (p.get('loop')) st.loop = p.get('loop') === '1';
-  if (p.get('u')) st.u = p.get('u')!;
   return st;
 }
 
 export function buildSearch(st: UrlState): string {
   const p = new URLSearchParams();
-  if (st.u) p.set('u', st.u);
-  else if (st.song) p.set('song', st.song);
+  if (st.song) p.set('song', st.song);
   if (st.variant) p.set('v', st.variant);
   if (st.t !== undefined && st.t > 0) p.set('t', String(Math.round(st.t)));
   const f = st.filters ? encodeFilters(st.filters) : '';

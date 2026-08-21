@@ -45,10 +45,7 @@ export interface Scheduled {
   t1: number;
 }
 
-let chainSeq = 0;
-
 export class Chain {
-  readonly id = ++chainSeq;
   readonly voice: GainLike;
   scheduled: Scheduled[] = [];
   /** unwrapped position up to which audio is scheduled */
@@ -82,8 +79,8 @@ export class Chain {
   }
 
   /** Decoded buffer for the segment covering u, best tier first. */
-  pick(u: number, allowListen = true): { seg: Segment; key: SegKey; buf: BufferLike } | null {
-    const tiers: Tier[] = allowListen && this.preferTier === 'l' ? ['l', 's'] : ['s', 'l'];
+  pick(u: number): { seg: Segment; key: SegKey; buf: BufferLike } | null {
+    const tiers: Tier[] = this.preferTier === 'l' ? ['l', 's'] : ['s', 'l'];
     for (const tier of tiers) {
       const seg = segmentAt(this.set, tier, u);
       const key = { v: this.variant, tier, i: seg.i };
@@ -301,11 +298,6 @@ export class VoicePool {
       else keep.push(c);
     }
     this.chains = keep;
-  }
-
-  remove(c: Chain): void {
-    c.destroy();
-    this.chains = this.chains.filter((x) => x !== c);
   }
 
   clear(): void {

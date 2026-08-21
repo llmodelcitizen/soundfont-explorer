@@ -24,17 +24,12 @@ export class Prefetcher {
   velocity = 0;
   direction = 1;
   radius: number = NET.radiusMin;
-  lastWants = 0;
 
   constructor(
     private readonly store: SegmentStore,
     private readonly set: SetDoc,
-    private getOrder: () => string[],
+    private readonly getOrder: () => string[],
   ) {}
-
-  setOrder(getOrder: () => string[]): void {
-    this.getOrder = getOrder;
-  }
 
   /**
    * Decode radius: how many neighbours (each side) we can keep decoded without thrashing the
@@ -63,14 +58,19 @@ export class Prefetcher {
     }
     this.lastIndex = index;
     this.lastMoveAt = now;
-    this.radius = Math.min(NET.radiusMax, Math.max(NET.radiusMin, Math.ceil(this.velocity * NET.radiusSeconds)));
+    this.updateRadius();
   }
 
   decay(now: number): void {
     if (now - this.lastMoveAt > 1000) {
       this.velocity *= 0.5;
-      this.radius = Math.min(NET.radiusMax, Math.max(NET.radiusMin, Math.ceil(this.velocity * NET.radiusSeconds)));
+      this.updateRadius();
     }
+  }
+
+  /** velocity-scaled prefetch radius, clamped to [radiusMin, radiusMax] */
+  private updateRadius(): void {
+    this.radius = Math.min(NET.radiusMax, Math.max(NET.radiusMin, Math.ceil(this.velocity * NET.radiusSeconds)));
   }
 
   /**
@@ -116,7 +116,6 @@ export class Prefetcher {
     }
     // listen fetches for anything but the audible variant's current/next slice are wasted
     this.store.abortListen(keep);
-    this.lastWants = wants.length;
     this.store.want(wants);
     return wants;
   }

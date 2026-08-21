@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Build ``catalog/variants.json`` and ``catalog/review.md``.
 
 Inputs (all committed, all produced by the sibling tools):
@@ -40,6 +39,7 @@ import re
 import sys
 
 from . import adlbanks
+from ._util import count_values, decade_of, write_json
 
 SCHEMA = 1
 
@@ -155,8 +155,8 @@ def collection_for(sha256: str | None, coll: dict) -> dict | None:
 
 
 def sf2_variants(facets_doc: dict, scan_doc: dict | None, engines: dict | None) -> tuple[list[dict], list[dict]]:
-    collections = load_collections()
     """(variants, aliases): one variant per canonical font with publish decided by the facets file."""
+    collections = load_collections()
     info_by_file = {}
     if scan_doc:
         info_by_file = {f["file"]: f for f in scan_doc.get("fonts", [])}
@@ -275,13 +275,29 @@ def adl_facets(bank: dict) -> dict:
         "bank_map": bmap,
         "size": "<2MB",
         "lineage": "fm_bank",
-        "decade": f"{year // 10 * 10}s" if year else "unknown",
+        "decade": decade_of(year),
         "quality": [t for t in QUALITY_TAGS if tags.get(t)],
         "instrument": None,
     }
 
 
 ADL_OVERRIDABLE = ("publish", "label", "notes", "completeness", "decade")
+VARIANT_OVERRIDABLE = ("publish", "label", "notes")
+
+
+def _load_override_section(overrides_doc: dict | None, section: str, allowed: tuple[str, ...], key_fn) -> dict:
+    """``{key_fn(key): entry}`` for one top-level section of ``overrides.json``; ``_``-keys are skipped."""
+    out: dict = {}
+    for key, entry in ((overrides_doc or {}).get(section) or {}).items():
+        if str(key).startswith("_"):
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError(f"overrides.json {section}[{key!r}] must be an object")
+        unknown = set(entry) - set(allowed) - {"_comment"}
+        if unknown:
+            raise ValueError(f"overrides.json {section}[{key!r}] has unknown keys {sorted(unknown)}")
+        out[key_fn(key)] = {k: v for k, v in entry.items() if k != "_comment"}
+    return out
 
 
 def load_adl_overrides(overrides_doc: dict | None) -> dict[int, dict]:
@@ -289,20 +305,7 @@ def load_adl_overrides(overrides_doc: dict | None) -> dict[int, dict]:
 
     (``build.py`` ignores that key; it is read only here.)  Returns ``{index: entry}``.
     """
-    out: dict[int, dict] = {}
-    for key, entry in ((overrides_doc or {}).get("adl_banks") or {}).items():
-        if str(key).startswith("_"):
-            continue
-        if not isinstance(entry, dict):
-            raise ValueError(f"overrides.json adl_banks[{key!r}] must be an object")
-        unknown = set(entry) - set(ADL_OVERRIDABLE) - {"_comment"}
-        if unknown:
-            raise ValueError(f"overrides.json adl_banks[{key!r}] has unknown keys {sorted(unknown)}")
-        out[int(key)] = {k: v for k, v in entry.items() if k != "_comment"}
-    return out
-
-
-VARIANT_OVERRIDABLE = ("publish", "label", "notes")
+    return _load_override_section(overrides_doc, "adl_banks", ADL_OVERRIDABLE, int)
 
 
 def load_variant_overrides(overrides_doc: dict | None) -> dict[str, dict]:
@@ -312,17 +315,7 @@ def load_variant_overrides(overrides_doc: dict | None) -> dict[str, dict]:
     identical to its Nuked render, or one ROM-engine variant - unlike ``adl_banks`` which covers every
     pass of a bank.  (``build.py`` ignores that key; it is read only here.)  Returns ``{id: entry}``.
     """
-    out: dict[str, dict] = {}
-    for key, entry in ((overrides_doc or {}).get("variants") or {}).items():
-        if str(key).startswith("_"):
-            continue
-        if not isinstance(entry, dict):
-            raise ValueError(f"overrides.json variants[{key!r}] must be an object")
-        unknown = set(entry) - set(VARIANT_OVERRIDABLE) - {"_comment"}
-        if unknown:
-            raise ValueError(f"overrides.json variants[{key!r}] has unknown keys {sorted(unknown)}")
-        out[str(key)] = {k: v for k, v in entry.items() if k != "_comment"}
-    return out
+    return _load_override_section(overrides_doc, "variants", VARIANT_OVERRIDABLE, str)
 
 
 def apply_variant_overrides(variants: list[dict], overrides: dict[str, dict]) -> None:
@@ -476,10 +469,6 @@ MUNT_LEGAL = ("Munt renders with owner-supplied Roland control + PCM ROM images 
               "published by default (decision D2), flip publish in overrides.json to withdraw")
 
 
-def _decade(year) -> str:
-    return f"{year // 10 * 10}s" if year else "unknown"
-
-
 def _hw_source(url: str | None, license_flag: str, **extra) -> dict:
     return {"file": None, "sha256": None, "bytes": None, "sf2": None, "url": url, "license_flag": license_flag,
             "decade_basis": "hardware era of the emulated chip/module", **extra}
@@ -558,7 +547,7 @@ def opn_variants(opn_doc: dict | None, engines: dict | None) -> list[dict]:
                     "bank_map": b.get("bank_map") or "gm",
                     "size": "<2MB",
                     "lineage": "fm_bank",
-                    "decade": _decade(year),
+                    "decade": decade_of(year),
                     "quality": list(b.get("quality") or []),
                     "instrument": None,
                 },
@@ -597,7 +586,7 @@ def edm_variants(engines: dict | None) -> list[dict]:
             "id": vid, "slug": vid, "label": label, "engine": "edmidi", "core": core, "chip_family": chip_family, "type": "fm",
             "module": module,
             "facets": {"engine": "edmidi", "chip": chip_facet, "type": "fm", "completeness": comp, "bank_map": bmap,
-                       "size": "<2MB", "lineage": "fm_bank", "decade": _decade(year), "quality": [], "instrument": None},
+                       "size": "<2MB", "lineage": "fm_bank", "decade": decade_of(year), "quality": [], "instrument": None},
             "year": year, "year_confidence": "medium", "publish": True, "requires_rom": False, "bank": None,
             "source": _hw_source(url, "free", license="zlib-style (libEDMIDI LICENSE.txt)", note=note),
             "render": {"cmd": edm_cmd(module, engines), "core": core, "module": module},
@@ -660,7 +649,7 @@ def munt_variants(engines: dict | None) -> list[dict]:
             "id": vid, "slug": f"munt-{vid}", "label": f"{label} (Munt)", "engine": "munt", "core": "mt32emu", "chip_family": "la", "type": "la",
             "romset": romset, "model": model, "rom": {"machine": model, "dir": romset, "engine": "munt"},
             "facets": {"engine": "munt", "chip": "la", "type": "la", "completeness": "full_gm", "bank_map": "non_gm",
-                       "size": "<2MB", "lineage": "roland", "decade": _decade(year), "quality": ["mt32"], "instrument": None},
+                       "size": "<2MB", "lineage": "roland", "decade": decade_of(year), "quality": ["mt32"], "instrument": None},
             "year": year, "year_confidence": "medium", "publish": True, "requires_rom": True, "bank": None,
             "source": _hw_source(url, "roland_copyright", license="engine: libmt32emu LGPL-2.1+, mt32emu-smf2wav GPL-3+; ROMs: Roland",
                                  note=note, romset_dir=f"roms/{romset}/"),
@@ -708,8 +697,8 @@ def build(facets_doc: dict, scan_doc: dict | None, banks_doc: dict, passes_doc: 
                 facet_counts[k][str(x)] = facet_counts[k].get(str(x), 0) + 1
     facet_counts = {k: dict(sorted(d.items())) for k, d in sorted(facet_counts.items())}
 
-    by_engine = _count(v["engine"] for v in variants)
-    by_chip = _count(v["chip_family"] for v in variants)
+    by_engine = count_values(v["engine"] for v in variants)
+    by_chip = count_values(v["chip_family"] for v in variants)
     counts = {
         "total": len(variants),
         "published": sum(1 for v in variants if v["publish"]),
@@ -769,13 +758,6 @@ def build(facets_doc: dict, scan_doc: dict | None, banks_doc: dict, passes_doc: 
     }
 
 
-def _count(values) -> dict:
-    c: dict = {}
-    for v in values:
-        c[v] = c.get(v, 0) + 1
-    return dict(sorted(c.items()))
-
-
 # ------------------------------------------------------------------ review.md
 
 
@@ -833,7 +815,6 @@ def review_markdown(doc: dict, facets_doc: dict, banks_doc: dict, opn_doc: dict 
              "ROMs (SC-55/SC-88/JV/MT-32 families). Decision D2 publishes them by default; set `\"publish\": false` in "
              "`overrides.json` (key by sha256) to withdraw one. `variants.json` carries the same text in `legal_note`.")
     L.append("")
-    scan_info = {}
     L.append(_table(["file", "variant", "label", "lineage", "match", "publish"],
                     [[f["file"], f["variant_id"], f["label"], f["facets"]["lineage"], f["sources"]["license_flag"], "yes" if f["publish"] else "NO"]
                      for f in roland]))
@@ -1001,14 +982,6 @@ def _load(path: str, required: bool = True):
         return None
     with open(path, encoding="utf-8") as fh:
         return json.load(fh)
-
-
-def write_json(doc: dict, out: str) -> None:
-    tmp = out + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=1, ensure_ascii=False)
-        fh.write("\n")
-    os.replace(tmp, out)
 
 
 def main(argv=None) -> int:

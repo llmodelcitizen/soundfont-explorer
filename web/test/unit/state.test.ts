@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseCatalog } from '../../src/contracts/catalog';
+import { engineLabel, parseCatalog, tagNames } from '../../src/contracts/catalog';
 import { parseSet } from '../../src/contracts/set';
-import { ContractError, parseSongs } from '../../src/contracts/songs';
+import { ContractError, parseSongs, songTitle } from '../../src/contracts/songs';
 import { FilterIndex } from '../../src/state/filterIndex';
 import { buildSearch, decodeFilters, encodeFilters, parseUrl } from '../../src/state/urlstate';
 
@@ -21,15 +21,24 @@ describe('contracts', () => {
   it('parses songs.json and rejects bad shapes', () => {
     const d = parseSongs({ schema: 1, catalog: '/c/x.json', defaults: { song: 's', variant: 'v' }, songs: [{ id: 's', title: 'T', license: { id: 'CC0' }, duration_s: 10, set: '/s/s/h.json' }] });
     expect(d.songs[0]!.license.id).toBe('CC0');
+    expect(songTitle(d.songs[0]!)).toBe('T');
+    expect(songTitle({ title: 'T', composer: 'C' })).toBe('T — C');
     expect(parseSongs({ schema: 1, catalog: '/c/x.json', songs: [] }).songs).toEqual([]); // empty boots gracefully
     expect(() => parseSongs({ schema: 2, catalog: '', songs: [] })).toThrow(ContractError);
     expect(() => parseSongs({ schema: 1, catalog: '/c', songs: [{ id: 's' }] })).toThrow(ContractError);
   });
 
-  it('parses the catalog, normalising alias objects to strings', () => {
+  it('parses the catalog, normalising alias objects to strings and bank tags to names', () => {
     const c = parseCatalog(catalogDoc);
     expect(c.byId.get('sf2-aaaaaaaaaa')!.aliases).toEqual(['Twin.sf2 Twin']);
+    expect(c.byId.get('sf2-aaaaaaaaaa')!.source!.sf2!.INAM).toBe('GS sound set (16 bit)');
+    expect(c.byId.get('adl-b0')!.bank).toEqual({ kind: null, number: null, family: 'AIL', name: 'Fat Man', tags: ['non_gm'] });
+    expect(c.byId.get('adl-b1')!.bank).toBeNull();
     expect(c.variants.length).toBe(4);
+    expect(tagNames(['a', 'b'])).toEqual(['a', 'b']);
+    expect(tagNames(null)).toEqual([]);
+    expect(engineLabel(c.engines[0]!)).toBe('libADLMIDI 1.6.2');
+    expect(engineLabel({ ...c.engines[0]!, commit: 'abc' })).toBe('libADLMIDI 1.6.2 (abc)');
   });
 
   it('validates set order/group/slot consistency', () => {

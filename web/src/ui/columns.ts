@@ -5,40 +5,50 @@ import { fmtBytes } from './dom';
 
 export type ColKey = 'idx' | 'chip' | 'label' | 'engine' | 'id' | 'bank' | 'size' | 'decade' | 'lineage' | 'coverage' | 'lufs' | 'gain' | 'fav' | 'dot';
 
+/** Which columns are on by default lives in state/prefs.ts (DEFAULT_PREFS.columns / mobileColumns). */
 export interface ColumnDef {
   key: ColKey;
   label: string;
-  title: string;
+  /** header tooltip; a function may read the set document (e.g. the loudness target) */
+  title: string | ((set?: SetDoc) => string);
   width: string;
+  /** extra classes on the body cell, after `cell col-<key>` and the alignment */
+  cls: string;
   align?: 'right' | 'center';
   /** cannot be hidden */
   always?: boolean;
-  /** shown in the compact (mobile) layout */
-  compact?: boolean;
-  defaultOn: boolean;
+  /** fixed cell text (the row's classes say whether it is lit) instead of cellText() */
+  glyph?: string;
   /** too narrow for a sort arrow: indicate the sort by colour only */
   noArrow?: boolean;
 }
 
 export const COLUMNS: ColumnDef[] = [
-  { key: 'idx', label: '#', title: 'position in the current list', width: '3.2em', align: 'center', always: true, compact: true, defaultOn: true },
-  { key: 'chip', label: 'chip', title: 'sound chip / format', width: '4.6em', compact: true, defaultOn: true },
-  { key: 'label', label: 'name', title: 'name', width: 'minmax(14em, 1fr)', always: true, compact: true, defaultOn: true },
-  { key: 'engine', label: 'engine', title: 'render engine', width: '7.5em', defaultOn: true },
-  { key: 'id', label: 'id', title: 'stable variant id', width: '9em', defaultOn: false },
-  { key: 'bank', label: 'bank', title: 'FM bank family', width: '5.2em', defaultOn: false },
-  { key: 'size', label: 'size', title: 'SoundFont size', width: '5.6em', align: 'right', defaultOn: false },
-  { key: 'decade', label: 'decade', title: 'decade of origin', width: '4.4em', defaultOn: true },
-  { key: 'lineage', label: 'lineage', title: 'lineage facet', width: '6.4em', defaultOn: false },
-  { key: 'coverage', label: 'coverage', title: 'GM coverage', width: '6.4em', defaultOn: false },
-  { key: 'lufs', label: 'LUFS', title: 'measured integrated loudness before gain', width: '4.8em', align: 'right', defaultOn: false },
-  { key: 'gain', label: 'gain', title: 'gain applied to reach −16 LUFS', width: '4.8em', align: 'right', defaultOn: false },
-  { key: 'fav', label: '♥', title: 'favorite', width: '1.4em', align: 'center', compact: true, defaultOn: true, noArrow: true },
-  { key: 'dot', label: '●', title: 'listened', width: '1.4em', align: 'center', compact: true, defaultOn: true, noArrow: true },
+  { key: 'idx', label: '#', title: 'position in the current list', width: '3.2em', cls: 'idx', align: 'center', always: true },
+  { key: 'chip', label: 'chip', title: 'sound chip / format', width: '4.6em', cls: 'badge' },
+  { key: 'label', label: 'name', title: 'name', width: 'minmax(14em, 1fr)', cls: 'label', always: true },
+  { key: 'engine', label: 'engine', title: 'render engine', width: '7.5em', cls: 'meta' },
+  { key: 'id', label: 'id', title: 'stable variant id', width: '9em', cls: 'meta' },
+  { key: 'bank', label: 'bank', title: 'FM bank family', width: '5.2em', cls: 'meta' },
+  { key: 'size', label: 'size', title: 'SoundFont size', width: '5.6em', cls: 'meta', align: 'right' },
+  { key: 'decade', label: 'decade', title: 'decade of origin', width: '4.4em', cls: 'meta' },
+  { key: 'lineage', label: 'lineage', title: 'lineage facet', width: '6.4em', cls: 'meta' },
+  { key: 'coverage', label: 'coverage', title: 'GM coverage', width: '6.4em', cls: 'meta' },
+  { key: 'lufs', label: 'LUFS', title: 'measured integrated loudness before gain', width: '4.8em', cls: 'num meta', align: 'right' },
+  { key: 'gain', label: 'gain', width: '4.8em', cls: 'num meta', align: 'right',
+    title: (set) => set ? `gain applied to reach ${String(set.lufs_target).replace('-', '−')} LUFS` : 'gain applied to reach the target loudness' },
+  { key: 'fav', label: '♥', title: 'favorite', width: '1.4em', cls: 'fav', align: 'center', glyph: '♥', noArrow: true },
+  { key: 'dot', label: '●', title: 'listened', width: '1.4em', cls: 'dot', align: 'center', glyph: '', noArrow: true },
 ];
 
-export const DEFAULT_COLUMNS: ColKey[] = COLUMNS.filter((c) => c.defaultOn).map((c) => c.key);
-export const COMPACT_COLUMNS: ColKey[] = COLUMNS.filter((c) => c.compact).map((c) => c.key);
+export const columnDef = (key: ColKey): ColumnDef => COLUMNS.find((c) => c.key === key)!;
+export const columnTitle = (c: ColumnDef, set?: SetDoc): string => (typeof c.title === 'function' ? c.title(set) : c.title);
+
+/** the columns shown for a preference list: always-on ones are forced; model order */
+export function visibleColumns(keys: readonly string[]): ColumnDef[] {
+  const want = new Set(keys);
+  return COLUMNS.filter((c) => c.always || want.has(c.key));
+}
 
 const CHIP_SUFFIX = /\s*[[(](OPL2|OPL3|ESFM|CQM|OPN2|OPNA|OPLL|SCC|SF2)[\])]\s*$/i;
 

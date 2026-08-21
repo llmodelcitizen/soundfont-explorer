@@ -4,7 +4,7 @@
  * selection removed (standard faceted-search behaviour), so options never show zero just
  * because the user picked a sibling.
  */
-import type { CatalogDoc, Variant } from '../contracts/catalog';
+import { tagNames, type CatalogDoc, type Variant } from '../contracts/catalog';
 
 export const FACET_KEYS = ['engine', 'chip', 'type', 'completeness', 'bank_map', 'size', 'lineage', 'decade', 'quality'] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
@@ -22,6 +22,7 @@ export const FACET_LABELS: Record<FacetKey, string> = {
 };
 
 export type Selection = Partial<Record<FacetKey, Set<string>>>;
+export type FacetCounts = { value: string; count: number }[];
 
 function facetValues(v: Variant, key: FacetKey): string[] {
   const f = v.facets ?? {};
@@ -30,12 +31,8 @@ function facetValues(v: Variant, key: FacetKey): string[] {
   if (key === 'chip') raw = v.chip || raw;
   if (key === 'type') raw = v.type || raw;
   if (key === 'quality') {
-    // quality flags come as an object/array of tags or booleans; normalise to a list of tag names
-    const out: string[] = [];
-    const q = raw as Record<string, unknown> | string[] | undefined;
-    if (Array.isArray(q)) out.push(...q.map(String));
-    else if (q && typeof q === 'object') for (const [k, on] of Object.entries(q)) if (on) out.push(k);
-    return out.length ? out : ['ok'];
+    const tags = tagNames(raw);
+    return tags.length ? tags : ['ok'];
   }
   if (Array.isArray(raw)) return raw.map(String);
   if (raw === null || raw === undefined || raw === '') return ['unknown'];
@@ -53,11 +50,8 @@ export class FilterIndex {
     this.searchText = order.map((id) => {
       const v = catalog.byId.get(id);
       if (!v) return id.toLowerCase();
-      const info = (v.source?.info ?? (v.source as Record<string, unknown> | null)?.['sf2'] ?? {}) as Record<string, string>;
-      const bank = v.bank ?? {};
-      const tags = bank['tags'];
-      const tagNames = Array.isArray(tags) ? tags.map(String) : tags && typeof tags === 'object' ? Object.entries(tags as Record<string, unknown>).filter(([, on]) => on).map(([k]) => k) : [];
-      return [v.id, v.label, v.slug, v.source?.file, info['INAM'], info['IENG'], info['ICMT'], bank['family'], bank['name'], ...tagNames, ...v.aliases]
+      const info = v.source?.sf2;
+      return [v.id, v.label, v.slug, v.source?.file, info?.INAM, info?.IENG, info?.ICMT, v.bank?.family, v.bank?.name, ...(v.bank?.tags ?? []), ...v.aliases]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -79,14 +73,22 @@ export class FilterIndex {
     });
   }
 
-  values(key: FacetKey): string[] {
-    return [...this.bits.get(key)!.keys()].sort();
+  /** rows matching every whitespace-separated term of the text query; null when there is no query */
+  private textMask(query: string): Uint8Array | null {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    const terms = q.split(/\s+/);
+    return Uint8Array.from(this.searchText, (t) => (terms.every((term) => t.includes(term)) ? 1 : 0));
   }
 
   /** mask of rows matching `sel` (optionally ignoring one facet) and the text query */
   mask(sel: Selection, query = '', ignore?: FacetKey): Uint8Array {
+    return this.selMask(sel, ignore, this.textMask(query));
+  }
+
+  private selMask(sel: Selection, ignore: FacetKey | undefined, text: Uint8Array | null): Uint8Array {
     const n = this.order.length;
-    const out = new Uint8Array(n).fill(1);
+    const out = text ? text.slice() : new Uint8Array(n).fill(1);
     for (const key of FACET_KEYS) {
       if (key === ignore) continue;
       const chosen = sel[key];
@@ -100,15 +102,6 @@ export class FilterIndex {
       }
       for (let i = 0; i < n; i++) if (!any[i]) out[i] = 0;
     }
-    const q = query.trim().toLowerCase();
-    if (q) {
-      const terms = q.split(/\s+/);
-      for (let i = 0; i < n; i++) {
-        if (!out[i]) continue;
-        const t = this.searchText[i]!;
-        if (!terms.every((term) => t.includes(term))) out[i] = 0;
-      }
-    }
     return out;
   }
 
@@ -120,10 +113,20 @@ export class FilterIndex {
   }
 
   /** counts per value for one facet given the other facets' selections */
-  counts(key: FacetKey, sel: Selection, query = ''): { value: string; count: number }[] {
-    const base = this.mask(sel, query, key);
+  counts(key: FacetKey, sel: Selection, query = ''): FacetCounts {
+    return this.countsIn(key, sel, this.textMask(query));
+  }
+
+  /** counts for every facet; the text query is scanned once, not once per facet */
+  allCounts(sel: Selection, query = ''): Record<FacetKey, FacetCounts> {
+    const text = this.textMask(query);
+    return Object.fromEntries(FACET_KEYS.map((key) => [key, this.countsIn(key, sel, text)])) as Record<FacetKey, FacetCounts>;
+  }
+
+  private countsIn(key: FacetKey, sel: Selection, text: Uint8Array | null): FacetCounts {
+    const base = this.selMask(sel, key, text);
     const m = this.bits.get(key)!;
-    const out: { value: string; count: number }[] = [];
+    const out: FacetCounts = [];
     for (const [val, arr] of m) {
       let c = 0;
       for (let i = 0; i < arr.length; i++) if (arr[i] && base[i]) c++;

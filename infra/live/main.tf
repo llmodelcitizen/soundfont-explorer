@@ -11,7 +11,6 @@ module "site" {
   bucket_name         = "soundfont-explorer-site-${data.aws_caller_identity.current.account_id}"
   domain              = var.domain
   acm_certificate_arn = module.dns_cert.certificate_arn
-  depends_on          = [module.dns_cert]
 }
 
 # A/AAAA alias records live here (not in dns-cert) so the module graph stays acyclic:

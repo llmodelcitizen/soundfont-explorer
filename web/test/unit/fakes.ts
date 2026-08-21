@@ -3,7 +3,7 @@
  * listen objects with controllable latency, and a decoder that turns descriptor bytes into
  * fake buffers. Time is advanced manually (vi.useFakeTimers for timers, ctx.advance for audio).
  */
-import type { SetDoc } from '../../src/contracts/set';
+import { listenUrl, packUrl, type SetDoc } from '../../src/contracts/set';
 import type { Decoder } from '../../src/audio/decode';
 import { DecodeQueue } from '../../src/audio/decode';
 import type { FetchFn } from '../../src/audio/net/fetcher';
@@ -221,12 +221,12 @@ export function makeSet(variants: string[], D = 8, packSize = 24): { set: SetDoc
   for (const g of groups) {
     for (let i = 0; i < slices; i++) {
       const members = g.variants.map((v) => descriptorBytes({ v, tier: 's', i }));
-      objects.set(`/a/test/g/${g.hash}/${String(i).padStart(4, '0')}.pk`, packBytes(members));
+      objects.set(packUrl(set, g.hash, i), packBytes(members));
     }
   }
   for (const v of variants) {
     for (let k = 0; k < listenSlices; k++) {
-      objects.set(`/a/test/l/rh-${v}/${String(k).padStart(3, '0')}.opus`, descriptorBytes({ v, tier: 'l', i: k }, 256));
+      objects.set(listenUrl(set, vmap[v]!.render_hash, k), descriptorBytes({ v, tier: 'l', i: k }, 256));
     }
   }
   return { set, objects };

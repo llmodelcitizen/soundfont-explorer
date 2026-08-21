@@ -13,13 +13,24 @@ export function headerBytesFor(count: number): number {
   return 8 + 4 * count;
 }
 
+/** Member count from the fixed 8-byte prefix (no validation: see parseHeader). */
+export function memberCount(buf: ArrayBuffer, byteOffset = 0): number {
+  return new DataView(buf, byteOffset).getUint8(5);
+}
+
+/** Inclusive byte range of member `slot` within the pack (for a Range request). */
+export function memberRange(h: PackHeader, slot: number): { start: number; end: number } {
+  const start = h.offsets[slot]!;
+  return { start, end: start + h.lengths[slot]! - 1 };
+}
+
 export function parseHeader(buf: ArrayBuffer, byteOffset = 0): PackHeader {
   const dv = new DataView(buf, byteOffset);
   if (dv.byteLength < 8) throw new Error('SFPK: short header');
   if (dv.getUint32(0, true) !== SFPK_MAGIC) throw new Error('SFPK: bad magic');
   const version = dv.getUint8(4);
   if (version !== 1) throw new Error(`SFPK: unsupported version ${version}`);
-  const count = dv.getUint8(5);
+  const count = memberCount(buf, byteOffset);
   const headerBytes = headerBytesFor(count);
   if (dv.byteLength < headerBytes) throw new Error('SFPK: truncated length table');
   const lengths: number[] = [];
@@ -41,6 +52,3 @@ export function splitPack(buf: ArrayBuffer): ArrayBuffer[] {
   if (buf.byteLength !== total) throw new Error(`SFPK: size mismatch ${buf.byteLength} != ${total}`);
   return h.lengths.map((len, j) => buf.slice(h.offsets[j]!, h.offsets[j]! + len));
 }
-
-/** Largest header we may need to request blindly: 255 members. Packs have ≤ 24, so 8+4·24=104 bytes. */
-export const MAX_HEADER_PROBE = headerBytesFor(24);

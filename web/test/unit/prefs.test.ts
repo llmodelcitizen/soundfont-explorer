@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFS, ListenedLedger, loadPrefs } from '../../src/state/prefs';
+import { DEFAULT_PREFS, Favorites, ListenedLedger, loadPrefs } from '../../src/state/prefs';
 
 describe('prefs + listened ledger', () => {
   it('defaults without localStorage', () => {
@@ -27,15 +27,13 @@ describe('prefs + listened ledger', () => {
 });
 
 describe('favorites', () => {
-  it('toggles, persists in memory without localStorage, notifies', async () => {
-    const { Favorites } = await import('../../src/state/prefs');
+  it('toggles and persists in memory without localStorage', () => {
     const f = new Favorites();
-    const seen: number[] = [];
-    f.onChange((ids) => seen.push(ids.size));
     expect(f.toggle('a')).toBe(true);
     expect(f.toggle('b')).toBe(true);
+    expect(f.has('b')).toBe(true);
     expect(f.toggle('a')).toBe(false);
+    expect(f.has('a')).toBe(false);
     expect([...f.all()]).toEqual(['b']);
-    expect(seen).toEqual([1, 2, 1]);
   });
 });

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Parse ``adlmidiplay --list-banks`` into ``catalog/adl_banks.json``.
 
 The 79 banks embedded in libADLMIDI are listed by the player as lines like::
@@ -30,17 +29,20 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
-import json
 import os
 import re
 import subprocess
 import sys
 
+from ._util import load_engines, write_json
+
 SCHEMA = 1
 EXPECTED_COUNT = 79  # libADLMIDI 1.6.2 (c462209); a different count means the image changed
 DEFAULT_IMAGE = "sfr-render"
 LEGACY_LISTING = os.path.join("legacy", "mvp", "data", "banks.txt")
-LIBADLMIDI_COMMIT = "c46220909879dc552d7632467be553f4bf2a9e21"
+# render/engines.json is the single source for the libADLMIDI version/commit built into the image.
+LIBADLMIDI = {k: load_engines()["engines"]["adlmidi"][k] for k in ("version", "commit")}
+LIBADLMIDI_COMMIT = LIBADLMIDI["commit"]
 LIST_OF_BANKS_URL = f"https://github.com/Wohlstand/libADLMIDI/blob/{LIBADLMIDI_COMMIT}/fm_banks/list-of-banks.txt"
 
 FAMILIES = ("AIL", "HMI", "DMX", "WOPL", "TMB", "SB", "OP3", "Bisqwit", "EA")
@@ -301,7 +303,7 @@ def build_doc(banks: list[dict], source: dict, now: _dt.datetime | None = None) 
         "schema": SCHEMA,
         "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": source,
-        "libadlmidi": {"version": "1.6.2", "commit": LIBADLMIDI_COMMIT},
+        "libadlmidi": dict(LIBADLMIDI),
         "count": len(banks),
         "families": families,
         "unknown_families": unknown_fam,
@@ -318,14 +320,6 @@ def run_list_banks(image: str = DEFAULT_IMAGE, timeout: int = 120) -> str:
     if proc.returncode != 0:
         raise RuntimeError(f"{' '.join(cmd)} failed ({proc.returncode}): {proc.stderr.strip()[:500]}")
     return proc.stdout
-
-
-def write_json(doc: dict, out: str) -> None:
-    tmp = out + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=1, ensure_ascii=False)
-        fh.write("\n")
-    os.replace(tmp, out)
 
 
 def main(argv=None) -> int:

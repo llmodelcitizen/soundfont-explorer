@@ -1,4 +1,4 @@
-/** Autoplay gate: the AudioContext is created in this gesture. Mini-gate when the context gets suspended. */
+/** Modal 'audio suspended — tap to resume' dialog; `inGesture` runs synchronously in the tap so it may resume the AudioContext. */
 import { h } from './dom';
 
 export function showGate(root: HTMLElement, title: string, text: string, button: string, inGesture?: () => void): Promise<void> {
@@ -9,7 +9,7 @@ export function showGate(root: HTMLElement, title: string, text: string, button:
     const overlay = h('div', { class: 'gate' }, box);
     const go = () => {
       try {
-        inGesture?.(); // synchronous: AudioContext creation/resume must happen in the gesture's call stack
+        inGesture?.(); // synchronous: an AudioContext resume must happen in the gesture's call stack
       } catch {
         /* reported by the caller through its own state */
       }

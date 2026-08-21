@@ -57,8 +57,26 @@ export class InputPolicy {
     }
   }
 
+  private clearSettle(): void {
+    if (this.settleTimer !== null) {
+      this.host.clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
+  }
+
+  /** cursor moved to `index` at time `at` (bookkeeping shared by every move path) */
+  private moved(index: number, at: number): void {
+    this.cursor = index;
+    this.stats.moves++;
+    this.lastMoveAt = at;
+  }
+
+  private moveBy(delta: number, at: number): void {
+    this.moved(this.host.move(delta), at);
+  }
+
   private armSettle(at: number): void {
-    if (this.settleTimer !== null) this.host.clearTimeout(this.settleTimer);
+    this.clearSettle();
     this.settleTimer = this.host.setTimeout(() => {
       this.settleTimer = null;
       if (this.lastCommitted !== this.cursor) this.doCommit(at + this.cfg.settleMs);
@@ -71,9 +89,7 @@ export class InputPolicy {
       // fresh press: leading edge — move and commit immediately
       this.runStart = at;
       this.mode = 'rate-limited-cursor';
-      this.cursor = this.host.move(delta);
-      this.stats.moves++;
-      this.lastMoveAt = at;
+      this.moveBy(delta, at);
       this.doCommit(at);
       this.armSettle(at);
       return;
@@ -85,18 +101,14 @@ export class InputPolicy {
         this.stats.dropped++;
         return;
       }
-      this.cursor = this.host.move(delta);
-      this.stats.moves++;
-      this.lastMoveAt = at;
+      this.moveBy(delta, at);
       this.doCommit(at);
       this.armSettle(at);
       return;
     }
     // sample-path
     this.mode = 'sample-path';
-    this.cursor = this.host.move(delta);
-    this.stats.moves++;
-    this.lastMoveAt = at;
+    this.moveBy(delta, at);
     if (at - this.lastCommitAt >= this.interval) {
       this.doCommit(at);
     } else if (this.throttleTimer === null) {
@@ -112,29 +124,19 @@ export class InputPolicy {
   /** Bypass the limiter: PgUp/PgDn/Home/End/click/search. */
   jump(index: number, at: number): void {
     this.reset();
-    this.cursor = this.host.moveTo(index);
-    this.stats.moves++;
-    this.lastMoveAt = at;
+    this.moved(this.host.moveTo(index), at);
     this.doCommit(at);
   }
 
   jumpBy(delta: number, at: number): void {
     this.reset();
-    this.cursor = this.host.move(delta);
-    this.stats.moves++;
-    this.lastMoveAt = at;
+    this.moveBy(delta, at);
     this.doCommit(at);
   }
 
   /** Key released: end the run and make sure the end point plays. */
   keyup(at: number): void {
-    this.runStart = null;
-    this.mode = 'idle';
-    this.clearThrottle();
-    if (this.settleTimer !== null) {
-      this.host.clearTimeout(this.settleTimer);
-      this.settleTimer = null;
-    }
+    this.reset();
     if (this.lastCommitted !== this.cursor) this.doCommit(at);
   }
 
@@ -143,10 +145,7 @@ export class InputPolicy {
     this.runStart = null;
     this.mode = 'idle';
     this.clearThrottle();
-    if (this.settleTimer !== null) {
-      this.host.clearTimeout(this.settleTimer);
-      this.settleTimer = null;
-    }
+    this.clearSettle();
   }
 
   /** External cursor change (e.g. list rebuilt after filtering) without a commit. */

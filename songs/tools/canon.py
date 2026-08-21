@@ -17,7 +17,7 @@ songs/private/, see below):
      track 0, so every engine keeps rendering through the release tail;
   6. write songs/<id>.mid (deterministic bytes: sorted events, no running
      status) and record sha256, ``midi_end_s`` and
-     ``duration_s = D = ceil((midi_end + tail) / 2) * 2`` in songs.json.
+     ``duration_s = D = ceil((midi_end + tail) / slice_s) * slice_s`` in songs.json (slice_s from render/engines.json).
 
 Private songs: every ``*.mid`` / ``*.MID`` directly inside songs/private/ is
 processed the same way with ``license.id = "owner-supplied"``, id
@@ -46,6 +46,18 @@ import inject_programs as IP         # noqa: E402
 
 END_MARKER = b"soundfont-explorer:end"
 SCHEMA = 1
+ENGINES_JSON = os.path.join(os.path.dirname(SONGS_DIR), "render", "engines.json")
+
+
+def _render_constants() -> Tuple[float, float]:
+    """(slice_s, tail_s) as declared in render/engines.json ``render`` (corpus.json may override tail_s)."""
+    with open(ENGINES_JSON, encoding="utf-8") as fh:
+        r = json.load(fh)["render"]
+    return r["slice_s"], r["tail_s"]
+
+
+SLICE_S, DEFAULT_TAIL_S = _render_constants()
+assert float(SLICE_S).is_integer() and SLICE_S > 0, f"render.slice_s must be a whole number of seconds, got {SLICE_S!r}"
 
 
 # ----------------------------------------------------------------------
@@ -107,8 +119,9 @@ def append_end_marker(smf: S.Smf, midi_end_s: float, tail_s: float) -> Tuple[int
     return tick, tm.seconds(tick)
 
 
-def duration_D(midi_end_s: float, tail_s: float) -> int:
-    return int(math.ceil((midi_end_s + tail_s) / 2.0 - 1e-9) * 2)
+def duration_D(midi_end_s: float, tail_s: float, slice_s: float = SLICE_S) -> int:
+    """Rendered length: midi_end + tail rounded up to a whole number of slices."""
+    return int(math.ceil((midi_end_s + tail_s) / slice_s - 1e-9) * slice_s)
 
 
 def sha256_bytes(blob: bytes) -> str:
@@ -214,7 +227,7 @@ def _signature(smf: S.Smf) -> List[int]:
 
 
 def build_entry(corpus: dict, spec: dict, out_dir: str, private: bool = False) -> Tuple[dict, bytes]:
-    tail_s = float(corpus.get("tail_s", 3))
+    tail_s = float(corpus.get("tail_s", DEFAULT_TAIL_S))
     smf, src_blob = load_source(spec)
     smf, info = canonicalize(smf, spec, tail_s)
     blob = S.serialize(smf)
@@ -280,9 +293,9 @@ def stable_header(corpus: dict) -> dict:
     return {
         "schema": SCHEMA,
         "generated_by": "songs/tools/canon.py",
-        "tail_s": corpus.get("tail_s", 3),
+        "tail_s": corpus.get("tail_s", DEFAULT_TAIL_S),
         "canonicalization": ("events re-serialised without running status; text meta 'soundfont-explorer:end' "
-                             "appended on track 0 at midi_end + tail_s; duration_s = ceil((midi_end + tail_s)/2)*2"),
+                             f"appended on track 0 at midi_end + tail_s; duration_s = ceil((midi_end + tail_s)/{SLICE_S:g})*{SLICE_S:g}"),
     }
 
 

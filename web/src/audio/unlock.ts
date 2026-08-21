@@ -1,7 +1,8 @@
 /**
- * iOS/Safari audio unlocking. Everything here must run synchronously inside a user gesture.
+ * iOS/Safari audio unlocking. The AudioContext is created at boot (suspended, outside any
+ * gesture); the unlock steps run synchronously inside the first user gesture:
  *
- *  - the AudioContext is created (and resumed) in the gesture's own call stack;
+ *  - the context is resumed in the gesture's own call stack;
  *  - `navigator.audioSession.type = 'playback'` (WebKit Audio Session API, iOS 17+) routes Web
  *    Audio through the media "playback" category so the ringer/silent switch does not mute it;
  *  - a one-sample silent buffer is started: the classic unlock for older WebKit builds.
@@ -80,7 +81,7 @@ export function startSilentMediaElement(): string {
 
 /** Create the context. Inside a gesture this also unlocks it; outside one it comes up suspended
  *  and installResumeOnGesture() unlocks it on the first pointer/touch/key event. */
-export function createContextInGesture(): AudioContext {
+export function createContext(): AudioContext {
   requestPlaybackSession();
   const Ctor = (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)!;
   const ctx = new Ctor({ latencyHint: 'interactive' });

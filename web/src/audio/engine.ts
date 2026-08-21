@@ -78,7 +78,8 @@ export class Engine {
   private tickN = 0;
   private listeners: { [K in keyof EngineEvents]: Set<Listener<K>> } = { status: new Set(), audible: new Set(), tier: new Set() };
   private lastTier: Tier | null = null;
-  private hysteresis: { keys: SegKey[]; untilMs: number }[] = [];
+  /** pins held for the previous variant's buffers (quick A/B); at most one chain's worth */
+  private hysteresis: { keys: SegKey[]; untilMs: number } | null = null;
   private unsubDecoded: () => void;
   private volume = 1;
   private muted = false;
@@ -322,21 +323,21 @@ export class Engine {
     this.dropHysteresis();
     const keys = old.scheduled.map((s) => s.key);
     for (const k of keys) this.store.pin(k);
-    this.hysteresis.push({ keys, untilMs: this.nowMs() + POLICY.hysteresisMs });
+    this.hysteresis = { keys, untilMs: this.nowMs() + POLICY.hysteresisMs };
   }
 
   private dropHysteresis(): void {
-    for (const h of this.hysteresis) for (const k of h.keys) this.store.unpin(k);
-    this.hysteresis = [];
+    if (this.hysteresis) for (const k of this.hysteresis.keys) this.store.unpin(k);
+    this.hysteresis = null;
   }
 
   // ---- tick ---------------------------------------------------------------
 
   private onDecoded(key: SegKey): void {
     if (this.pending && key.v === this.pending.variant) this.tryCommit();
+    // waitingFor always belongs to the chain's own variant, so any decode for it may unblock fill()
     const c = this.audibleChain;
-    if (c && c.waitingFor && keyStr(c.waitingFor) === keyStr(key)) this.fillAudible();
-    else if (c && key.v === c.variant && c.waitingFor) this.fillAudible();
+    if (c?.waitingFor && key.v === c.variant) this.fillAudible();
   }
 
   private fillAudible(): void {
@@ -356,12 +357,7 @@ export class Engine {
     const nowMs = this.nowMs();
     this.tickN++;
     this.pool.reap(now);
-    // hysteresis pins expire
-    this.hysteresis = this.hysteresis.filter((h) => {
-      if (h.untilMs > nowMs) return true;
-      for (const k of h.keys) this.store.unpin(k);
-      return false;
-    });
+    if (this.hysteresis && this.hysteresis.untilMs <= nowMs) this.dropHysteresis();
     if (this.timeline.playing) {
       if (this.timeline.loop) {
         const n = this.timeline.rebase(now);
@@ -431,7 +427,7 @@ export class Engine {
       sum += ch[i]! * ch[i]!;
       n++;
     }
-    return `${Math.sqrt(sum / Math.max(1, n)).toFixed(4)} (${s!.key.v}/${s!.key.tier}/${s!.key.i})`;
+    return `${Math.sqrt(sum / Math.max(1, n)).toFixed(4)} (${keyStr(s!.key)})`;
   }
 
   snapshot(extra: { decodeKind: string; decodeAvgMs: number; fetchAvgMs: number; fetchBytes: number; fetchErrors: number; inflight: number; queued: number }): Metrics {

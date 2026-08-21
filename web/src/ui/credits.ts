@@ -1,28 +1,22 @@
 /** #/credits — generated from songs.json + catalog engines; licenses verbatim; DMCA contact (phase 1). */
-import type { CatalogDoc } from '../contracts/catalog';
+import { engineVersion, type CatalogDoc, type Source } from '../contracts/catalog';
 import type { SongsDoc } from '../contracts/songs';
 import { h } from './dom';
 
 export const CONTACT = 'soundfonts@ericq.com';
 
-/** One paragraph per source collection, with real counts from the catalog (attribution is per file, never assumed). */
+/** One paragraph per source collection found in the catalog (attribution is per file, never assumed). */
 function soundfontSources(catalog: CatalogDoc): HTMLElement[] {
-  const sf2 = catalog.variants.filter((v) => v.engine === 'fluidsynth');
-  const byColl = new Map<string, { c: NonNullable<NonNullable<CatalogDoc['variants'][number]['source']>['collection']>; n: number }>();
+  const byColl = new Map<string, NonNullable<Source['collection']>>();
   let unknown = 0;
-  for (const v of sf2) {
+  for (const v of catalog.variants) {
+    if (v.engine !== 'fluidsynth') continue;
     const c = v.source?.collection;
-    if (!c) {
-      unknown++;
-      continue;
-    }
-    const e = byColl.get(c.id) ?? { c, n: 0 };
-    e.n++;
-    byColl.set(c.id, e);
+    if (!c) unknown++;
+    else if (!byColl.has(c.id)) byColl.set(c.id, c);
   }
   const out: HTMLElement[] = [];
-  for (const { c, n } of byColl.values()) {
-    void n;
+  for (const c of byColl.values()) {
     out.push(
       h(
         'p',
@@ -41,9 +35,10 @@ function soundfontSources(catalog: CatalogDoc): HTMLElement[] {
 }
 
 export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement {
-  const engineRows = catalog.engines.map((e) =>
-    h('li', null, h('strong', null, e.label), e.version ? ` ${e.version}` : '', e.commit ? ` (${e.commit})` : '', e.url ? [' · ', h('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.url)] : '', e.license ? h('div', { class: 'muted' }, e.license) : ''),
-  );
+  const engineRows = catalog.engines.map((e) => {
+    const ver = engineVersion(e);
+    return h('li', null, h('strong', null, e.label), ver && ` ${ver}`, e.url ? [' · ', h('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.url)] : '', e.license ? h('div', { class: 'muted' }, e.license) : '');
+  });
   return h(
     'article',
     { class: 'credits' },
