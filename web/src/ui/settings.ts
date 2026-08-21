@@ -82,7 +82,6 @@ export class SettingsModal {
         { class: 'setting' },
         h('label', null, 'Mark a variant as listened (●) after ', input, ' s of playback'),
         range,
-        h('p', { class: 'muted' }, 'Only time the variant is actually audible counts. Remembered per track in this browser.'),
         h('div', { class: 'btnrow' }, resetTrack, resetAll),
         h('p', { class: 'muted small' }, `current track: ${this.cb.trackTitle()}`),
       ),
@@ -108,8 +107,7 @@ export class SettingsModal {
             return h('label', { class: 'preserve', title: c.title }, box, ` ${c.label}`);
           }),
         ),
-        h('div', { class: 'btnrow' }, defaultsBtn),
-        h('p', { class: 'muted small' }, '# and name are always shown. Click a column header to sort; click again to reverse, a third time to restore the catalog order.'),
+        h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order.')),
       ),
       h('div', { class: 'btnrow' }, close),
     );

@@ -887,6 +887,18 @@ kbd {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px 12px;
+  margin-top: 10px;
+}
+.settings .colfoot {
+  align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+.settings .colfoot .btn {
+  flex: 0 0 auto;
+}
+.settings .colfoot span {
+  line-height: 1.3;
 }
 
 @media (pointer: coarse) {
