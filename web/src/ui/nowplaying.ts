@@ -40,7 +40,7 @@ export class NowPlaying {
     this.statusEl.className = `np-status ${kind}`;
   }
 
-  /** re-render the favourite button (favourites changed elsewhere) */
+  /** re-render the favorite button (favorites changed elsewhere) */
   refreshActions(): void {
     if (this.current && this.favBtn) this.paintFav(this.favBtn, this.current);
   }

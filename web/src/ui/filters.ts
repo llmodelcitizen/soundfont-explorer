@@ -80,7 +80,7 @@ export class FilterBar {
     this.hiddenChip.addEventListener('click', () => this.clearAll());
     const toggle = h('button', { class: 'btn', type: 'button', title: 'filters (F)' }, 'filters ▾');
     toggle.addEventListener('click', () => this.toggle());
-    this.favBtn = h('button', { class: 'btn toggle fav-filter', type: 'button', title: 'show favourites only', 'aria-pressed': 'false' }, '♥ favorites') as HTMLButtonElement;
+    this.favBtn = h('button', { class: 'btn toggle fav-filter', type: 'button', title: 'show favorites only', 'aria-pressed': 'false' }, '♥ favorites') as HTMLButtonElement;
     this.favBtn.addEventListener('click', () => {
       this.setFavoritesOnly(!this.favoritesOnly);
       this.cb.onFavoritesOnly(this.favoritesOnly);

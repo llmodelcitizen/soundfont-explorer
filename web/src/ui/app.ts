@@ -785,7 +785,7 @@ export class App {
     if (total >= this.prefs.listenedAfterS) this.list.markListened(v);
   }
 
-  /** setColumns() rebuilds rows: restore cursor/audible/listened/favourite marks */
+  /** setColumns() rebuilds rows: restore cursor/audible/listened/favorite marks */
   private applyHighlightsAfterColumns(): void {
     this.list.setFavorites(this.favorites.all());
     this.refreshListened();

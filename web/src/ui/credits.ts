@@ -73,7 +73,7 @@ export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement
     h(
       'p',
       { class: 'muted' },
-      'Your settings, favourites and listened marks live only in your browser (localStorage) — nothing is sent anywhere; the settings dialog can wipe them. ',
+      'Your settings, favorites and listened marks live only in your browser (localStorage) — nothing is sent anywhere; the settings dialog can wipe them. ',
       'There are no cookies and no accounts today; if accounts arrive, this section will say exactly what is stored and why.',
     ),
     h('p', { class: 'muted' }, `songs.json generated ${songs.generated_at}`),

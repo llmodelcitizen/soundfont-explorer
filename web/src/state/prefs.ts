@@ -110,7 +110,7 @@ export class ListenedLedger {
 
 const FAV_KEY = 'sfp.favorites.v1';
 
-/** Favourite variants (global: a SoundFont you like is a favourite for every track). */
+/** Favorite variants (global: a SoundFont you like is a favorite for every track). */
 export class Favorites {
   private ids: Set<string>;
   private listeners = new Set<(ids: Set<string>) => void>();

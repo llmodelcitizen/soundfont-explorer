@@ -76,9 +76,9 @@ export class SettingsModal {
     });
     const close = h('button', { class: 'btn close-settings', type: 'button' }, 'close');
     close.addEventListener('click', () => this.toggle(false));
-    const wipe = h('button', { class: 'btn danger', type: 'button', title: 'Forget everything this site stored in this browser (settings, favourites, listened marks, pane sizes) and reload' }, 'clear all site data');
+    const wipe = h('button', { class: 'btn danger', type: 'button', title: 'Forget everything this site stored in this browser (settings, favorites, listened marks, pane sizes) and reload' }, 'clear all site data');
     wipe.addEventListener('click', () => {
-      if (confirm('Clear everything this site stored in this browser — settings, favourites, listened marks, pane sizes — and reload?')) void clearAllSiteData();
+      if (confirm('Clear everything this site stored in this browser — settings, favorites, listened marks, pane sizes — and reload?')) void clearAllSiteData();
     });
     this.box.append(
       h('h2', { id: 'settings-title' }, 'settings'),

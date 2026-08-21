@@ -33,7 +33,7 @@ export const COLUMNS: ColumnDef[] = [
   { key: 'coverage', label: 'coverage', title: 'GM coverage', width: '6.4em', defaultOn: false },
   { key: 'lufs', label: 'LUFS', title: 'measured integrated loudness before gain', width: '4.8em', align: 'right', defaultOn: false },
   { key: 'gain', label: 'gain', title: 'gain applied to reach −16 LUFS', width: '4.8em', align: 'right', defaultOn: false },
-  { key: 'fav', label: '♥', title: 'favourite', width: '1.4em', align: 'center', compact: true, defaultOn: true, noArrow: true },
+  { key: 'fav', label: '♥', title: 'favorite', width: '1.4em', align: 'center', compact: true, defaultOn: true, noArrow: true },
   { key: 'dot', label: '●', title: 'listened', width: '1.4em', align: 'center', compact: true, defaultOn: true, noArrow: true },
 ];
 
