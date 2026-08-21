@@ -39,15 +39,20 @@ log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$LOG"; }
 for song in "${SONGS[@]}"; do
   log "=== $song: render (workers=$WORKERS)"
   "${SFR[@]}" render --song "$song" --workers "$WORKERS" 2>&1 | tee -a "$LOG" | grep -E '^\[sfr\] (finished|[0-9]+/[0-9]+)' | tail -n 3 || true
-  if [[ "$THOROUGH" == "1" ]]; then
-    log "=== $song: manifest --thorough"
-    "${SFR[@]}" manifest --song "$song" --thorough 2>&1 | tee -a "$LOG" | grep -E '^\[manifest\]'
-  else
-    log "=== $song: manifest"
-    "${SFR[@]}" manifest --song "$song" 2>&1 | tee -a "$LOG" | grep -E '^\[manifest\]'
-  fi
-  log "=== $song: publish"
-  (cd render && python3 -m sfr publish --out ../out --work ../work) 2>&1 | grep -vE '^(upload|Completed)' | tee -a "$LOG" | tail -n 2
-  log "=== $song: live"
+  # manifest + publish are serialized across concurrent drivers (flock): two drivers publishing
+  # at once could otherwise overwrite songs.json with each other's view of the world
+  (
+    flock 9
+    if [[ "$THOROUGH" == "1" ]]; then
+      log "=== $song: manifest --thorough"
+      "${SFR[@]}" manifest --song "$song" --thorough 2>&1 | tee -a "$LOG" | grep -E '^\[manifest\]'
+    else
+      log "=== $song: manifest"
+      "${SFR[@]}" manifest --song "$song" 2>&1 | tee -a "$LOG" | grep -E '^\[manifest\]'
+    fi
+    log "=== $song: publish"
+    (cd render && python3 -m sfr publish --out ../out --work ../work) 2>&1 | grep -vE '^(upload|Completed)' | tee -a "$LOG" | tail -n 2
+    log "=== $song: live"
+  ) 9>work/publish.lock
 done
 log "all done: ${SONGS[*]}"
