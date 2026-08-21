@@ -39,7 +39,8 @@ export class SettingsModal {
     this.el.classList.toggle('hidden', !this.visible);
     if (this.visible) {
       this.render();
-      (this.box.querySelector('input') as HTMLInputElement | null)?.focus();
+      // focus the close button, not the number field: a focused text input makes iOS zoom in
+      (this.box.querySelector('.btn.close-settings') as HTMLButtonElement | null)?.focus({ preventScroll: true });
     }
   }
 
@@ -63,7 +64,7 @@ export class SettingsModal {
     resetAll.addEventListener('click', () => {
       if (confirm('Forget which variants you have listened to, for every track?')) this.cb.onResetAll();
     });
-    const close = h('button', { class: 'btn', type: 'button' }, 'close');
+    const close = h('button', { class: 'btn close-settings', type: 'button' }, 'close');
     close.addEventListener('click', () => this.toggle(false));
     this.box.append(
       h('h2', { id: 'settings-title' }, 'settings'),

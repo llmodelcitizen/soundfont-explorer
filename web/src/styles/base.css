@@ -641,6 +641,14 @@ kbd {
   font-size: 0.85em;
 }
 
+@media (pointer: coarse) {
+  /* iOS zooms into focused inputs smaller than 16 px */
+  .settings .num,
+  .search {
+    font-size: 16px;
+  }
+}
+
 /* debug */
 .debug {
   position: fixed;
