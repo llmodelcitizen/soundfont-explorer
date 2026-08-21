@@ -22,6 +22,10 @@ class RenderSpec:
     pre: list[Callable[[], None]] = field(default_factory=list)   # run in the worker before argv (symlinks etc.)
     native_rate: int = 48000
     env: dict[str, str] = field(default_factory=dict)
+    # headerless output: (ffmpeg sample format, rate, channels); None = self-describing WAV
+    raw_format: tuple[str, int, int] | None = None
+    # kill the engine once out_wav exceeds this many bytes (we trim to D anyway)
+    max_out_bytes: int | None = None
 
 
 def get(engine: str):
@@ -42,3 +46,11 @@ def get(engine: str):
     else:
         raise KeyError(f"unknown engine {engine!r}")
     return m
+
+
+def ffmpeg_input_args(spec: "RenderSpec") -> list[str]:
+    """ffmpeg arguments that precede `-i <out_wav>` (raw PCM needs its format spelled out)."""
+    if spec.raw_format:
+        fmt, rate, ch = spec.raw_format
+        return ["-f", fmt, "-ar", str(rate), "-ac", str(ch)]
+    return []

@@ -13,9 +13,9 @@ from .config import RenderSettings
 from .sched import JobError, run
 
 
-def measure(wav: Path, settings: RenderSettings, timeout_s: int = 300) -> dict:
+def measure(wav: Path, settings: RenderSettings, timeout_s: int = 300, in_args: list[str] | None = None) -> dict:
     """Return {'input_i': float, 'input_tp': float, 'input_lra': float, 'input_thresh': float}."""
-    argv = ["ffmpeg", "-hide_banner", "-nostats", "-i", str(wav),
+    argv = ["ffmpeg", "-hide_banner", "-nostats", *(in_args or []), "-i", str(wav),
             "-af", f"loudnorm=I={settings.lufs_target}:TP={settings.tp_ceiling_dbtp}:LRA=11:print_format=json",
             "-f", "null", "-"]
     res = run(argv, timeout_s=timeout_s, what="loudnorm measure")
@@ -74,11 +74,11 @@ def master_filter(gain: float, settings: RenderSettings, duration_s: int, *,
 
 def write_master(raw_wav: Path, master_flac: Path, gain: float, settings: RenderSettings, duration_s: int, *,
                  start_offset_s: float = 0.0, drift_ppm: float = 0.0, native_rate: int = 48000,
-                 timeout_s: int = 600) -> None:
+                 timeout_s: int = 600, in_args: list[str] | None = None) -> None:
     af = master_filter(gain, settings, duration_s, start_offset_s=start_offset_s, drift_ppm=drift_ppm,
                        native_rate=native_rate)
     tmp = master_flac.with_suffix(".flac.tmp")
-    argv = ["ffmpeg", "-hide_banner", "-nostats", "-y", "-i", str(raw_wav), "-af", af,
+    argv = ["ffmpeg", "-hide_banner", "-nostats", "-y", *(in_args or []), "-i", str(raw_wav), "-af", af,
             "-c:a", "flac", "-sample_fmt", "s32", "-bits_per_raw_sample", "24",
             "-f", "flac", str(tmp)]
     run(argv, timeout_s=timeout_s, what="master")

@@ -177,3 +177,46 @@
 [data-theme='win95'] .btn.icon {
   padding: 3px 7px;
 }
+
+/* settings dialog: mirror the modern layout inside the win95 chrome */
+[data-theme='win95'] .settings {
+  padding: 0 0 14px;
+}
+[data-theme='win95'] .settings .setting,
+[data-theme='win95'] .settings > .btnrow {
+  margin: 0 16px;
+}
+[data-theme='win95'] .settings .setting {
+  margin-bottom: 14px;
+}
+[data-theme='win95'] .settings label {
+  margin-bottom: 8px;
+  line-height: 2;
+}
+[data-theme='win95'] .settings .num {
+  background: #fff;
+  border: 0;
+  box-shadow: var(--bevel-in);
+  padding: 2px 6px;
+  margin: 0 4px;
+}
+[data-theme='win95'] .settings input[type='range'] {
+  accent-color: #000080;
+  margin: 6px 0 10px;
+}
+[data-theme='win95'] .settings p {
+  margin: 6px 0;
+}
+[data-theme='win95'] .settings .btnrow {
+  margin-top: 10px;
+  gap: 8px;
+}
+[data-theme='win95'] .settings .btn {
+  min-width: 88px;
+  padding: 4px 12px;
+}
+[data-theme='win95'] .chip {
+  border-radius: 0;
+  border: 1px dashed #000080;
+  color: #000080;
+}

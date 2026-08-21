@@ -167,12 +167,18 @@ select:focus-visible {
 }
 .chip {
   background: transparent;
-  border: 1px dashed var(--line);
-  color: var(--fg-dim);
-  padding: 2px 8px;
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+  padding: 2px 10px;
   cursor: pointer;
   border-radius: 999px;
   font-size: 0.85em;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.chip:hover {
+  background: var(--sel);
+  color: var(--sel-fg);
 }
 .facets {
   display: flex;

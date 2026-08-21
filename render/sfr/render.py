@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from . import PIPELINE_VERSION, engines
+from .engines import ffmpeg_input_args
 from .config import Paths, load_engines
 from .jobs import Job, State, classify, now_iso, write_meta
 from .loudness import gain_db, is_silent, measure, write_master
@@ -77,8 +78,11 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                 for pre in spec.pre:
                     pre()
                 tr = time.monotonic()
+                stop_when = (spec.out_wav, spec.max_out_bytes) if spec.max_out_bytes else None
                 res = run(spec.argv, cwd=spec.cwd, timeout_s=spec.timeout_s, rlimit_as=spec.rlimit_as_bytes,
-                          env=spec.env, what=job.engine)
+                          env=spec.env, what=job.engine, stop_when=stop_when)
+                if res.truncated:
+                    meta["render_truncated"] = True   # engine would not stop on its own (non-decaying voice)
                 timings["render_s"] = round(time.monotonic() - tr, 2)
                 timings["render_cpu_s_approx"] = round(res.cpu_seconds, 2)  # process-wide children delta: over-counts under concurrency
                 if not spec.out_wav.exists() or spec.out_wav.stat().st_size < 1024:
@@ -86,7 +90,7 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                     raise JobError("no-output", f"{job.engine} produced no WAV: {tail}")
                 # ---- 2. measure ------------------------------------------
                 tm = time.monotonic()
-                meas = measure(spec.out_wav, job.settings)
+                meas = measure(spec.out_wav, job.settings, in_args=ffmpeg_input_args(spec))
                 timings["measure_s"] = round(time.monotonic() - tm, 2)
                 meta.update({"lufs": meas["input_i"], "tp": meas["input_tp"], "lra": meas["input_lra"],
                              "cmd": " ".join(spec.argv), "render_seconds": timings["render_s"],
@@ -105,7 +109,8 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                 meta["drift_ppm"] = drift
                 tms = time.monotonic()
                 write_master(spec.out_wav, job.master_path(paths), g, job.settings, job.duration_s,
-                             start_offset_s=off, drift_ppm=drift, native_rate=spec.native_rate)
+                             start_offset_s=off, drift_ppm=drift, native_rate=spec.native_rate,
+                             in_args=ffmpeg_input_args(spec))
                 timings["master_s"] = round(time.monotonic() - tms, 2)
             finally:
                 if sem is not None and weight:

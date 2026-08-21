@@ -76,7 +76,7 @@ export class FilterBar {
     const toggle = h('button', { class: 'btn', type: 'button', title: 'filters (F)' }, 'filters ▾');
     toggle.addEventListener('click', () => this.toggle());
     this.groups = h('div', { class: 'facets hidden' });
-    this.el = h('div', { class: 'filterbar' }, h('div', { class: 'filterrow' }, toggle, this.search, this.hiddenChip), this.groups);
+    this.el = h('div', { class: 'filterbar' }, h('div', { class: 'filterrow' }, toggle, this.hiddenChip, this.search), this.groups);
     this.render();
   }
 

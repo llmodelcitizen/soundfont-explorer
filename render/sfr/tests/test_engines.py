@@ -106,8 +106,12 @@ class TestAdlAndFluid(Base):
         self.assertTrue((self.tmp / "freedoom-e1m1.mid").is_symlink())
 
     def test_fluid_weight(self):
-        s = self.spec(sf2_variant(1, bytes_=1200 << 20))
-        self.assertEqual(s.argv[:3], ["fluidsynth", "-F", str(self.tmp / "raw.wav")])
+        v = sf2_variant(1, bytes_=1200 << 20)
+        s = self.spec(v)
+        self.assertEqual(s.argv[:3], ["fluidsynth", "-F", str(self.tmp / "raw.f32le")])
+        self.assertIn("raw", s.argv)          # -T raw: headerless so a kill mid-write is harmless
+        self.assertEqual(s.raw_format, ("f32le", 48000, 2))
+        self.assertEqual(s.max_out_bytes, (self.job(v).duration_s + 2) * 48000 * 8)
         self.assertEqual(s.weight, 5)
         self.assertEqual(s.timeout_s, 1800)
         self.assertEqual(s.native_rate, 48000)

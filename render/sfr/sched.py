@@ -51,6 +51,7 @@ class Completed:
     stderr: bytes
     seconds: float
     cpu_seconds: float
+    truncated: bool = False
 
 
 def _preexec(rlimit_as: int | None):
@@ -66,8 +67,11 @@ def _preexec(rlimit_as: int | None):
 
 def run(argv: list[str], *, cwd: Path | None = None, timeout_s: int = 900, input_bytes: bytes | None = None,
         rlimit_as: int | None = None, env: dict[str, str] | None = None, capture: bool = True,
-        check: bool = True, what: str = "") -> Completed:
-    """Run argv; on timeout kill the whole process group. Raises JobError on failure."""
+        check: bool = True, what: str = "", stop_when: tuple[Path, int] | None = None) -> Completed:
+    """Run argv; on timeout kill the whole process group. Raises JobError on failure.
+
+    stop_when=(path, max_bytes): a watcher kills the process group once `path` grows past
+    max_bytes; that is treated as a normal completion (`Completed.truncated = True`)."""
     if shutil.which(argv[0]) is None:
         raise JobError("missing-tool", argv[0])
     full_env = None
@@ -93,6 +97,29 @@ def run(argv: list[str], *, cwd: Path | None = None, timeout_s: int = 900, input
     )
     with _LIVE_LOCK:
         _LIVE.add(proc.pid)
+    truncated = threading.Event()
+    stop_watch = threading.Event()
+    if stop_when:
+        wpath, wmax = stop_when
+
+        def watch():
+            while not stop_watch.wait(0.5):
+                try:
+                    if wpath.stat().st_size >= wmax:
+                        truncated.set()
+                        try:
+                            os.killpg(proc.pid, signal.SIGTERM)
+                        except ProcessLookupError:
+                            return
+                        if not stop_watch.wait(3):
+                            try:
+                                os.killpg(proc.pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
+                        return
+                except FileNotFoundError:
+                    pass
+        threading.Thread(target=watch, daemon=True).start()
     try:
         out, err = proc.communicate(input=input_bytes, timeout=timeout_s)
     except subprocess.TimeoutExpired:
@@ -109,11 +136,15 @@ def run(argv: list[str], *, cwd: Path | None = None, timeout_s: int = 900, input
             pass
         raise
     finally:
+        stop_watch.set()
         with _LIVE_LOCK:
             _LIVE.discard(proc.pid)
     r1 = os.times()
     res = Completed(argv, proc.returncode, out or b"", err or b"", time.monotonic() - t0,
-                    (r1.children_user - r0.children_user) + (r1.children_system - r0.children_system))
+                    (r1.children_user - r0.children_user) + (r1.children_system - r0.children_system),
+                    truncated=truncated.is_set())
+    if res.truncated:
+        return res  # killed on purpose once the output covered the song
     if check and proc.returncode != 0:
         tail = (res.stderr or res.stdout)[-2000:].decode("utf-8", "replace")
         raise JobError("exit", f"{what or argv[0]} rc={proc.returncode}: {tail}")
