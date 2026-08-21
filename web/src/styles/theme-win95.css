@@ -56,6 +56,11 @@
 [data-theme='win95'] .top .sub {
   color: #fff;
 }
+[data-theme='win95'] .top .songpicker,
+[data-theme='win95'] .top .themepick,
+[data-theme='win95'] .top .btn {
+  color: #000;
+}
 [data-theme='win95'] .top::after {
   content: '_  □  ×';
   font: bold 10px/14px 'Marlett', Tahoma, sans-serif;
@@ -137,4 +142,11 @@
 }
 [data-theme='win95'] .tier.l {
   color: #000080;
+}
+[data-theme='win95'] .row.sel .label,
+[data-theme='win95'] .row.sel.audible .label,
+[data-theme='win95'] .row.sel .idx,
+[data-theme='win95'] .row.sel .meta,
+[data-theme='win95'] .row.sel .gain {
+  color: #fff;
 }

@@ -20,6 +20,19 @@ body {
   height: 100%;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* explicit column so a wide <select> or long text can never widen the page */
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 100vw;
+  overflow: hidden;
+}
+.top > *,
+.filterrow > *,
+.transport > * {
+  min-width: 0;
+}
+.songpicker {
+  width: auto;
+  text-overflow: ellipsis;
 }
 button,
 select,
@@ -520,9 +533,40 @@ kbd {
 
 /* mobile */
 @media (max-width: 720px) {
+  .top {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+  .top .title {
+    flex: 1 1 auto;
+  }
+  .top .spacer {
+    display: none;
+  }
+  .songpicker {
+    flex: 1 1 100%;
+    max-width: 100%;
+    min-width: 0;
+    order: 10;
+  }
   .main {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .nowplaying,
+  .left {
+    min-width: 0;
+  }
+  .kv {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0 0;
+  }
+  .kv dt {
+    margin-top: 4px;
+    font-size: 0.8em;
+  }
+  .kv code.cmd {
+    word-break: break-all;
   }
   .left {
     border-right: 0;
@@ -541,6 +585,15 @@ kbd {
   .transport {
     flex-wrap: wrap;
     padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  .transport .seek {
+    flex: 1 1 100%;
+    order: 10;
+  }
+  .transport .clock {
+    min-width: 0;
+    font-size: 0.85em;
+    margin-left: auto;
   }
   .transport .steps {
     display: flex;
