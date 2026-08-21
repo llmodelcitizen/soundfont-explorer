@@ -1,13 +1,18 @@
 /** Autoplay gate: the AudioContext is created in this gesture. Mini-gate when the context gets suspended. */
 import { h } from './dom';
 
-export function showGate(root: HTMLElement, title: string, text: string, button: string): Promise<void> {
+export function showGate(root: HTMLElement, title: string, text: string, button: string, inGesture?: () => void): Promise<void> {
   return new Promise((resolve) => {
     const btn = h('button', { class: 'btn primary', type: 'button', autofocus: true }, button);
     const id = `gate-title-${Math.random().toString(36).slice(2, 8)}`;
     const box = h('div', { class: 'gate-box', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': id }, h('h1', { id }, title), h('p', null, text), btn);
     const overlay = h('div', { class: 'gate' }, box);
     const go = () => {
+      try {
+        inGesture?.(); // synchronous: AudioContext creation/resume must happen in the gesture's call stack
+      } catch {
+        /* reported by the caller through its own state */
+      }
       overlay.remove();
       resolve();
     };

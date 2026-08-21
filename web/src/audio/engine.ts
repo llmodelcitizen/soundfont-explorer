@@ -405,6 +405,23 @@ export class Engine {
 
   // ---- metrics ------------------------------------------------------------
 
+  /** RMS of the buffer currently audible (diagnostic: distinguishes "decoded silence" from "muted output") */
+  audibleRms(): string {
+    const c = this.audibleChain;
+    const s = c?.segmentAtTime(this.ctx.currentTime);
+    const buf = s?.src.buffer as unknown as { getChannelData?: (i: number) => Float32Array; length: number } | undefined;
+    if (!buf?.getChannelData) return 'n/a';
+    const ch = buf.getChannelData(0);
+    let sum = 0;
+    const step = Math.max(1, Math.floor(ch.length / 4000));
+    let n = 0;
+    for (let i = 0; i < ch.length; i += step) {
+      sum += ch[i]! * ch[i]!;
+      n++;
+    }
+    return `${Math.sqrt(sum / Math.max(1, n)).toFixed(4)} (${s!.key.v}/${s!.key.tier}/${s!.key.i})`;
+  }
+
   snapshot(extra: { decodeKind: string; decodeAvgMs: number; fetchAvgMs: number; fetchBytes: number; fetchErrors: number; inflight: number; queued: number }): Metrics {
     const d = this.store.decoded;
     const total = d.hits + d.misses;

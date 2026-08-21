@@ -25,6 +25,7 @@ import { VariantList } from './list';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
+import { audioSession, createContextInGesture, installResumeOnGesture, unlock } from '../audio/unlock';
 import { Transport } from './transport';
 
 import probeUrl from '../assets/probe-1k-40ms.opus?url';
@@ -62,6 +63,8 @@ export class App {
   private url: UrlState;
   private urlTimer: ReturnType<typeof setTimeout> | null = null;
   private decodeKind = 'native';
+  /** phone-readable diagnostics (debug panel) */
+  private diag: Record<string, string | number> = {};
   private volume = 1;
   private main!: HTMLElement;
   private header!: HTMLElement;
@@ -93,9 +96,13 @@ export class App {
     }
     const known = (id: string | null | undefined) => !!id && this.songs.songs.some((s) => s.id === id);
     const songId = known(this.url.song) ? this.url.song! : known(this.songs.defaults.song) ? this.songs.defaults.song! : this.songs.songs[0]!.id;
-    await showGate(this.root, 'soundfonts.ericq.com', 'Hear one MIDI through hundreds of SoundFonts and synth chips. Hold ↓ to scrub; the music never stops.', 'Start');
-    this.ctx = new AudioContext({ latencyHint: 'interactive' });
+    await showGate(this.root, 'soundfonts.ericq.com', 'Hear one MIDI through hundreds of SoundFonts and synth chips. Hold ↓ to scrub; the music never stops.', 'Start', () => {
+      // inside the tap: create + unlock the context synchronously (iOS requirement)
+      this.ctx = createContextInGesture();
+    });
+    if (!this.ctx) this.ctx = createContextInGesture();
     if (this.ctx.state !== 'running') await this.ctx.resume().catch(() => undefined);
+    this.diag.ctxCreatedState = this.ctx.state;
     await this.pickDecoder();
     this.installGlobalListeners();
     await this.loadSong(songId, { variant: this.url.variant, t: this.url.t, initial: true });
@@ -106,12 +113,20 @@ export class App {
   /** window/document/AudioContext listeners — installed exactly once, not per song. */
   private installGlobalListeners(): void {
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && this.ctx.state !== 'running') void this.ctx.resume();
+      if (document.visibilityState === 'visible' && this.ctx.state !== 'running') unlock(this.ctx);
     });
+    let gateUp = false;
     this.ctx.addEventListener?.('statechange', () => {
-      if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
-        void showGate(this.root, 'audio paused', 'The browser suspended audio. Tap to resume.', 'Resume').then(() => this.ctx.resume());
+      this.diag.ctxState = this.ctx.state;
+      if ((this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') && !gateUp && this.engine?.playing) {
+        gateUp = true;
+        void showGate(this.root, 'audio paused', 'The browser suspended audio. Tap to resume.', 'Resume', () => unlock(this.ctx)).then(() => {
+          gateUp = false;
+        });
       }
+    });
+    installResumeOnGesture(this.ctx, () => {
+      this.diag.resumedOnGesture = (Number(this.diag.resumedOnGesture) || 0) + 1;
     });
     window.addEventListener('hashchange', () => this.onHashChange());
   }
@@ -144,6 +159,7 @@ export class App {
       /* no probe → assume native */
     }
     const probe = bytes ? await probeNative(this.ctx as unknown as ContextLike, bytes) : { ok: true, reason: 'no probe', ms: 0 };
+    this.diag.probe = `${probe.ok ? 'native ok' : 'native FAILED'}: ${probe.reason} (${probe.ms} ms)`;
     if (probe.ok) {
       this.decoder = new NativeDecoder(this.ctx as unknown as ContextLike, NET.decodeWorkers);
       this.decodeKind = 'native';
@@ -263,6 +279,8 @@ export class App {
     });
     const helpBtn = h('button', { class: 'btn', type: 'button', title: 'keys (?)' }, '?');
     helpBtn.addEventListener('click', () => this.keymap.toggle());
+    const dbgBtn = h('button', { class: 'btn dbg-btn', type: 'button', title: 'debug panel (D)' }, 'dbg');
+    dbgBtn.addEventListener('click', () => this.debug.toggle());
     this.header = h(
       'header',
       { class: 'top' },
@@ -271,6 +289,7 @@ export class App {
       h('div', { class: 'spacer' }),
       themeSel,
       h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
+      dbgBtn,
       helpBtn,
     );
     this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.nowPlaying.el);
@@ -420,10 +439,12 @@ export class App {
         return;
       }
       this.transport.update(this.engine.position(), this.engine.playing);
+      if (this.ctx.state !== 'running' && this.engine.playing) this.transport.setStatus(`audio ${this.ctx.state} — tap to resume`, 'wontload');
       if (this.debug.visible) {
         const f = this.fetcher.stats;
         const d = this.decoder.stats;
         const proto = (performance.getEntriesByType?.('resource') as PerformanceResourceTiming[] | undefined)?.at(-1)?.nextHopProtocol ?? '';
+        const sess = audioSession();
         this.debug.update(
           this.engine.snapshot({
             decodeKind: this.decodeKind,
@@ -435,6 +456,18 @@ export class App {
             queued: this.fetcher.queuedCount,
           }),
           proto,
+          {
+            ...this.diag,
+            ctxState: this.ctx.state,
+            audioSession: sess ? `${sess.type}/${sess.state ?? '?'}` : 'n/a',
+            decodedOk: this.store.stats.decodedOk,
+            decodeErrors: this.store.stats.decodeErrors,
+            fetchErrors: this.store.stats.fetchErrors,
+            lastError: this.store.lastError ?? '',
+            audibleRms: this.engine.audibleRms(),
+            status: `${this.engine.status.kind} ${this.engine.status.message}`.trim(),
+            ua: navigator.userAgent.slice(0, 90),
+          },
         );
       }
       requestAnimationFrame(loop);

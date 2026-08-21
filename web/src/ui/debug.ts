@@ -22,8 +22,8 @@ export class DebugPanel {
     this.el.classList.toggle('hidden', !this.visible);
   }
 
-  update(m: Metrics, protocol: string): void {
-    this.last = m;
+  update(m: Metrics, protocol: string, diag: Record<string, string | number> = {}): void {
+    this.last = { ...m, ...(diag as object) } as Metrics;
     if (!this.visible) return;
     const lat = m.switchLatencyMs;
     const lines = [
@@ -33,6 +33,7 @@ export class DebugPanel {
       `fetch           avg ${m.fetchAvgMs.toFixed(0)} ms  ${fmtBytes(m.fetchBytes)}  errors=${m.fetchErrors}  inflight=${m.inflight}  queued=${m.queued}  ${protocol}`,
       `cache           decoded ${fmtBytes(m.decodedBytes)}  compressed ${fmtBytes(m.compressedBytes)}  hit ${pct(m.cacheHitRate)}`,
       `prefetch        R=${m.radius}  v=${m.velocity.toFixed(1)} rows/s`,
+      ...Object.entries(diag).map(([k, v]) => `${k.padEnd(15)} ${String(v)}`),
     ];
     clear(this.body);
     this.body.textContent = lines.join('\n');

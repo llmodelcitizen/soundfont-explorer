@@ -617,6 +617,15 @@ kbd {
   .top .themepick {
     display: none;
   }
+  .debug {
+    right: 4px;
+    left: 4px;
+    width: auto;
+    bottom: 120px;
+    max-height: 50vh;
+    overflow: auto;
+    font-size: 0.8em;
+  }
   .row .label {
     font-size: 0.95em;
   }

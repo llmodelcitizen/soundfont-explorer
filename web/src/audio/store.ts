@@ -41,6 +41,7 @@ export class SegmentStore {
   /** negative cache: key → {fails, until(ms)} so a 404/decoder error is not retried every tick */
   private failed = new Map<string, { fails: number; until: number }>();
   stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0, backedOff: 0 };
+  lastError: string | null = null;
 
   constructor(
     public readonly set: SetDoc,
@@ -153,6 +154,7 @@ export class SegmentStore {
       .catch((e) => {
         if (!(e instanceof AbortedError)) {
           this.stats.decodeErrors++;
+          this.lastError = `${ks}: ${(e as Error)?.message ?? String(e)}`;
           this.noteFailure(ks);
         }
         throw e;
