@@ -266,6 +266,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dry-run", action="store_true"); s.add_argument("--prune", action="store_true")
     s = sub.add_parser("status", help="summarize work/renders"); add_path_args(s)
     s.add_argument("--json", action="store_true")
+    s = sub.add_parser("worker", help="phase-2 upload worker (stub)"); add_path_args(s)
+    s.add_argument("--queue", help="SQS queue URL")
     s = sub.add_parser("calibrate", help="measure per-engine start offset / drift with a click track")
     add_path_args(s)
     s.add_argument("--rep", action="append", default=[], help="engine=variant-id (repeatable)")
@@ -296,6 +298,9 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_status(args)
         if args.cmd == "calibrate":
             return cmd_calibrate(args)
+        if args.cmd == "worker":
+            from .worker import run as worker_run
+            return worker_run(args.queue)
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return 130
