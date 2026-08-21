@@ -15,7 +15,7 @@ export interface Prefs {
 }
 
 export const DEFAULT_PREFS: Prefs = {
-  listenedAfterS: 3,
+  listenedAfterS: 2,
   preserveTrackPosition: true,
   columns: ['chip', 'engine', 'decade', 'fav', 'dot'],
   mobileColumns: ['chip', 'fav', 'dot'],
