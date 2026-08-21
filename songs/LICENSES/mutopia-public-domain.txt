@@ -1,0 +1,33 @@
+Mutopia Project — Public Domain pieces
+
+The following pieces were downloaded from the Mutopia Project
+(https://www.mutopiaproject.org/), where each is marked "Copyright: Public
+Domain" on its piece-info page.  Mutopia's licence page
+(https://www.mutopiaproject.org/legal.html) states:
+
+    "Public Domain — The contributor of this music has dedicated their
+    contribution into the public domain. You can do what you like with this
+    music - print it out, sell it, change it, distribute it, record it, and
+    perform it, etc. For more information, see the Creative Commons website
+    at: http://creativecommons.org/licenses/publicdomain/"
+
+The underlying compositions (Joplin d. 1917, Bach d. 1750, Sousa d. 1932) are
+themselves in the public domain worldwide.  Mutopia asks that typesetters be
+credited; the site's credits page names them:
+
+  joplin-maple-leaf     Maple Leaf Rag (Scott Joplin, c. 1899)
+                        Typeset by Chris Sawer — Mutopia-2011/11/13-23
+                        https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=23
+  joplin-entertainer    The Entertainer (Scott Joplin, c. 1902)
+                        Typeset by Chris Sawer — Mutopia-2016/11/25-263
+                        https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=263
+  bach-bwv565           Toccata and Fugue in D minor, BWV 565 (J. S. Bach)
+                        Typeset by "Anonymous" (Mutopia maintainer) — Mutopia-2011/09/11-1780
+                        https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=1780
+  sousa-stars-stripes   The Stars and Stripes Forever (John Philip Sousa, 1896)
+                        Typeset by Benjamin Bloomfield — Mutopia-2017/11/06-626
+                        https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=626
+
+Disclaimer (from Mutopia): the Mutopia Project is run by volunteers, and the
+material within it is provided "as-is". No warranty of any kind is made,
+including fitness for any particular purpose.

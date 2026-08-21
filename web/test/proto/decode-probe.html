@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>decode-probe</title>
+<link rel="stylesheet" href="proto.css">
+<!-- ogg-opus-decoder 1.7.3 (MIT, eshaz/wasm-audio-decoders) UMD bundle copied from node_modules/ogg-opus-decoder/dist -->
+<script src="vendor/ogg-opus-decoder.min.js" charset="UTF-8"></script>
+</head>
+<body>
+<h1>M0b-2 decode probe</h1>
+<p class="dim">Native <code>decodeAudioData</code> vs WASM (<code>ogg-opus-decoder</code>) on a 40 ms 1 kHz probe tone and a
+2.14 s scrub segment; then a WASM worker pool (N = 1, 2, 4) decoding 20 segments (M0b-5 prep).
+Params: <code>?autostart=1</code> (no click), <code>?audio=synthetic</code>, <code>?pool=20</code> (segments), <code>?reps=10</code>.</p>
+<button id="go">Start (creates AudioContext)</button>
+<div id="log"></div>
+<h2>window.__results</h2>
+<pre id="results"></pre>
+<script type="module">
+import * as C from './proto-common.js';
+const { logLine, r3, dB } = C;
+const PROBE_URL = '/web/test/proto/probe-1k-40ms.opus';
+const REPS = +(C.params.get('reps') || 10);
+const POOL_SEGS = +(C.params.get('pool') || 20);
+const EXPECTED_PROBE_RMS = 0.5 / Math.SQRT2; // 0.5 amplitude sine -> 0.3536 (both channels identical)
+
+async function nativeDecode(ctx, bytes) {
+  const t0 = performance.now();
+  try {
+    const buf = await ctx.decodeAudioData(bytes.slice(0)); // decodeAudioData detaches the buffer
+    return { ok: true, ms: performance.now() - t0, duration: buf.duration, sampleRate: buf.sampleRate,
+             channels: buf.numberOfChannels, length: buf.length, rms: C.rmsOf(buf), peak: C.peakOf(buf) };
+  } catch (e) {
+    return { ok: false, ms: performance.now() - t0, error: String(e && e.message || e) };
+  }
+}
+
+async function main() {
+  const results = { page: 'decode-probe', ok: true };
+  try {
+    await C.gate('go');
+    const ctx = new AudioContext({ latencyHint: 'interactive' });
+    await ctx.resume().catch(() => {});
+    results.env = C.envInfo(ctx);
+    results.ctxState = ctx.state;
+    logLine(`AudioContext ${ctx.state} sr=${ctx.sampleRate} baseLatency=${ctx.baseLatency}`);
+
+    // ---- inputs ------------------------------------------------------------------------
+    const disc = await C.discoverVariants(2, 6);
+    results.audio = { kind: disc.kind, variants: disc.variants.map(v => ({ id: v.id, segs: v.segs.length })) };
+    logLine(`audio: ${disc.kind} (${disc.variants.map(v => v.id).join(', ')})`, disc.kind === 'real' ? 'ok' : 'warn');
+    const v0 = disc.variants[0];
+    const segUrl = `${v0.dir}/seg/${v0.segs[Math.min(3, v0.segs.length - 1)]}`;
+    const probe = await C.fetchBytes(PROBE_URL);
+    const seg = await C.fetchBytes(segUrl);
+    results.files = { probe: { url: PROBE_URL, bytes: probe.bytes }, segment: { url: segUrl, bytes: seg.bytes } };
+
+    // ---- native ------------------------------------------------------------------------
+    logLine('--- native decodeAudioData');
+    const nProbe = await nativeDecode(ctx, probe.buf);
+    const probeOk = nProbe.ok && Math.abs(nProbe.duration - 0.040) < 0.002 && nProbe.rms > 0.2 && nProbe.rms < 0.5;
+    nProbe.accept = probeOk; nProbe.expectedRms = r3(EXPECTED_PROBE_RMS);
+    logLine(`probe: ${JSON.stringify(nProbe)}`, probeOk ? 'ok' : 'bad');
+    const nSeg = await nativeDecode(ctx, seg.buf);
+    nSeg.expectedDuration = 2.14; nSeg.expectedSamplesAt48k = C.SEG_SAMPLES;
+    nSeg.durationOk = nSeg.ok && Math.abs(nSeg.duration - 2.14) < 0.005;
+    logLine(`segment: ${JSON.stringify(nSeg)}`, nSeg.durationOk ? 'ok' : 'bad');
+    const nTimes = [];
+    if (nSeg.ok) {
+      for (let i = 0; i < REPS; i++) { const r = await nativeDecode(ctx, seg.buf); nTimes.push(r.ms); }
+    }
+    results.native = { probe: nProbe, segment: nSeg, segmentMsStats: C.stats(nTimes), decision: probeOk ? 'native' : 'wasm' };
+    logLine(`native ms/segment over ${REPS} reps: ${JSON.stringify(C.stats(nTimes))}`);
+    logLine(`DECISION: ${results.native.decision} decode path`, probeOk ? 'ok' : 'warn');
+
+    // ---- WASM main thread --------------------------------------------------------------
+    logLine('--- WASM ogg-opus-decoder (main thread)');
+    const lib = window['ogg-opus-decoder'];
+    const tInit = performance.now();
+    const dec = new lib.OggOpusDecoder();
+    await dec.ready;
+    const wasmReadyMs = performance.now() - tInit;
+    async function wasmDecode(bytes) {
+      const t0 = performance.now();
+      try {
+        const r = await dec.decodeFile(new Uint8Array(bytes));
+        return { ok: true, ms: performance.now() - t0, samplesDecoded: r.samplesDecoded, sampleRate: r.sampleRate,
+                 channels: r.channelData.length, duration: r.samplesDecoded / r.sampleRate,
+                 rms: C.rmsOfChannels(r.channelData), errors: r.errors.length };
+      } catch (e) { return { ok: false, ms: performance.now() - t0, error: String(e && e.message || e) }; }
+    }
+    const wProbe = await wasmDecode(probe.buf);
+    logLine(`probe: ${JSON.stringify(wProbe)}`, wProbe.ok ? 'ok' : 'bad');
+    const wSeg = await wasmDecode(seg.buf);
+    wSeg.samplesOk = wSeg.ok && wSeg.samplesDecoded === C.SEG_SAMPLES;
+    logLine(`segment: ${JSON.stringify(wSeg)}`, wSeg.samplesOk ? 'ok' : 'bad');
+    const wTimes = [];
+    for (let i = 0; i < REPS; i++) { const r = await wasmDecode(seg.buf); wTimes.push(r.ms); }
+    results.wasmMain = { readyMs: wasmReadyMs, probe: wProbe, segment: wSeg, segmentMsStats: C.stats(wTimes),
+                         realtimeFactor: r3(2.14 * 1000 / (C.stats(wTimes).p50 || 1)) };
+    logLine(`wasm main ms/segment over ${REPS} reps: ${JSON.stringify(C.stats(wTimes))} (${results.wasmMain.realtimeFactor}x realtime)`);
+    dec.free();
+
+    // ---- WASM worker pool (M0b-5 prep) --------------------------------------------------
+    logLine(`--- WASM worker pool: ${POOL_SEGS} segments through N=1,2,4 workers`);
+    // collect POOL_SEGS distinct segment files across the variants (cycle if fewer exist)
+    const urls = [];
+    outer: for (let i = 0; i < 200; i++) {
+      let any = false;
+      for (const v of disc.variants) {
+        if (i < v.segs.length) { urls.push(`${v.dir}/seg/${v.segs[i]}`); any = true; }
+        if (urls.length >= POOL_SEGS) break outer;
+      }
+      if (!any) break;
+    }
+    const distinct = urls.length;
+    while (urls.length < POOL_SEGS) urls.push(urls[urls.length % distinct]);
+    const blobs = [];
+    for (const u of urls) blobs.push(new Uint8Array((await C.fetchBytes(u)).buf));
+    results.pool = { segments: blobs.length, distinctFiles: distinct, totalBytes: blobs.reduce((a, b) => a + b.length, 0), runs: {} };
+
+    // Two pool flavours:
+    //  lib  = N x OggOpusDecoderWebWorker (library: Ogg demux on main thread, libopus in worker; one job at a time per instance)
+    //  own  = N x wasm-decode-worker.js   (everything in the worker; the shape the real client will use)
+    function ownWorker() {
+      const w = new Worker('wasm-decode-worker.js');
+      const pending = new Map();
+      let nextId = 0;
+      w.ready = new Promise(res => { const h = e => { if (e.data.id === -1) { w.removeEventListener('message', h); res(); } }; w.addEventListener('message', h); });
+      w.addEventListener('message', e => { const p = pending.get(e.data.id); if (p) { pending.delete(e.data.id); p(e.data); } });
+      w.decodeFile = bytes => new Promise(res => { const id = nextId++; pending.set(id, res); w.postMessage({ id, bytes: bytes.buffer }, [bytes.buffer]); });
+      w.free = async () => w.terminate();
+      return w;
+    }
+    async function runPool(flavour, N) {
+      const workers = [];
+      const tSpawn = performance.now();
+      for (let i = 0; i < N; i++) workers.push(flavour === 'lib' ? new lib.OggOpusDecoderWebWorker() : ownWorker());
+      await Promise.all(workers.map(w => w.ready));
+      const spawnMs = performance.now() - tSpawn;
+      const perJob = [];
+      const outs = [];
+      const t0 = performance.now();
+      // round-robin assignment; each worker runs its queue sequentially (the library decoder is stateful
+      // per instance and deadlocks if decodeFile() calls are queued without awaiting)
+      const queues = workers.map(() => []);
+      blobs.forEach((b, i) => queues[i % N].push(b));
+      await Promise.all(queues.map(async (q, wi) => {
+        for (const b of q) {
+          const ts = performance.now();
+          const r = await workers[wi].decodeFile(new Uint8Array(b));
+          perJob.push(performance.now() - ts);
+          outs.push(r);
+        }
+      }));
+      const wall = performance.now() - t0;
+      await Promise.all(workers.map(w => w.free()));
+      const badSamples = outs.filter(o => o.samplesDecoded !== C.SEG_SAMPLES).length;
+      const run = { flavour, workers: N, spawnReadyMs: r3(spawnMs), wallMs: r3(wall), segmentsPerSecond: r3(blobs.length / (wall / 1000)),
+                    msPerSegmentPerWorker: r3(wall * N / blobs.length), msPerSegmentWall: r3(wall / blobs.length),
+                    realtimeFactor: r3(blobs.length * 2.14 * 1000 / wall), perJobMs: C.stats(perJob),
+                    wrongSampleCounts: badSamples, decodeErrors: outs.reduce((a, o) => a + (Array.isArray(o.errors) ? o.errors.length : (o.errors || 0)) + (o.error ? 1 : 0), 0) };
+      for (const k of ['min', 'p50', 'p95', 'max', 'mean']) run.perJobMs[k] = r3(run.perJobMs[k]);
+      return run;
+    }
+    for (const flavour of ['lib', 'own']) {
+      for (const N of [1, 2, 4]) {
+        const run = await runPool(flavour, N);
+        results.pool.runs[`${flavour}_N${N}`] = run;
+        logLine(`${flavour} N=${N}: wall ${run.wallMs} ms, ${run.segmentsPerSecond} seg/s, ${run.msPerSegmentPerWorker} ms/seg/worker, perJob p50 ${run.perJobMs.p50} ms, bad=${run.wrongSampleCounts}`, run.wrongSampleCounts || run.decodeErrors ? 'bad' : 'ok');
+      }
+    }
+    results.pool.target = 'plan M0b-5: < 100 ms per 2 s segment per worker on iPhone';
+    results.ok = true;
+    await ctx.close();
+  } catch (e) {
+    results.ok = false; results.error = String(e && e.stack || e);
+    logLine('ERROR ' + results.error, 'bad');
+  }
+  C.finish(results);
+}
+main();
+</script>
+</body>
+</html>

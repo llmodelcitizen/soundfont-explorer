@@ -74,7 +74,7 @@ class TestEncodeMath(unittest.TestCase):
     def test_opusenc_argv(self):
         argv = opusenc_argv(48, S, Path("/x/0000.opus"))
         for flag in ("--raw", "--raw-rate", "48000", "--raw-chan", "2", "--bitrate", "48", "--vbr",
-                     "--comp", "10", "--framesize", "20", "--discard-comments"):
+                     "--comp", "10", "--framesize", "20", "--discard-comments", "--padding"):
             self.assertIn(flag, argv)
         self.assertEqual(argv[-2:], ["-", "/x/0000.opus"])
 

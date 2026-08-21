@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pack-fetch</title>
+<link rel="stylesheet" href="proto.css">
+<script src="vendor/ogg-opus-decoder.min.js" charset="UTF-8"></script>
+</head>
+<body>
+<h1>M0b-6 SFPK pack fetch</h1>
+<p class="dim">Fetches an SFPK v1 pack whole and as header + single member via HTTP Range, parses it, decodes one member and
+schedules it; then measures keydown → <code>source.start()</code> latency, warm (buffer already decoded) vs cold (Range fetch +
+decode), 30 trials each, p50/p95. Params: <code>?pack=/work/proto/packs/0003.pk</code> <code>?trials=30</code> <code>?autostart=1</code>.
+After the automatic trials, every real ArrowDown/ArrowUp keypress runs one more trial (alternating warm/cold) so the owner can
+measure real input latency on a device.</p>
+<button id="go">Start (creates AudioContext)</button>
+<span id="status" class="dim"></span>
+<div id="log"></div>
+<h2>window.__results</h2>
+<pre id="results"></pre>
+<script type="module">
+import * as C from './proto-common.js';
+const { logLine, r3 } = C;
+const P = C.params;
+const PACK = P.get('pack') || '/work/proto/packs/0003.pk';
+const PACK2 = P.get('pack2') || PACK.replace(/0003\.pk$/, '0004.pk');
+const TRIALS = +(P.get('trials') || 30);
+const COMMIT_LEAD = 0.015;
+
+function parseHeader(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes.length < 8 || String.fromCharCode(...bytes.subarray(0, 4)) !== 'SFPK') throw new Error('not SFPK');
+  const version = dv.getUint8(4), count = dv.getUint8(5), reserved = dv.getUint16(6, true);
+  if (version !== 1) throw new Error('SFPK version ' + version);
+  if (bytes.length < 8 + 4 * count) throw new Error('truncated header');
+  const lens = [], offsets = [];
+  let pos = 8 + 4 * count;
+  for (let i = 0; i < count; i++) { const l = dv.getUint32(8 + 4 * i, true); lens.push(l); offsets.push(pos); pos += l; }
+  return { version, count, reserved, lens, offsets, headerBytes: 8 + 4 * count, totalBytes: pos };
+}
+async function rangeFetch(url, start, end) {
+  const t0 = performance.now();
+  const r = await fetch(url + (url.includes('?') ? '&' : '?') + 'r=' + start + '-' + end, { headers: { Range: `bytes=${start}-${end}` } });
+  const buf = await r.arrayBuffer();
+  return { status: r.status, bytes: buf.byteLength, ms: performance.now() - t0, buf,
+           contentRange: r.headers.get('Content-Range'), acceptRanges: r.headers.get('Accept-Ranges'), protocol: null };
+}
+
+async function main() {
+  const results = { page: 'pack-fetch', ok: false, params: { pack: PACK, trials: TRIALS, commitLeadMs: COMMIT_LEAD * 1000 } };
+  const status = document.getElementById('status');
+  try {
+    await C.gate('go');
+    const ctx = new AudioContext({ latencyHint: 'interactive' });
+    await ctx.resume().catch(() => {});
+    results.env = C.envInfo(ctx);
+    logLine(`AudioContext ${ctx.state} sr=${ctx.sampleRate}`);
+
+    // ---- 1. whole pack ------------------------------------------------------------------
+    const whole = await C.fetchBytes(PACK + '?whole=1');
+    const wholeBytes = new Uint8Array(whole.buf);
+    const hdr = parseHeader(wholeBytes);
+    if (hdr.totalBytes !== wholeBytes.length) throw new Error(`pack length ${wholeBytes.length} != header total ${hdr.totalBytes}`);
+    const members = hdr.lens.map((l, i) => wholeBytes.subarray(hdr.offsets[i], hdr.offsets[i] + l));
+    const membersLookOgg = members.filter(m => m[0] === 0x4f && m[1] === 0x67 && m[2] === 0x67 && m[3] === 0x53).length;
+    results.whole = { status: whole.status, bytes: whole.bytes, ms: r3(whole.ms), members: hdr.count, headerBytes: hdr.headerBytes, membersStartingWithOggS: membersLookOgg,
+                      kBps: r3(whole.bytes / 1024 / (whole.ms / 1000)) };
+    const perf = performance.getEntriesByType('resource').find(e => e.name.includes(PACK));
+    if (perf) results.whole.nextHopProtocol = perf.nextHopProtocol;
+    logLine(`whole pack: ${whole.bytes} B in ${r3(whole.ms)} ms, ${hdr.count} members, ${membersLookOgg} start with OggS`, membersLookOgg === hdr.count ? 'ok' : 'bad');
+
+    // ---- 2. header + one member via Range ---------------------------------------------
+    const h = await rangeFetch(PACK, 0, 8 + 4 * 24 - 1);
+    const hdr2 = parseHeader(new Uint8Array(h.buf));
+    const j = 7;
+    const m = await rangeFetch(PACK, hdr2.offsets[j], hdr2.offsets[j] + hdr2.lens[j] - 1);
+    const mBytes = new Uint8Array(m.buf);
+    const identical = mBytes.length === members[j].length && mBytes.every((b, i) => b === members[j][i]);
+    results.range = { header: { status: h.status, bytes: h.bytes, ms: r3(h.ms), contentRange: h.contentRange, acceptRanges: h.acceptRanges },
+                      member: { index: j, status: m.status, bytes: m.bytes, ms: r3(m.ms), contentRange: m.contentRange, identicalToWholeMember: identical },
+                      rangeHonoured: h.status === 206 && m.status === 206 && identical,
+                      bytesSavedVsWhole: whole.bytes - h.bytes - m.bytes, headerPlusMemberMs: r3(h.ms + m.ms) };
+    logLine(`range: header ${h.status} ${h.bytes} B ${r3(h.ms)} ms; member ${j} ${m.status} ${m.bytes} B ${r3(m.ms)} ms (${m.contentRange}); identical=${identical}`, results.range.rangeHonoured ? 'ok' : 'bad');
+
+    // ---- 3. decode one member + schedule --------------------------------------------------
+    let decodePath = 'native', wasm = null;
+    async function decode(bytes) {
+      const t0 = performance.now();
+      if (decodePath === 'native') {
+        try { const b = await ctx.decodeAudioData(bytes.slice().buffer); return { buf: b, ms: performance.now() - t0 }; }
+        catch (e) { decodePath = 'wasm'; logLine('native decode failed: ' + e.message + ' -> WASM', 'warn'); }
+      }
+      if (!wasm) { wasm = new window['ogg-opus-decoder'].OggOpusDecoder(); await wasm.ready; }
+      const r = await wasm.decodeFile(bytes.slice());
+      const b = ctx.createBuffer(r.channelData.length, r.samplesDecoded, r.sampleRate);
+      r.channelData.forEach((cd, i) => b.copyToChannel(cd, i));
+      return { buf: b, ms: performance.now() - t0 };
+    }
+    const d0 = await decode(mBytes);
+    const g = ctx.createGain(); g.gain.value = 0.5; g.connect(ctx.destination);
+    const s0 = ctx.createBufferSource(); s0.buffer = d0.buf; s0.connect(g);
+    const t0 = ctx.currentTime + COMMIT_LEAD; s0.start(t0, C.LEAD_IN_S); s0.stop(t0 + 1.0);
+    results.decode = { path: decodePath, ms: r3(d0.ms), duration: r3(d0.buf.duration), sampleRate: d0.buf.sampleRate, scheduledAt: r3(t0), offset: C.LEAD_IN_S };
+    logLine(`decoded member ${j} via ${decodePath} in ${r3(d0.ms)} ms (dur ${r3(d0.buf.duration)} s), scheduled at ${r3(t0)} (+15 ms)`);
+
+    // ---- 4. keydown -> start() latency trials ------------------------------------------------
+    const decoded = []; // warm buffers: all members of pack 1
+    const tDecAll = performance.now();
+    for (const mb of members) decoded.push((await decode(mb)).buf);
+    results.decodeAllMembersMs = r3(performance.now() - tDecAll);
+    // cold source: pack 2 members via Range (header fetched once, cached in memory)
+    const h2 = await rangeFetch(PACK2, 0, 8 + 4 * 24 - 1);
+    const hdrCold = parseHeader(new Uint8Array(h2.buf));
+    let coldIdx = 0, warmIdx = 0;
+    const warm = [], cold = [], coldParts = { fetch: [], decode: [] };
+    let live = false;
+    async function trial(kind, evTimeStamp) {
+      // evTimeStamp: KeyboardEvent.timeStamp (performance-clock ms)
+      let buf, fetchMs = 0, decMs = 0;
+      if (kind === 'warm') { buf = decoded[warmIdx++ % decoded.length]; }
+      else {
+        const k = coldIdx++ % hdrCold.count;
+        const tf = performance.now();
+        const r = await rangeFetch(PACK2 + '?cold=' + coldIdx, hdrCold.offsets[k], hdrCold.offsets[k] + hdrCold.lens[k] - 1);
+        fetchMs = performance.now() - tf;
+        if (r.status !== 206) throw new Error('cold range status ' + r.status);
+        const d = await decode(new Uint8Array(r.buf)); buf = d.buf; decMs = d.ms;
+      }
+      const src = ctx.createBufferSource(); src.buffer = buf; src.connect(g);
+      const now = ctx.currentTime, when = now + COMMIT_LEAD;
+      src.start(when, C.LEAD_IN_S); src.stop(when + 0.08);
+      const tCall = performance.now();
+      const toStartCall = tCall - evTimeStamp;
+      const outLat = (ctx.outputLatency || 0) * 1000;
+      const rec = { toStartCallMs: toStartCall, toAudibleScheduledMs: toStartCall + COMMIT_LEAD * 1000 + outLat, outputLatencyMs: outLat, fetchMs, decodeMs: decMs, live };
+      (kind === 'warm' ? warm : cold).push(rec);
+      if (kind === 'cold') { coldParts.fetch.push(fetchMs); coldParts.decode.push(decMs); }
+      return rec;
+    }
+    // synthetic keydown events drive the automatic trials (event.timeStamp is taken at construction)
+    let pending = null;
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const kind = pending || (liveToggle = !liveToggle ? 'cold' : 'warm');
+      pending = null;
+      trial(kind, e.timeStamp).then(rec => { if (live) { logLine(`live ${kind}: ${r3(rec.toStartCallMs)} ms to start()`); summarize(); } });
+    });
+    let liveToggle = false;
+    for (let i = 0; i < TRIALS; i++) {
+      for (const kind of ['warm', 'cold']) {
+        pending = kind;
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        await C.sleep(kind === 'warm' ? 30 : 60);
+      }
+      status.textContent = `trial ${i + 1}/${TRIALS}`;
+    }
+    await C.sleep(200);
+    const st = arr => Object.fromEntries(Object.entries(C.stats(arr)).map(([k, v]) => [k, r3(v)]));
+    function summarize() {
+      results.latency = {
+        warm: { n: warm.length, toStartCallMs: st(warm.map(w => w.toStartCallMs)), toAudibleScheduledMs: st(warm.map(w => w.toAudibleScheduledMs)), outputLatencyMs: st(warm.map(w => w.outputLatencyMs)) },
+        cold: { n: cold.length, toStartCallMs: st(cold.map(w => w.toStartCallMs)), toAudibleScheduledMs: st(cold.map(w => w.toAudibleScheduledMs)),
+                fetchMs: st(coldParts.fetch), decodeMs: st(coldParts.decode) },
+        targets: { warmStartCallMs: 20, coldStartCallMs: 150, note: 'plan M0b-6: warm < 20 ms, cold < 150 ms at 4G throttle (throttle manually in DevTools; this run is unthrottled unless you did)' },
+        liveTrials: warm.filter(w => w.live).length + cold.filter(w => w.live).length,
+        note: 'toStartCallMs = performance.now() after src.start() minus KeyboardEvent.timeStamp; toAudibleScheduledMs adds COMMIT_LEAD (15 ms) and ctx.outputLatency. Automatic trials use dispatched KeyboardEvents (no OS input latency); live trials use real keys.',
+      };
+      results.ok = results.whole.membersStartingWithOggS === hdr.count && results.range.rangeHonoured && warm.length >= TRIALS && cold.length >= TRIALS
+                   && results.latency.warm.toStartCallMs.p95 < 20 && results.latency.cold.toStartCallMs.p95 < 150;
+      C.showResults(results); window.__results = results;
+    }
+    summarize();
+    logLine(`warm: p50 ${results.latency.warm.toStartCallMs.p50} / p95 ${results.latency.warm.toStartCallMs.p95} ms to start(); cold: p50 ${results.latency.cold.toStartCallMs.p50} / p95 ${results.latency.cold.toStartCallMs.p95} ms (fetch p50 ${results.latency.cold.fetchMs.p50}, decode p50 ${results.latency.cold.decodeMs.p50})`, results.ok ? 'ok' : 'warn');
+    logLine('automatic trials done. Press ArrowDown/ArrowUp for live trials (alternating cold/warm); results update in place.');
+    live = true;
+    C.finish(results);
+    return; // keep ctx open for live trials
+  } catch (e) {
+    results.ok = false; results.error = String(e && e.stack || e);
+    logLine('ERROR ' + results.error, 'bad');
+    C.finish(results);
+  }
+}
+main();
+</script>
+</body>
+</html>

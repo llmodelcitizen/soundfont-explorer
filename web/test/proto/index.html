@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soundfont Explorer M0b prototypes</title>
+<link rel="stylesheet" href="proto.css">
+</head>
+<body>
+<h1>M0b browser-side validation prototypes</h1>
+<p>Serve with <code>python3 web/test/proto/serve.py</code> from the repo root (Range-capable; <code>python3 -m http.server</code> is not).
+Each page shows its numbers, stores them in <code>window.__results</code> and sets the title to <code>DONE</code> when finished.</p>
+<ol>
+  <li><a href="decode-probe.html">decode-probe.html</a> — M0b-2/5: native <code>decodeAudioData</code> vs WASM, worker pool throughput (N = 1, 2, 4).</li>
+  <li><a href="ab-switch.html">ab-switch.html</a> — M0b-3: gapless two-variant schedule, A/B every 100 ms for 60 s with 10 ms ramps; drift, voices, click proxies.
+      (<a href="ab-switch.html?seconds=10">10 s</a> · <a href="ab-switch.html?ramp=0&seconds=10">hard-cut control</a> · <a href="ab-switch.html?audio=synthetic&seconds=10">synthetic</a>)</li>
+  <li><a href="pack-fetch.html">pack-fetch.html</a> — M0b-6: SFPK whole vs header + member Range, keydown → <code>start()</code> warm / cold.</li>
+</ol>
+<h2>On a phone / another machine</h2>
+<p>Open <code>http://&lt;bimmer LAN IP&gt;:8765/web/test/proto/</code>, tap Start on each page (the click creates the AudioContext), wait
+for the title to read DONE, then copy the JSON block at the bottom (long-press / select all) and paste it into
+<code>docs/validation.md</code>. Safari needs the page to be reached over HTTP on the LAN (no HTTPS required for Web Audio).</p>
+<h2>Headless automation</h2>
+<pre>cd web/test/proto && npm install && npx playwright install chromium
+node run-probes.mjs                       # all three pages, JSON on stdout
+node run-probes.mjs ab-switch --seconds=5 # quick</pre>
+</body>
+</html>

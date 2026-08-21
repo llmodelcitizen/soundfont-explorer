@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ab-switch</title>
+<link rel="stylesheet" href="proto.css">
+<script src="vendor/ogg-opus-decoder.min.js" charset="UTF-8"></script>
+</head>
+<body>
+<h1>M0b-3 A/B scheduling</h1>
+<p class="dim">Two variants scheduled gaplessly on one timeline (<code>src.start(t, 0.12 + …)</code>, 5 ms seam ramps over the
+bit-identical 20 ms overlap), then A/B'd every 100 ms with 10 ms linear gain ramps. An AudioWorklet tap
+(ScriptProcessor fallback) records per-block RMS of each variant, first/second-difference of the mix and DC mirrors
+of the two switch gains, so the page can measure planned-vs-actual switch time, voices alive and click proxies.
+Params: <code>?seconds=60</code> <code>?segs=6</code> <code>?ramp=10</code> (ms; 0 = hard cut control) <code>?period=100</code>
+<code>?autostart=1</code> <code>?audio=synthetic</code> <code>?k=4</code> (glitch factor) <code>?floor=0.05</code> <code>?tap=sp</code> (force ScriptProcessor fallback).</p>
+<button id="go">Start (creates AudioContext, plays for N s)</button>
+<span id="status" class="dim"></span>
+<div id="log"></div>
+<h2>window.__results</h2>
+<pre id="results"></pre>
+<script type="module">
+import * as C from './proto-common.js';
+const { logLine, r3 } = C;
+const P = C.params;
+const SECONDS = +(P.get('seconds') || 60);
+const SEGS = +(P.get('segs') || 6);
+const RAMP = (+(P.get('ramp') ?? 10)) / 1000;
+const PERIOD = (+(P.get('period') || 100)) / 1000;
+const SEAM_RAMP = 0.005, START_LEAD = 0.25, LOOKAHEAD = 0.06, TICK_MS = 20;
+const K = +(P.get('k') || 4), FLOOR = +(P.get('floor') || 0.05);
+
+async function decodeAll(ctx, urls) {
+  const out = [];
+  let path = 'native';
+  let wasm = null;
+  for (const u of urls) {
+    const { buf } = await C.fetchBytes(u);
+    try {
+      if (path === 'native') { out.push(await ctx.decodeAudioData(buf.slice(0))); continue; }
+    } catch (e) { path = 'wasm'; logLine('native decode failed (' + e.message + ') -> WASM', 'warn'); }
+    if (!wasm) { wasm = new window['ogg-opus-decoder'].OggOpusDecoder(); await wasm.ready; }
+    const r = await wasm.decodeFile(new Uint8Array(buf));
+    const ab = ctx.createBuffer(r.channelData.length, r.samplesDecoded, r.sampleRate);
+    r.channelData.forEach((cd, i) => ab.copyToChannel(cd, i));
+    out.push(ab);
+  }
+  if (wasm) wasm.free();
+  return { buffers: out, path };
+}
+
+async function makeTap(ctx) {
+  // returns { node (4 inputs: A, B, gA, gB; 1 output), kind, collect(): Promise<rows Float32Array[]> }
+  const rowsChunks = []; let startFrame = null; let resolveFinal;
+  const finalP = new Promise(r => resolveFinal = r);
+  if (ctx.audioWorklet && P.get('tap') !== 'sp') {
+    await ctx.audioWorklet.addModule('ab-tap-worklet.js');
+    const node = new AudioWorkletNode(ctx, 'ab-tap', { numberOfInputs: 4, numberOfOutputs: 1, outputChannelCount: [2] });
+    let skipped = null;
+    node.port.onmessage = e => { if (startFrame === null) startFrame = e.data.startFrame; rowsChunks.push(e.data.rows); skipped = (e.data.nowFrame - e.data.startFrame) / 128 - e.data.blocks; if (e.data.final) resolveFinal(); };
+    return { node, kind: 'AudioWorklet', inputs: [0, 1, 2, 3],
+             collect: async () => { node.port.postMessage('flush'); await finalP; return { rowsChunks, startFrame, skippedBlocks: skipped }; } };
+  }
+  // ScriptProcessor fallback: merge A(L,R) B(L,R) gA gB into 6 channels, compute the same rows per 128 frames
+  const merger = ctx.createChannelMerger(6);
+  const sp = ctx.createScriptProcessor(1024, 6, 2);
+  let p1 = [0, 0], p2 = [0, 0], pg = [0, 0];
+  sp.onaudioprocess = ev => {
+    if (startFrame === null) startFrame = Math.round(ev.playbackTime * ctx.sampleRate);
+    const ib = ev.inputBuffer, ob = ev.outputBuffer;
+    const ch = [0, 1, 2, 3, 4, 5].map(i => ib.getChannelData(i));
+    const o = [ob.getChannelData(0), ob.getChannelData(1)];
+    const rows = new Float32Array((ib.length / 128) * 8);
+    const base = Math.round(ev.playbackTime * ctx.sampleRate);
+    for (let blk = 0; blk < ib.length / 128; blk++) {
+      let sa = 0, sb = 0, d1 = 0, d2 = 0;
+      for (let c = 0; c < 2; c++) {
+        let q1 = p1[c], q2 = p2[c];
+        for (let i = blk * 128; i < blk * 128 + 128; i++) {
+          const va = ch[c][i], vb = ch[2 + c][i], m = va + vb; o[c][i] = m;
+          sa += va * va; sb += vb * vb;
+          const f = Math.abs(m - q1); if (f > d1) d1 = f;
+          const s = Math.abs(m - 2 * q1 + q2); if (s > d2) d2 = s;
+          q2 = q1; q1 = m;
+        }
+        p1[c] = q1; p2[c] = q2;
+      }
+      let gs = 0;
+      for (const c of [4, 5]) { let prev = pg[c - 4]; for (let i = blk * 128; i < blk * 128 + 128; i++) { const d = Math.abs(ch[c][i] - prev); if (d > gs) gs = d; prev = ch[c][i]; } pg[c - 4] = prev; }
+      rows.set([Math.sqrt(sa / 256), Math.sqrt(sb / 256), d1, d2, ch[4][blk * 128 + 127], ch[5][blk * 128 + 127], gs, (base - startFrame) / 128 + blk], blk * 8);
+    }
+    rowsChunks.push(rows);
+  };
+  merger.connect(sp);
+  // adapter: expose 4 "inputs" as gain nodes feeding the merger
+  const ins = [0, 1, 2, 3].map(() => ctx.createGain());
+  const split = [ctx.createChannelSplitter(2), ctx.createChannelSplitter(2)];
+  ins[0].connect(split[0]); split[0].connect(merger, 0, 0); split[0].connect(merger, 1, 1);
+  ins[1].connect(split[1]); split[1].connect(merger, 0, 2); split[1].connect(merger, 1, 3);
+  ins[2].connect(merger, 0, 4); ins[3].connect(merger, 0, 5);
+  return { node: sp, kind: 'ScriptProcessor', inputNodes: ins, inputs: [0, 1, 2, 3],
+           collect: async () => { await C.sleep(100); return { rowsChunks, startFrame }; } };
+}
+
+async function main() {
+  const results = { page: 'ab-switch', ok: false, params: { seconds: SECONDS, segs: SEGS, rampMs: RAMP * 1000, periodMs: PERIOD * 1000, seamRampMs: 5, leadInS: C.LEAD_IN_S } };
+  const status = document.getElementById('status');
+  try {
+    await C.gate('go');
+    const ctx = new AudioContext({ latencyHint: 'interactive' });
+    await ctx.resume().catch(() => {});
+    results.env = C.envInfo(ctx);
+    logLine(`AudioContext ${ctx.state} sr=${ctx.sampleRate} baseLatency=${ctx.baseLatency}`);
+
+    const disc = await C.discoverVariants(2, SEGS);
+    if (disc.variants.length < 2) throw new Error('need 2 variants');
+    results.audio = { kind: disc.kind, variants: disc.variants.map(v => v.id) };
+    logLine(`audio: ${disc.kind} (${disc.variants.map(v => v.id).join(' / ')})`, disc.kind === 'real' ? 'ok' : 'warn');
+    const tDec = performance.now();
+    const dec = await Promise.all(disc.variants.map(v => decodeAll(ctx, v.segs.slice(0, SEGS).map(s => `${v.dir}/seg/${s}`))));
+    results.decode = { path: dec[0].path, ms: r3(performance.now() - tDec), buffers: dec.map(d => d.buffers.map(b => ({ dur: r3(b.duration), sr: b.sampleRate }))) };
+    const bufSr = dec[0].buffers[0].sampleRate;
+    results.decode.resampledByContext = bufSr !== ctx.sampleRate;
+    logLine(`decoded ${SEGS}x2 segments via ${dec[0].path} in ${results.decode.ms} ms; buffer sr=${bufSr} ctx sr=${ctx.sampleRate}`);
+
+    // ---- graph ----------------------------------------------------------------------
+    const tap = await makeTap(ctx);
+    tap.node.connect(ctx.destination);
+    const inNode = i => tap.inputNodes ? tap.inputNodes[i] : tap.node;
+    const inIdx = i => tap.inputNodes ? 0 : i;
+    const vg = [ctx.createGain(), ctx.createGain()];           // switch gains (A/B)
+    vg[0].gain.value = 1; vg[1].gain.value = 0;
+    vg[0].connect(inNode(0), 0, inIdx(0)); vg[1].connect(inNode(1), 0, inIdx(1));
+    const dc = ctx.createConstantSource(); dc.offset.value = 1;
+    const mg = [ctx.createGain(), ctx.createGain()];           // DC mirrors of the switch gains
+    mg[0].gain.value = 1; mg[1].gain.value = 0;
+    dc.connect(mg[0]); dc.connect(mg[1]); mg[0].connect(inNode(2), 0, inIdx(2)); mg[1].connect(inNode(3), 0, inIdx(3));
+    results.tap = tap.kind;
+    logLine(`tap: ${tap.kind}`);
+
+    // ---- gapless schedule -------------------------------------------------------------
+    const origin = ctx.currentTime + START_LEAD;
+    const nSlices = Math.ceil(SECONDS / C.SLICE_S) + 1;
+    const voices = { started: 0, ended: 0, alive: 0, maxAlive: 0 };
+    const seamTimes = [], loopSeamTimes = [];
+    for (let v = 0; v < 2; v++) {
+      for (let i = 0; i < nSlices; i++) {
+        const buf = dec[v].buffers[i % SEGS];
+        const t0 = origin + i * C.SLICE_S;
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const g = ctx.createGain();
+        src.connect(g); g.connect(vg[v]);
+        if (i === 0) { g.gain.setValueAtTime(1, t0); }
+        else { g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(1, t0 + SEAM_RAMP); }
+        if (i < nSlices - 1) {
+          const tNext = t0 + C.SLICE_S;
+          g.gain.setValueAtTime(1, tNext); g.gain.linearRampToValueAtTime(0, tNext + SEAM_RAMP);
+          src.start(t0, C.LEAD_IN_S);              // offset = lead_in + (pos - sliceStart), pos == sliceStart here
+          src.stop(tNext + SEAM_RAMP + 0.001);   // not at the natural end: Chrome fires onended twice then
+          if (v === 0) ((i + 1) % SEGS === 0 ? loopSeamTimes : seamTimes).push(tNext);
+        } else { src.start(t0, C.LEAD_IN_S); src.stop(t0 + SECONDS - i * C.SLICE_S + 0.1); }
+        voices.started++; voices.alive++;
+        let endedOnce = false;
+        src.onended = () => { if (endedOnce) { voices.doubleEnded = (voices.doubleEnded || 0) + 1; return; } endedOnce = true; voices.ended++; voices.alive--; };
+      }
+    }
+    dc.start(origin - 0.1);
+    voices.maxAlive = voices.alive; // everything is pre-scheduled: alive counts scheduled+playing sources
+    results.schedule = { origin, slicesPerVariant: nSlices, sourcesScheduled: voices.started, seams: seamTimes.length, loopJumpSeams: loopSeamTimes.length };
+    logLine(`scheduled ${voices.started} sources (${nSlices} per variant), origin=${origin.toFixed(3)}`);
+
+    // ---- A/B switching loop -----------------------------------------------------------
+    const switches = []; // { k, planned, leadMs }
+    const nSwitches = Math.floor(SECONDS / PERIOD) - 1;
+    let k = 1, cur = 0;
+    const p0 = performance.now(), c0 = ctx.currentTime;
+    const aliveSamples = [];
+    await new Promise(resolve => {
+      const iv = setInterval(() => {
+        const now = ctx.currentTime;
+        while (k <= nSwitches && origin + k * PERIOD < now + LOOKAHEAD) {
+          const T = origin + k * PERIOD;
+          const nxt = 1 - cur;
+          for (const [g, from, to] of [[vg[cur], 1, 0], [vg[nxt], 0, 1], [mg[cur], 1, 0], [mg[nxt], 0, 1]]) {
+            g.gain.cancelScheduledValues(T);
+            g.gain.setValueAtTime(from, T);
+            if (RAMP > 0) g.gain.linearRampToValueAtTime(to, T + RAMP); else g.gain.setValueAtTime(to, T);
+          }
+          switches.push({ k, planned: T, leadMs: (T - now) * 1000, to: nxt });
+          cur = nxt; k++;
+        }
+        aliveSamples.push(voices.alive);
+        const el = now - origin;
+        status.textContent = `t=${el.toFixed(1)}s switches=${switches.length} alive=${voices.alive}`;
+        if (el >= SECONDS + 0.2) { clearInterval(iv); resolve(); }
+      }, TICK_MS);
+    });
+    const p1 = performance.now(), c1 = ctx.currentTime;
+    results.clock = { wallElapsedMs: r3(p1 - p0), ctxElapsedMs: r3((c1 - c0) * 1000), ctxMinusWallMs: r3((c1 - c0) * 1000 - (p1 - p0)) };
+    const leads = switches.map(s => s.leadMs);
+    results.switches = { planned: nSwitches, issued: switches.length, late: switches.filter(s => s.leadMs < 0).length,
+                         schedulingLeadMs: Object.fromEntries(Object.entries(C.stats(leads)).map(([a, b]) => [a, r3(b)])) };
+    results.voices = { scheduled: voices.started, ended: voices.ended, doubleOnended: voices.doubleEnded || 0, aliveAtEnd: voices.alive, maxAliveDuringRun: Math.max(...aliveSamples), minAliveDuringRun: Math.min(...aliveSamples) };
+    logLine(`switch loop done: ${switches.length}/${nSwitches} switches, late=${results.switches.late}, lead p50=${results.switches.schedulingLeadMs.p50} ms; ctx-wall drift ${results.clock.ctxMinusWallMs} ms`);
+
+    // ---- analyse the tap log --------------------------------------------------------
+    const { rowsChunks, startFrame, skippedBlocks } = await tap.collect();
+    results.tapSkippedBlocks = skippedBlocks;
+    const COLS = 8;
+    const total = rowsChunks.reduce((a, c) => a + c.length / COLS, 0);
+    const rows = new Float32Array(total * COLS); let off = 0; for (const c of rowsChunks) { rows.set(c, off); off += c.length; }
+    const sr = ctx.sampleRate, blockS = 128 / sr;
+    const R = (b, c) => rows[b * COLS + c];
+    const tOf = i => startFrame / sr + R(i, 7) * blockS;          // uses the worklet's own frame counter per row
+    const blockAt = t => { const want = (t - startFrame / sr) / blockS; let lo = 0, hi = total - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (R(m, 7) < want) lo = m + 1; else hi = m; } return lo; };
+    // Consistency of the worklet's frame counter. d == 0 means currentFrame did not advance between two
+    // process() calls (seen in headless Chromium as 3 stalls followed by a +4 catch-up, net 0 frames lost);
+    // d > 1 with no preceding stall means render quanta were really skipped (audio dropout).
+    let gaps = 0, stalls = 0, netMissingPlayback = 0; const gapList = [];
+    for (let b = 1; b < total; b++) {
+      const d = R(b, 7) - R(b - 1, 7); if (d === 1) continue;
+      const at = tOf(b - 1) + blockS - origin;
+      if (d === 0) stalls++; else gaps++;
+      if (at > 0 && at < SECONDS) netMissingPlayback += d - 1;
+      if (gapList.length < 20) gapList.push({ atSecondsFromOrigin: r3(at), deltaBlocks: d - 1 });
+    }
+    results.tapLog = { rows: total, counterStalls: stalls, jumps: gaps, netMissingBlocksDuringPlayback: netMissingPlayback, skippedBlocksReported: skippedBlocks, events: gapList,
+                       gapsDuringPlayback: netMissingPlayback > 0 ? 1 : 0 };
+    // actual switch time from the DC mirrors: first block where gTo >= 0.5 (crossover), planned crossover = T + RAMP/2
+    const drift = [];
+    // ScriptProcessor fallback: its input is captured bufferSize*2 before playbackTime, so calibrate a constant
+    // offset from the first switch (wide search) and measure the rest relative to it. Worklet path: offset 0.
+    let tapOffset = 0;
+    if (tap.kind === 'ScriptProcessor' && switches.length) {
+      const s0 = switches[0];
+      const b0 = Math.max(0, blockAt(s0.planned - 0.25)), b1 = Math.min(total - 1, blockAt(s0.planned + 0.25));
+      for (let b = b0; b <= b1; b++) if (R(b, 4 + s0.to) >= 0.5 && (b === 0 || R(b - 1, 4 + s0.to) < 0.5)) { tapOffset = tOf(b) - (s0.planned + RAMP / 2); break; }
+    }
+    results.tapTimeOffsetMs = r3(tapOffset * 1000);
+    for (const s of switches) {
+      const b0 = Math.max(0, blockAt(s.planned + tapOffset) - 4), b1 = Math.min(total - 1, blockAt(s.planned + tapOffset + RAMP) + 4);
+      let found = null;
+      for (let b = b0; b <= b1; b++) { const g = R(b, 4 + s.to); if (g >= 0.5) { found = b; break; } }
+      if (found === null) { s.actual = null; continue; }
+      // linear interpolate inside the block using the previous block's gain
+      const gPrev = found > 0 ? R(found - 1, 4 + s.to) : 0, gCur = R(found, 4 + s.to);
+      const frac = gCur > gPrev ? (0.5 - gPrev) / (gCur - gPrev) : 1;
+      const actual = tOf(found) + frac * blockS;   // time at which gain crossed 0.5 (block value is sampled at its last frame)
+      s.actual = actual; s.errMs = (actual - tapOffset - (s.planned + RAMP / 2)) * 1000;
+      drift.push(s.errMs);
+    }
+    const absd = drift.map(Math.abs);
+    results.switchTiming = { measured: drift.length, unresolved: switches.length - drift.length,
+                             errMs: { p50: r3(C.percentile(absd, 50)), p95: r3(C.percentile(absd, 95)), max: r3(Math.max(...absd)), meanSigned: r3(drift.reduce((a, b) => a + b, 0) / (drift.length || 1)) },
+                             resolutionMs: r3(blockS * 1000), note: 'actual = time the DC-mirrored target gain crossed 0.5; planned = T + ramp/2; resolution one 128-frame block' };
+    // gain sum check: gA + gB should be 1 everywhere (linear crossfade)
+    let gsumMin = 1, gsumMax = 1, bothZero = 0;
+    let gstepMax = 0, gstepBig = 0;
+    const expectedStep = RAMP > 0 ? 1 / (RAMP * sr) : 1;
+    for (let b = 0; b < total; b++) { const t = tOf(b); if (t < origin || t > origin + SECONDS) continue; const g = R(b, 4) + R(b, 5); if (g < gsumMin) gsumMin = g; if (g > gsumMax) gsumMax = g; if (g < 0.01) bothZero++; const gs = R(b, 6); if (gs > gstepMax) gstepMax = gs; if (gs > expectedStep * 1.5 + 1e-6) gstepBig++; }
+    results.gainSum = { min: r3(gsumMin), max: r3(gsumMax), blocksBothZero: bothZero };
+    results.gainSteps = { maxPerSample: Number(gstepMax.toPrecision(4)), expectedPerSample: Number(expectedStep.toPrecision(4)), blocksExceeding1p5x: gstepBig,
+                          note: 'per-sample |dg| on the DC mirrors; a click caused by the switch automation itself would be a step >> expected' };
+    // glitch proxy: block max |first diff| of the mix vs running median of the previous 50 blocks
+    const classify = tt => {
+      const t = tt - tapOffset;
+      for (const s of switches) if (t >= s.planned - blockS && t <= s.planned + RAMP + blockS) return 'switch';
+      for (const x of loopSeamTimes) if (t >= x - blockS && t <= x + SEAM_RAMP + 0.02 + blockS) return 'loopJump';
+      for (const x of seamTimes) if (t >= x - blockS && t <= x + SEAM_RAMP + 0.02 + blockS) return 'seam';
+      return 'elsewhere';
+    };
+    const counts = { switch: 0, seam: 0, loopJump: 0, elsewhere: 0 }, blocksIn = { switch: 0, seam: 0, loopJump: 0, elsewhere: 0 };
+    const maxRatio = { switch: 0, seam: 0, loopJump: 0, elsewhere: 0 };
+    const hist = [];
+    const d1All = [];
+    for (let b = 0; b < total; b++) {
+      const t = tOf(b);
+      if (t < origin + 0.5 || t > origin + SECONDS - 0.1) continue;
+      const d1 = R(b, 2);
+      hist.push(d1); if (hist.length > 50) hist.shift();
+      const med = C.percentile(hist, 50) || 0;
+      const cls = classify(t);
+      blocksIn[cls]++;
+      const ratio = d1 / Math.max(med, 1e-6);
+      if (ratio > maxRatio[cls]) maxRatio[cls] = ratio;
+      if (d1 > FLOOR && d1 > K * med) counts[cls]++;
+      d1All.push(d1);
+    }
+    results.glitch = { method: `block max|x[n]-x[n-1]| > max(${FLOOR}, ${K} x running median of previous 50 blocks)`, counts, blocksInspected: blocksIn,
+                       maxRatioToMedian: Object.fromEntries(Object.entries(maxRatio).map(([a, b]) => [a, r3(b)])),
+                       firstDiffStats: { p50: r3(C.percentile(d1All, 50)), p95: r3(C.percentile(d1All, 95)), max: r3(Math.max(...d1All)) } };
+    const rmsA = [], rmsB = [];
+    for (let b = 0; b < total; b++) { const t = tOf(b); if (t < origin || t > origin + SECONDS) continue; rmsA.push(R(b, 0)); rmsB.push(R(b, 1)); }
+    let silentBlocks = 0, run = 0, silentRuns = 0, longestRun = 0;
+    const rmsT = [];
+    for (let b = 0; b < total; b++) { const t = tOf(b); if (t < origin || t > origin + SECONDS) continue; rmsT.push(t); }
+    const nearLoopJump = t => loopSeamTimes.some(x => t >= x - blockS && t < x + 0.15) || t < origin + 0.15; // song start is legitimately silent for a few ms
+    rmsA.forEach((x, i) => { if (x + rmsB[i] < 1e-4 && !nearLoopJump(rmsT[i])) { silentBlocks++; run++; if (run === 4) silentRuns++; if (run > longestRun) longestRun = run; } else run = 0; });
+    results.levels = { rmsA_mean: r3(Math.sqrt(rmsA.reduce((a, x) => a + x * x, 0) / rmsA.length)), rmsB_mean: r3(Math.sqrt(rmsB.reduce((a, x) => a + x * x, 0) / rmsB.length)),
+                       silentBlocks, silentRunsOver10ms: silentRuns, longestSilentRunMs: r3(longestRun * blockS * 1000), totalBlocks: rmsA.length,
+                       note: 'both variants digitally silent at once, excluding 150 ms after song start / loop jumps (E1M1 opens with ~27 ms of digital silence); with hard cuts single blocks can legitimately be silent rests in the music' };
+    logLine(`switch timing |err| p50=${results.switchTiming.errMs.p50} p95=${results.switchTiming.errMs.p95} max=${results.switchTiming.errMs.max} ms (block ${results.switchTiming.resolutionMs} ms)`, results.switchTiming.errMs.max < 3 ? 'ok' : 'bad');
+    logLine(`gain sum min/max ${results.gainSum.min}/${results.gainSum.max}; glitch counts ${JSON.stringify(counts)} of blocks ${JSON.stringify(blocksIn)}; maxRatio ${JSON.stringify(results.glitch.maxRatioToMedian)}`,
+            counts.switch + counts.seam + counts.elsewhere === 0 ? 'ok' : 'warn');
+    logLine(`levels: A ${results.levels.rmsA_mean} B ${results.levels.rmsB_mean}, silent blocks ${results.levels.silentBlocks}/${results.levels.totalBlocks}, silent runs >10 ms: ${silentRuns}`);
+    logLine(`tap: ${total} rows, render gaps during playback: ${results.tapLog.gapsDuringPlayback}; voices max alive ${results.voices.maxAliveDuringRun}, double onended ${results.voices.doubleOnended}`);
+    results.ok = results.switches.late === 0 && results.switches.issued === nSwitches && results.switchTiming.unresolved === 0 && results.switchTiming.errMs.max < 1
+                 && results.gainSteps.blocksExceeding1p5x === 0 && results.tapLog.gapsDuringPlayback === 0 && results.levels.silentRunsOver10ms === 0 && results.voices.doubleOnended === 0;
+    results.verdict = { noLateSwitches: results.switches.late === 0, allSwitchesIssued: results.switches.issued === nSwitches, switchTimingMaxErrMs: results.switchTiming.errMs.max,
+                        noGainSteps: results.gainSteps.blocksExceeding1p5x === 0, noRenderGapsDuringPlayback: results.tapLog.gapsDuringPlayback === 0,
+                        noSilentRuns: results.levels.silentRunsOver10ms === 0, clockDriftMs: results.clock.ctxMinusWallMs,
+                        glitchesAtSwitches: counts.switch, glitchesAtSeams: counts.seam, glitchesElsewhere: counts.elsewhere, glitchesAtLoopJumps_expected: counts.loopJump };
+    await ctx.close();
+  } catch (e) {
+    results.ok = false; results.error = String(e && e.stack || e);
+    logLine('ERROR ' + results.error, 'bad');
+  }
+  C.finish(results);
+}
+main();
+</script>
+</body>
+</html>

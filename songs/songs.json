@@ -1,0 +1,498 @@
+{
+  "schema": 1,
+  "generated_by": "songs/tools/canon.py",
+  "tail_s": 3,
+  "canonicalization": "events re-serialised without running status; text meta 'soundfont-explorer:end' appended on track 0 at midi_end + tail_s; duration_s = ceil((midi_end + tail_s)/2)*2",
+  "default": "freedoom-e1m1",
+  "songs": [
+    {
+      "id": "freedoom-e1m1",
+      "title": "Steel and Brass (Freedoom E1M1)",
+      "composer": "J.Astartes and Mr795",
+      "sequencer": "J.Astartes and Mr795",
+      "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_e1m1.mid",
+      "license": {
+        "id": "BSD-3-Clause",
+        "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc",
+        "notice_text": "Copyright © 2001-2024\nContributors to the Freedoom project.  All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n  * Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in the\n    documentation and/or other materials provided with the distribution.\n  * Neither the name of the Freedoom project nor the names of its\n    contributors may be used to endorse or promote products derived from\n    this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS\nIS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\nTO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\nPARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\nOR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nFor a list of contributors to the Freedoom project, see the file\nCREDITS."
+      },
+      "modifications": "none",
+      "midi_end_s": 186.178,
+      "duration_s": 190,
+      "sha256": "0d7149f6d01cc99a7a6e99da6e265746a43046fa31e3ee312854058b604fe7e2",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": true,
+      "file": "freedoom-e1m1.mid",
+      "src": "src/freedoom-d_e1m1.mid",
+      "src_sha256": "d7e43ae0b04d7476acde1cb27bfd918badc1eb88f23604738de16002387b24b5",
+      "original_midi_end_s": 186.178,
+      "original_last_event_s": 186.185,
+      "end_marker_s": 189.182,
+      "format": 1,
+      "division": 96,
+      "tracks": 17
+    },
+    {
+      "id": "freedoom-map20",
+      "title": "Wrath of Horizon (Freedoom MAP20)",
+      "composer": "J.Astartes",
+      "sequencer": "J.Astartes",
+      "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_map20.mid",
+      "license": {
+        "id": "BSD-3-Clause",
+        "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc",
+        "notice_text": "Copyright © 2001-2024\nContributors to the Freedoom project.  All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n  * Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in the\n    documentation and/or other materials provided with the distribution.\n  * Neither the name of the Freedoom project nor the names of its\n    contributors may be used to endorse or promote products derived from\n    this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS\nIS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\nTO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\nPARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\nOR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nFor a list of contributors to the Freedoom project, see the file\nCREDITS."
+      },
+      "modifications": "none",
+      "midi_end_s": 206.197,
+      "duration_s": 210,
+      "sha256": "5548d067938c131289ff9ab1871e71edd7cbbc6ecd4dfb19e1587325b411e43a",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "freedoom-map20.mid",
+      "src": "src/freedoom-d_map20.mid",
+      "src_sha256": "658081c2ee6ff155629a381e64c214e3e1ea6732963d80779cf7faeda1299a64",
+      "original_midi_end_s": 206.197,
+      "original_last_event_s": 207.047,
+      "end_marker_s": 209.199,
+      "format": 1,
+      "division": 96,
+      "tracks": 17
+    },
+    {
+      "id": "freedoom-e2m5",
+      "title": "Reminiscence (Freedoom E2M5)",
+      "composer": "Korp",
+      "sequencer": "Korp",
+      "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_e2m5.mid",
+      "license": {
+        "id": "BSD-3-Clause",
+        "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc",
+        "notice_text": "Copyright © 2001-2024\nContributors to the Freedoom project.  All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n  * Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in the\n    documentation and/or other materials provided with the distribution.\n  * Neither the name of the Freedoom project nor the names of its\n    contributors may be used to endorse or promote products derived from\n    this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS\nIS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\nTO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\nPARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\nOR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nFor a list of contributors to the Freedoom project, see the file\nCREDITS."
+      },
+      "modifications": "none",
+      "midi_end_s": 216.464,
+      "duration_s": 220,
+      "sha256": "9a29b7efa7d85958d583aa04747c19442e051879f1b047994887b9df334b123f",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "freedoom-e2m5.mid",
+      "src": "src/freedoom-d_e2m5.mid",
+      "src_sha256": "fc8e36cbe907e3dd89fc6c93c60826508a3001e0f6a56ba06de902f57249fe91",
+      "original_midi_end_s": 216.464,
+      "original_last_event_s": 216.47,
+      "end_marker_s": 219.467,
+      "format": 1,
+      "division": 96,
+      "tracks": 14
+    },
+    {
+      "id": "freedoom-e2m4",
+      "title": "Diodine (Freedoom E2M4)",
+      "composer": "Korp",
+      "sequencer": "Korp",
+      "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_e2m4.mid",
+      "license": {
+        "id": "BSD-3-Clause",
+        "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc",
+        "notice_text": "Copyright © 2001-2024\nContributors to the Freedoom project.  All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n  * Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in the\n    documentation and/or other materials provided with the distribution.\n  * Neither the name of the Freedoom project nor the names of its\n    contributors may be used to endorse or promote products derived from\n    this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS\nIS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\nTO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\nPARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\nOR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nFor a list of contributors to the Freedoom project, see the file\nCREDITS."
+      },
+      "modifications": "none",
+      "midi_end_s": 215.377,
+      "duration_s": 220,
+      "sha256": "97c3b201f67cdb32ce481c817779f24177acd4ab7f1ec754ec60bbbbeb4e5251",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "freedoom-e2m4.mid",
+      "src": "src/freedoom-d_e2m4.mid",
+      "src_sha256": "f31cff9b4ee165425cef1208f873d41d88e269da637b7e117476a736882df6f2",
+      "original_midi_end_s": 215.377,
+      "original_last_event_s": 215.385,
+      "end_marker_s": 218.381,
+      "format": 1,
+      "division": 96,
+      "tracks": 12
+    },
+    {
+      "id": "freedoom-e3m8",
+      "title": "The Zenith (Freedoom E3M8)",
+      "composer": "Lola \"BlueWorrior\" Harvey",
+      "sequencer": "Lola \"BlueWorrior\" Harvey",
+      "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_e3m8.mid",
+      "license": {
+        "id": "BSD-3-Clause",
+        "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc",
+        "notice_text": "Copyright © 2001-2024\nContributors to the Freedoom project.  All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n  * Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in the\n    documentation and/or other materials provided with the distribution.\n  * Neither the name of the Freedoom project nor the names of its\n    contributors may be used to endorse or promote products derived from\n    this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS\nIS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\nTO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\nPARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\nOR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nFor a list of contributors to the Freedoom project, see the file\nCREDITS."
+      },
+      "modifications": "none",
+      "midi_end_s": 151.986,
+      "duration_s": 156,
+      "sha256": "1574b87fe0b36e95779ec905dd7992ca6b9dc64e75c7293a03abd37e6c6ddb0f",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "freedoom-e3m8.mid",
+      "src": "src/freedoom-d_e3m8.mid",
+      "src_sha256": "a0acf8021f0387bab3e385d74cdb93fe9aa5a833b33c9cd55053369f853a3c8b",
+      "original_midi_end_s": 151.986,
+      "original_last_event_s": 152.0,
+      "end_marker_s": 154.986,
+      "format": 1,
+      "division": 96,
+      "tracks": 16
+    },
+    {
+      "id": "freedoom-map02",
+      "title": "Dark Underworld (Freedoom MAP02)",
+      "composer": "Lola \"BlueWorrior\" Harvey",
+      "sequencer": "Lola \"BlueWorrior\" Harvey",
+      "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_map02.mid",
+      "license": {
+        "id": "BSD-3-Clause",
+        "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc",
+        "notice_text": "Copyright © 2001-2024\nContributors to the Freedoom project.  All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n  * Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in the\n    documentation and/or other materials provided with the distribution.\n  * Neither the name of the Freedoom project nor the names of its\n    contributors may be used to endorse or promote products derived from\n    this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS\nIS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\nTO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\nPARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\nOR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nFor a list of contributors to the Freedoom project, see the file\nCREDITS."
+      },
+      "modifications": "none",
+      "midi_end_s": 122.171,
+      "duration_s": 126,
+      "sha256": "340718e923fcbf39723d14aaac349f84ed63a64ebec30abfd5cf8ec023d9e5a2",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "freedoom-map02.mid",
+      "src": "src/freedoom-d_map02.mid",
+      "src_sha256": "5ddc052d57820399fbfb838a3dba40d50a7488c07c9db75519239203f9b80e10",
+      "original_midi_end_s": 122.171,
+      "original_last_event_s": 122.182,
+      "end_marker_s": 125.171,
+      "format": 1,
+      "division": 96,
+      "tracks": 10
+    },
+    {
+      "id": "freedoom-map01",
+      "title": "Not My First Rodeo... (Freedoom MAP01)",
+      "composer": "Lola \"BlueWorrior\" Harvey",
+      "sequencer": "Lola \"BlueWorrior\" Harvey",
+      "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_map01.mid",
+      "license": {
+        "id": "BSD-3-Clause",
+        "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc",
+        "notice_text": "Copyright © 2001-2024\nContributors to the Freedoom project.  All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n  * Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in the\n    documentation and/or other materials provided with the distribution.\n  * Neither the name of the Freedoom project nor the names of its\n    contributors may be used to endorse or promote products derived from\n    this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS\nIS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\nTO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\nPARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\nOR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nFor a list of contributors to the Freedoom project, see the file\nCREDITS."
+      },
+      "modifications": "none",
+      "midi_end_s": 83.467,
+      "duration_s": 88,
+      "sha256": "9d79ef8ff85e5550ffb05f4789f389cdcc9e2e21a6ca0d0aecfe9d0e75706f1d",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "freedoom-map01.mid",
+      "src": "src/freedoom-d_map01.mid",
+      "src_sha256": "d63d4caec74dafe0604d6b024789cf826cea5aaff43a15e0cb5c01172b9daf83",
+      "original_midi_end_s": 83.467,
+      "original_last_event_s": 83.478,
+      "end_marker_s": 86.473,
+      "format": 1,
+      "division": 96,
+      "tracks": 11
+    },
+    {
+      "id": "joplin-maple-leaf",
+      "title": "Maple Leaf Rag",
+      "composer": "Scott Joplin",
+      "sequencer": "Chris Sawer",
+      "source_url": "https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=23",
+      "license": {
+        "id": "PD",
+        "url": "https://www.mutopiaproject.org/legal.html",
+        "notice_text": "Maple Leaf Rag — typeset by Chris Sawer for the Mutopia Project (Mutopia-2011/11/13-23) and dedicated to the public domain by the typesetter (\"The contributor of this music has dedicated their contribution into the public domain\", https://www.mutopiaproject.org/legal.html). The composition itself is public domain."
+      },
+      "modifications": "program changes injected at tick 0: track 1 ch1 -> 0 Acoustic Grand Piano; track 2 ch2 -> 0 Acoustic Grand Piano",
+      "midi_end_s": 144.0,
+      "duration_s": 148,
+      "sha256": "ffe2c9ecd739855908d7f3b9ae8c028a2204aebb31aec9e988597423f769c2fc",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial",
+        "single_instrument:piano"
+      ],
+      "default": false,
+      "file": "joplin-maple-leaf.mid",
+      "src": "src/mutopia-maple.mid",
+      "src_sha256": "3dd712a85fabd267f5a2cee5cb23af4683408c2f29b8814721844498f1ee4f66",
+      "original_midi_end_s": 144.0,
+      "original_last_event_s": 144.0,
+      "end_marker_s": 147.0,
+      "format": 1,
+      "division": 384,
+      "tracks": 3,
+      "programs": [
+        {
+          "track": 1,
+          "channel": 1,
+          "program": 0,
+          "name": "Acoustic Grand Piano"
+        },
+        {
+          "track": 2,
+          "channel": 2,
+          "program": 0,
+          "name": "Acoustic Grand Piano"
+        }
+      ]
+    },
+    {
+      "id": "joplin-entertainer",
+      "title": "The Entertainer",
+      "composer": "Scott Joplin",
+      "sequencer": "Chris Sawer",
+      "source_url": "https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=263",
+      "license": {
+        "id": "PD",
+        "url": "https://www.mutopiaproject.org/legal.html",
+        "notice_text": "The Entertainer — typeset by Chris Sawer for the Mutopia Project (Mutopia-2016/11/25-263) and dedicated to the public domain by the typesetter (\"The contributor of this music has dedicated their contribution into the public domain\", https://www.mutopiaproject.org/legal.html). The composition itself is public domain."
+      },
+      "modifications": "program changes injected at tick 0: track 1 ch1 -> 0 Acoustic Grand Piano; track 2 ch2 -> 0 Acoustic Grand Piano",
+      "midi_end_s": 252.917,
+      "duration_s": 256,
+      "sha256": "f2c1651e739b28f6f979197388a624a70da6baff44d70676daa77ae54ffa7f69",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial",
+        "single_instrument:piano"
+      ],
+      "default": false,
+      "file": "joplin-entertainer.mid",
+      "src": "src/mutopia-entertainer.mid",
+      "src_sha256": "33e4e81ee64ffb2edf90d1c6a1ddee7276507296bfb915c2bb775231a467f066",
+      "original_midi_end_s": 252.917,
+      "original_last_event_s": 252.917,
+      "end_marker_s": 255.918,
+      "format": 1,
+      "division": 384,
+      "tracks": 3,
+      "programs": [
+        {
+          "track": 1,
+          "channel": 1,
+          "program": 0,
+          "name": "Acoustic Grand Piano"
+        },
+        {
+          "track": 2,
+          "channel": 2,
+          "program": 0,
+          "name": "Acoustic Grand Piano"
+        }
+      ]
+    },
+    {
+      "id": "bach-bwv565",
+      "title": "Toccata in D minor, BWV 565 (Toccata section)",
+      "composer": "Johann Sebastian Bach",
+      "sequencer": "Anonymous (Mutopia)",
+      "source_url": "https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=1780",
+      "license": {
+        "id": "PD",
+        "url": "https://www.mutopiaproject.org/legal.html",
+        "notice_text": "Toccata in D minor, BWV 565 (Toccata section) — typeset by Anonymous (Mutopia) for the Mutopia Project (Mutopia-2011/09/11-1780) and dedicated to the public domain by the typesetter (\"The contributor of this music has dedicated their contribution into the public domain\", https://www.mutopiaproject.org/legal.html). The composition itself is public domain."
+      },
+      "modifications": "trimmed at tick 45312 (118.0 s of 572.0 s), final chord held to tick 46080 (120.0 s): The source is the complete Toccata AND Fugue (9:32 at the file's fixed 60 bpm). The Toccata section ends with the D-minor chord on beats 1-2 of bar 30 (tick 44544-45312) under a fermata; the fugue subject enters on beat 3 of bar 30. There is no rest or cadence anywhere near 2:45 (bar 42 is mid-exposition with a running sixteenth-note voice), so the cut is placed at the fugue's entry (tick 45312 = 118.0 s) and the written fermata is realised by holding the final chord to the bar line (tick 46080 = 120.0 s). | program changes already present in the source (ch1=19, ch2=19, ch3=19), none injected",
+      "midi_end_s": 120.0,
+      "duration_s": 124,
+      "sha256": "55e5552523df26ae11e82fe44424f8ae7154bc1a2a8e036b2dcd76e6fcab09ba",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "bach-bwv565.mid",
+      "src": "src/mutopia-BWV565-ToccataFugue.mid",
+      "src_sha256": "1aabd00967aded08d6633482c211af46f679d97f01cfeaca43c83a59dfeeeb6b",
+      "original_midi_end_s": 572.0,
+      "original_last_event_s": 572.0,
+      "end_marker_s": 123.0,
+      "format": 1,
+      "division": 384,
+      "tracks": 4,
+      "programs": [
+        {
+          "track": 1,
+          "channel": 1,
+          "program": 19,
+          "name": "Church Organ"
+        },
+        {
+          "track": 2,
+          "channel": 2,
+          "program": 19,
+          "name": "Church Organ"
+        },
+        {
+          "track": 3,
+          "channel": 3,
+          "program": 19,
+          "name": "Church Organ"
+        }
+      ],
+      "trim": {
+        "cut_tick": 45312,
+        "hold_to_tick": 46080,
+        "why": "The source is the complete Toccata AND Fugue (9:32 at the file's fixed 60 bpm). The Toccata section ends with the D-minor chord on beats 1-2 of bar 30 (tick 44544-45312) under a fermata; the fugue subject enters on beat 3 of bar 30. There is no rest or cadence anywhere near 2:45 (bar 42 is mid-exposition with a running sixteenth-note voice), so the cut is placed at the fugue's entry (tick 45312 = 118.0 s) and the written fermata is realised by holding the final chord to the bar line (tick 46080 = 120.0 s)."
+      }
+    },
+    {
+      "id": "sousa-stars-stripes",
+      "title": "The Stars and Stripes Forever",
+      "composer": "John Philip Sousa",
+      "sequencer": "Benjamin Bloomfield",
+      "source_url": "https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=626",
+      "license": {
+        "id": "PD",
+        "url": "https://www.mutopiaproject.org/legal.html",
+        "notice_text": "The Stars and Stripes Forever — typeset by Benjamin Bloomfield for the Mutopia Project (Mutopia-2017/11/06-626) and dedicated to the public domain by the typesetter (\"The contributor of this music has dedicated their contribution into the public domain\", https://www.mutopiaproject.org/legal.html). The composition itself is public domain."
+      },
+      "modifications": "program changes injected at tick 0: track 1 ch1 -> 56 Trumpet (notes >= 84 -> ch4 72 Piccolo); track 2 ch2 -> 60 French Horn (notes < 50 -> ch3 58 Tuba). Mutopia's file is the 1897 John Church piano edition: two tracks ('upper' ch1 54-92, 'lower' ch2 32-68) with no program changes. It is re-voiced as a small wind band by pitch: upper -> Trumpet, with everything from C6 (84) up -> Piccolo (the trio's obbligato and the octave doublings); lower -> French Horn for the after-beat chords, with everything below D3 (50) -> Tuba for the bass line.",
+      "midi_end_s": 211.75,
+      "duration_s": 216,
+      "sha256": "4f9dbf8431df36fc81d41dc26d6ca1100c7d4030e8612c7a84a4d2f38774269c",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "sousa-stars-stripes.mid",
+      "src": "src/mutopia-TheStarsAndStripesForever.mid",
+      "src_sha256": "73e75e76c0708dbec4697ab61438b5c63ca3b5c1a56de59f1f5ab0478fd3b274",
+      "original_midi_end_s": 211.75,
+      "original_last_event_s": 211.75,
+      "end_marker_s": 214.75,
+      "format": 1,
+      "division": 384,
+      "tracks": 3,
+      "programs": [
+        {
+          "track": 1,
+          "channel": 1,
+          "program": 56,
+          "name": "Trumpet",
+          "split": [
+            {
+              "from_note": 84,
+              "channel": 4,
+              "program": 72,
+              "name": "Piccolo"
+            }
+          ]
+        },
+        {
+          "track": 2,
+          "channel": 2,
+          "program": 60,
+          "name": "French Horn",
+          "split": [
+            {
+              "below_note": 50,
+              "channel": 3,
+              "program": 58,
+              "name": "Tuba"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "oga-casual-afternoon",
+      "title": "Casual Afternoon",
+      "composer": "roppychop (Roppy Chop Studios)",
+      "sequencer": "roppychop (Roppy Chop Studios)",
+      "source_url": "https://opengameart.org/content/original-midi-album",
+      "license": {
+        "id": "CC0-1.0",
+        "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "notice_text": "Casual Afternoon by roppychop (Roppy Chop Studios) — released under the CC0 1.0 Universal Public Domain Dedication (OpenGameArt.org \"Original MIDI Album\", https://opengameart.org/content/original-midi-album)."
+      },
+      "modifications": "none",
+      "midi_end_s": 86.875,
+      "duration_s": 90,
+      "sha256": "44bc741053241f7836a25b33733d669900ba23db3cca399fd26732ad7f3f80cd",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "oga-casual-afternoon.mid",
+      "src": "src/oga-roppychop-casual-afternoon.mid",
+      "src_sha256": "185b02a04e46ca37eee19645053cdafe1c21d2d0687504353fe7d0c895981494",
+      "original_midi_end_s": 86.875,
+      "original_last_event_s": 86.875,
+      "end_marker_s": 89.875,
+      "format": 0,
+      "division": 192,
+      "tracks": 1
+    },
+    {
+      "id": "sfp-diagnostic",
+      "title": "Soundfont Explorer GM diagnostic",
+      "composer": "Soundfont Explorer (generated)",
+      "sequencer": "songs/tools/make_diagnostic.py",
+      "source_url": "https://github.com/quaintops/soundfont-explorer/blob/main/songs/tools/make_diagnostic.py",
+      "license": {
+        "id": "CC0-1.0",
+        "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "notice_text": "Soundfont Explorer GM diagnostic by Soundfont Explorer (generated) — released under the CC0 1.0 Universal Public Domain Dedication (generated for this project, see LICENSES/sfp-diagnostic-cc0.txt)."
+      },
+      "modifications": "none",
+      "midi_end_s": 169.74,
+      "duration_s": 174,
+      "sha256": "e3927d26b76b8da2c2317a58c956c84ddcb8f30ae37f2c93f39646660fc39794",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial",
+        "drums_only"
+      ],
+      "default": false,
+      "file": "sfp-diagnostic.mid",
+      "src": null,
+      "src_sha256": "b2cab684abd5b6ddbd2cc0cde8dba3b1536f04e5de11aea6db210a20f5b35faf",
+      "original_midi_end_s": 169.74,
+      "original_last_event_s": 169.75,
+      "end_marker_s": 172.74,
+      "format": 1,
+      "division": 480,
+      "tracks": 4
+    }
+  ]
+}

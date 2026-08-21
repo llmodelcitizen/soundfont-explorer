@@ -129,9 +129,14 @@ def load_songs(paths: Paths) -> list[dict[str, Any]]:
         if p.exists():
             data = load_json(p)
             entries = data["songs"] if isinstance(data, dict) else data
+            default_id = data.get("default") if isinstance(data, dict) else None
             for s in entries:
                 s = dict(s)
                 s["_dir"] = p.parent
+                # `file` (songs/tools/canon.py) is relative to the songs root; default: <id>.mid next to the json
+                s["_path"] = (paths.songs / s["file"]) if s.get("file") else (p.parent / f"{s['id']}.mid")
+                if default_id and s["id"] == default_id:
+                    s["default"] = True
                 songs.append(s)
     seen = set()
     for s in songs:
@@ -148,4 +153,6 @@ def load_variants(paths: Paths) -> list[dict[str, Any]]:
 
 
 def song_midi_path(song: dict[str, Any]) -> Path:
+    if song.get("_path"):
+        return Path(song["_path"])
     return Path(song["_dir"]) / f"{song['id']}.mid"

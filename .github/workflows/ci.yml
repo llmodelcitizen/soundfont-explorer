@@ -26,6 +26,12 @@ jobs:
       - name: sfr tests
         if: hashFiles('render/sfr/tests/**') != ''
         run: python3 -m unittest discover -s render/sfr/tests -t render -v
+      - name: de-risking script tests
+        if: hashFiles('render/scripts/derisk/tests/**') != ''
+        run: python3 -m unittest discover -s render/scripts/derisk/tests -t render/scripts/derisk -v
+      - name: proto pack tests
+        if: hashFiles('web/test/proto/test_mkpack.py') != ''
+        run: python3 -m unittest discover -s web/test/proto -p 'test_*.py' -v
 
   web:
     name: web unit tests
@@ -54,7 +60,7 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get install -y -q shellcheck >/dev/null
-          mapfile -t files < <(git ls-files '*.sh' 'web/scripts/*' 'render/scripts/*' | grep -v legacy/ || true)
+          mapfile -t files < <( { git ls-files '*.sh'; git ls-files render/scripts/sfr web/scripts | xargs -r grep -lE '^#!/(usr/)?bin/(ba)?sh' ; } | grep -v legacy/ | sort -u || true)
           if [ "${#files[@]}" -gt 0 ]; then shellcheck "${files[@]}"; else echo "no shell scripts"; fi
       - name: hadolint
         if: hashFiles('render/Dockerfile') != ''

@@ -48,7 +48,7 @@ def opusenc_argv(bitrate_kbps: int, settings: RenderSettings, out: Path) -> list
     return ["opusenc", "--quiet", "--raw", "--raw-rate", str(settings.sample_rate), "--raw-chan", "2",
             "--raw-bits", "16", "--bitrate", str(bitrate_kbps), "--vbr",
             "--comp", str(settings.opus_comp), "--framesize", str(settings.opus_framesize_ms),
-            "--discard-comments", "--discard-pictures", "-", str(out)]
+            "--discard-comments", "--discard-pictures", "--padding", "0", "-", str(out)]
 
 
 def encode_segment(chunk: bytes, out: Path, bitrate_kbps: int, settings: RenderSettings, timeout_s: int = 300) -> None:

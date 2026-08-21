@@ -1,0 +1,11 @@
+"Soundfont Explorer GM diagnostic" (sfp-diagnostic.mid)
+
+Generated deterministically by songs/tools/make_diagnostic.py for this project.
+It is not a musical work: it steps through all 128 General MIDI programs, the
+GM drum map, pitch bends and controller sweeps so every synth bank can be
+checked for coverage.
+
+To the extent possible under law, the Soundfont Explorer authors have waived all
+copyright and related or neighbouring rights to this file under the
+CC0 1.0 Universal Public Domain Dedication.  Full text: CC0-1.0.txt
+https://creativecommons.org/publicdomain/zero/1.0/

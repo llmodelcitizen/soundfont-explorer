@@ -1,0 +1,17 @@
+{
+  "name": "soundfont-explorer-proto",
+  "private": true,
+  "version": "0.0.0",
+  "description": "M0b browser-side validation prototypes (no build step; served by serve.py)",
+  "type": "module",
+  "scripts": {
+    "serve": "python3 serve.py",
+    "probes": "node run-probes.mjs"
+  },
+  "dependencies": {
+    "ogg-opus-decoder": "^1.6.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
+  }
+}
