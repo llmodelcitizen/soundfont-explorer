@@ -47,9 +47,33 @@ def _allocated_cpus() -> int:
 
 
 WORKERS = int(os.environ.get("SFR_WORKERS", "0")) or _allocated_cpus()
-# 256 MB admission units; leave ~12% of RAM for page cache and the encoders
-MEM_UNITS = int(os.environ.get("SFR_MEM_UNITS", "0")) or max(
-    64, int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") * 0.88 / (256 << 20)))
+def _allocated_memory() -> int:
+    """Bytes this task may use. Like the CPU count, SC_PHYS_PAGES reports the HOST's memory, not
+    the cgroup ceiling Batch imposes — reading it granted 327 GiB of admission inside a 342 GiB
+    container, leaving 78 MiB per worker for process overhead, and the kernel OOM-killed engines
+    (48 'exit' failures on the first real run)."""
+    host = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    for f in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            v = pathlib.Path(f).read_text().strip()
+            if v not in ("max", ""):
+                n = int(v)
+                if 0 < n < host:
+                    return n
+        except (OSError, ValueError):
+            continue
+    return host
+
+
+# 256 MB admission units. Admission covers the SF2 bytes a job loads; every worker also needs
+# room for the engine, ffmpeg and ~150 opusenc processes on top, so reserve a unit per worker
+# before dividing rather than taking a flat fraction.
+def _mem_units(workers: int) -> int:
+    usable = _allocated_memory() - max(8 << 30, workers * (256 << 20))
+    return max(64, int(usable / (256 << 20)))
+
+
+MEM_UNITS = int(os.environ.get("SFR_MEM_UNITS", "0")) or _mem_units(WORKERS)
 
 
 def log(*a):
@@ -151,6 +175,26 @@ def publisher(songs: list[str], sel: list[str], done: threading.Event, failed: l
             failed.append(song)
 
 
+def unexpected_failures(songs: list[str]) -> list[tuple]:
+    """Failed jobs whose reason is not `silent`.
+
+    `sfr render` exits 1 if any job failed at all, and `silent` failures are normal (a font with
+    no sound for this song — 41 of them across these 12 songs). Propagating that would mark every
+    Batch shard FAILED and burn the retry budget re-running finished work, so the shard judges its
+    own outcome from the metas instead."""
+    bad = []
+    for song in songs:
+        d = WORK / "renders" / song
+        for m in sorted(d.glob("*/meta.json")) if d.exists() else []:
+            try:
+                j = json.loads(m.read_text())
+            except (OSError, ValueError):
+                continue
+            if j.get("status") == "failed" and j.get("reason") != "silent":
+                bad.append((song, j.get("variant"), j.get("reason")))
+    return bad
+
+
 def main() -> int:
     WORK.mkdir(parents=True, exist_ok=True)
     sh(["s5cmd", "cp", f"s3://{FONTS_BUCKET}/shards.json", "/scratch/shards.json"])
@@ -177,11 +221,23 @@ def main() -> int:
 
     done.set()
     pub.join(timeout=3600)
+
+    bad = unexpected_failures(songs)
+    if bad:
+        log(f"!! {len(bad)} unexpected render failures (not `silent`):")
+        for song, var, reason in bad[:40]:
+            log(f"     {song}/{var}: {reason}")
+        errs = WORK / "errors.log"
+        if errs.exists():
+            log("-- tail of work/errors.log --")
+            sys.stdout.write("\n".join(errs.read_text(errors="replace").splitlines()[-60:]) + "\n")
     if failed:
         log(f"!! shard failed to publish: {' '.join(failed)}")
         return 1
-    log("shard complete")
-    return rc
+    if bad:
+        return 1
+    log(f"shard complete (render rc={rc}; only expected `silent` failures)")
+    return 0
 
 
 if __name__ == "__main__":

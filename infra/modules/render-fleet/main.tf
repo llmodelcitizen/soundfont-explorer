@@ -355,9 +355,14 @@ resource "aws_batch_job_definition" "shard" {
     jobRoleArn       = aws_iam_role.job.arn
     executionRoleArn = aws_iam_role.execution.arn
     command          = ["python3", "/opt/cloud/shard.py"]
+    # Sized so every instance_type can host a shard, not just the 48xlarges. Requesting 180 vCPU
+    # made the two 24xlarge entries unschedulable, halving spot placement options exactly when
+    # capacity is tight — the first real run sat with one shard RUNNABLE for 25 minutes.
+    # shard.py reads its worker count and memory ceiling from the cgroup, so a shard adapts to
+    # whatever it lands on, and two can share a 48xlarge.
     resourceRequirements = [
-      { type = "VCPU", value = "180" },
-      { type = "MEMORY", value = "350000" },
+      { type = "VCPU", value = "90" },
+      { type = "MEMORY", value = "170000" },
     ]
     environment = [
       { name = "SFR_FONTS_BUCKET", value = aws_s3_bucket.fonts.id },
