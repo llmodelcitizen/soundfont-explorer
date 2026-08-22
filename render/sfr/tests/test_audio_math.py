@@ -3,7 +3,7 @@ from pathlib import Path
 
 from sfr.config import RenderSettings
 from sfr.encode import BYTES_PER_FRAME, opusenc_argv, padded_length_samples, slice_bytes
-from sfr.loudness import gain_db, is_silent, master_filter, parse_loudnorm
+from sfr.loudness import gain_db, is_silent, master_filter, parse_ebur128, parse_loudnorm
 from sfr.ogg import OggError, opus_info
 from sfr.sched import JobError
 
@@ -101,3 +101,61 @@ class TestOgg(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+EBUR128_SUMMARY = """[Parsed_ebur128_0 @ 0x55] Summary:
+
+  Integrated loudness:
+    I:         -21.3 LUFS
+    Threshold: -31.6 LUFS
+
+  Loudness range:
+    LRA:         5.5 LU
+    Threshold: -41.5 LUFS
+    LRA low:   -24.9 LUFS
+    LRA high:  -19.4 LUFS
+
+  True peak:
+    Peak:       -6.5 dBFS
+
+[out#0/null @ 0x66] video:0KiB audio:4500KiB
+"""
+
+
+class TestParseEbur128(unittest.TestCase):
+    def test_summary(self):
+        d = parse_ebur128(EBUR128_SUMMARY)
+        self.assertAlmostEqual(d["input_i"], -21.3)
+        self.assertAlmostEqual(d["input_tp"], -6.5)
+        self.assertAlmostEqual(d["input_lra"], 5.5)
+
+    def test_silence_floors_at_minus_70_and_inf_peak(self):
+        """ffmpeg floors integrated loudness at -70 LUFS and prints `-inf` for the peak; both must
+        still classify as silent (threshold -50), the way loudnorm's -inf did."""
+        txt = EBUR128_SUMMARY.replace("-21.3 LUFS", "-70.0 LUFS").replace("-6.5 dBFS", "-inf dBFS")
+        d = parse_ebur128(txt)
+        self.assertEqual(d["input_i"], -70.0)
+        self.assertEqual(d["input_tp"], float("-inf"))
+        self.assertTrue(is_silent(d["input_i"], RenderSettings()))
+
+    def test_reads_the_last_summary(self):
+        d = parse_ebur128(EBUR128_SUMMARY.replace("-21.3", "-9.9") + EBUR128_SUMMARY)
+        self.assertAlmostEqual(d["input_i"], -21.3)
+
+    def test_no_summary_raises(self):
+        with self.assertRaises(JobError):
+            parse_ebur128("ffmpeg said nothing useful")
+
+
+class TestDeterministicSerial(unittest.TestCase):
+    def test_serial_is_stable_and_per_stream(self):
+        from sfr.encode import stream_serial
+        self.assertEqual(stream_serial("abc", "seg/0000.opus"), stream_serial("abc", "seg/0000.opus"))
+        self.assertNotEqual(stream_serial("abc", "seg/0000.opus"), stream_serial("abc", "seg/0001.opus"))
+        self.assertNotEqual(stream_serial("abc", "seg/0000.opus"), stream_serial("abd", "seg/0000.opus"))
+        self.assertLess(stream_serial("abc", "seg/0000.opus"), 2 ** 32)
+
+    def test_argv_carries_serial_only_when_given(self):
+        self.assertNotIn("--serial", opusenc_argv(48, S, Path("x.opus")))
+        self.assertEqual(opusenc_argv(48, S, Path("x.opus"), 123)[-4:],
+                         ["--serial", "123", "-", "x.opus"])

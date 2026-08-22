@@ -183,8 +183,10 @@ def clean_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
-def outputs_complete(job: Job, paths: Paths) -> bool:
-    return job.master_path(paths).exists() and all(p.exists() for p, _ in job.segment_files(paths))
+def outputs_complete(job: Job, paths: Paths, *, need_master: bool = True) -> bool:
+    if need_master and not job.master_path(paths).exists():
+        return False
+    return all(p.exists() for p, _ in job.segment_files(paths))
 
 
 class State:
@@ -203,7 +205,8 @@ def classify(job: Job, paths: Paths) -> str:
         return State.FAILED
     if meta.get("status") == "running":   # interrupted mid-job
         return State.TODO
-    if meta.get("spec_hash") == job.spec_hash and outputs_complete(job, paths):
+    if meta.get("spec_hash") == job.spec_hash and outputs_complete(
+            job, paths, need_master=bool(meta.get("master_kept", True))):
         return State.DONE
     if meta.get("master_hash") == job.master_hash and job.master_path(paths).exists():
         return State.REENCODE

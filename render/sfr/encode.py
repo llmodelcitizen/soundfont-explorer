@@ -7,6 +7,7 @@ from one master, so overlaps are bit-identical → phase-perfect seam crossfades
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from .config import RenderSettings
@@ -44,33 +45,48 @@ def slice_bytes(pcm: bytes, start_sample: int, n_samples: int) -> bytes:
     return pcm[a:b]
 
 
-def opusenc_argv(bitrate_kbps: int, settings: RenderSettings, out: Path) -> list[str]:
-    return ["opusenc", "--quiet", "--raw", "--raw-rate", str(settings.sample_rate), "--raw-chan", "2",
+def stream_serial(seed: str, name: str) -> int:
+    """Deterministic Ogg bitstream serial. opusenc picks a random one per stream, which made
+    every re-render produce different bytes for bit-identical audio (only the 4-byte serial and
+    the page CRCs changed) — so published objects could never be verified by content."""
+    return int.from_bytes(hashlib.blake2b(f"{seed}/{name}".encode(), digest_size=4).digest(), "big")
+
+
+def opusenc_argv(bitrate_kbps: int, settings: RenderSettings, out: Path, serial: int | None = None) -> list[str]:
+    argv = ["opusenc", "--quiet", "--raw", "--raw-rate", str(settings.sample_rate), "--raw-chan", "2",
             "--raw-bits", "16", "--bitrate", str(bitrate_kbps), "--vbr",
             "--comp", str(settings.opus_comp), "--framesize", str(settings.opus_framesize_ms),
-            "--discard-comments", "--discard-pictures", "--padding", "0", "-", str(out)]
+            "--discard-comments", "--discard-pictures", "--padding", "0"]
+    if serial is not None:
+        argv += ["--serial", str(serial)]
+    return argv + ["-", str(out)]
 
 
-def encode_segment(chunk: bytes, out: Path, bitrate_kbps: int, settings: RenderSettings, timeout_s: int = 300) -> None:
+def encode_segment(chunk: bytes, out: Path, bitrate_kbps: int, settings: RenderSettings, timeout_s: int = 300,
+                   serial: int | None = None) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".opus.tmp")
-    run(opusenc_argv(bitrate_kbps, settings, tmp), input_bytes=chunk, timeout_s=timeout_s, what=f"opusenc {out.name}")
+    run(opusenc_argv(bitrate_kbps, settings, tmp, serial), input_bytes=chunk, timeout_s=timeout_s,
+        what=f"opusenc {out.name}")
     tmp.replace(out)
 
 
-def encode_tiers(pcm: bytes, seg_dir: Path, listen_dir: Path, settings: RenderSettings, duration_s: int) -> dict:
+def encode_tiers(pcm: bytes, seg_dir: Path, listen_dir: Path, settings: RenderSettings, duration_s: int,
+                 serial_seed: str = "") -> dict:
     sr = settings.sample_rate
     sizes = {"seg": [], "listen": []}
     n = settings.n_slices(duration_s)
     for i in range(n):
         out = seg_dir / f"{i:04d}.opus"
         chunk = slice_bytes(pcm, i * settings.slice_s * sr, settings.segment_samples)
-        encode_segment(chunk, out, settings.scrub_bitrate_kbps, settings)
+        encode_segment(chunk, out, settings.scrub_bitrate_kbps, settings,
+                       serial=stream_serial(serial_seed, f"seg/{out.name}") if serial_seed else None)
         sizes["seg"].append(out.stat().st_size)
     m = settings.n_listen(duration_s)
     for k in range(m):
         out = listen_dir / f"{k:03d}.opus"
         chunk = slice_bytes(pcm, k * settings.listen_slice_s * sr, settings.listen_segment_samples)
-        encode_segment(chunk, out, settings.listen_bitrate_kbps, settings)
+        encode_segment(chunk, out, settings.listen_bitrate_kbps, settings,
+                       serial=stream_serial(serial_seed, f"listen/{out.name}") if serial_seed else None)
         sizes["listen"].append(out.stat().st_size)
     return sizes

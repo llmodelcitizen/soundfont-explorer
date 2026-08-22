@@ -42,7 +42,7 @@ def validate_job(job: Job, paths: Paths, *, thorough: bool = False) -> Verdict:
         return Verdict(False, meta.get("reason") or meta.get("status") or "failed")
     if meta.get("spec_hash") != job.spec_hash:
         return Verdict(False, "stale-spec")
-    if not job.master_path(paths).exists():
+    if meta.get("master_kept", True) and not job.master_path(paths).exists():
         return Verdict(False, "no-master")
     lufs = meta.get("lufs")
     if lufs is None or not (lufs > job.settings.silent_below_lufs):
