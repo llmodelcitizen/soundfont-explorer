@@ -266,9 +266,12 @@ resource "aws_launch_template" "fleet" {
 resource "aws_batch_compute_environment" "fleet" {
   name = local.name
   type = "MANAGED"
-  # Ships DISABLED on purpose: submit.py enables it for a run and disables it afterwards, and
-  # the watchdog disables it on any trip. Nothing can start by accident.
-  state        = "DISABLED"
+  # AWS refuses to CREATE a compute environment in DISABLED state ("Compute Environment must be
+  # created in ENABLED state"), so it is created enabled and put to sleep immediately afterwards
+  # by terraform_data.disable_ce below. The deployed steady state is DISABLED: submit.py enables
+  # it for a run and disables it again, and the watchdog disables it on any trip.
+  # Idle cost is nil either way — min_vcpus = 0 means no instance exists until a job needs one.
+  state        = "ENABLED"
   service_role = null
 
   compute_resources {
@@ -294,6 +297,16 @@ resource "aws_batch_compute_environment" "fleet" {
   lifecycle {
     # submit.py and the watchdog both flip state; Terraform must not fight them.
     ignore_changes = [state]
+  }
+}
+
+# Put the freshly created environment to sleep. A separate resource rather than a provisioner on
+# the compute environment itself, so a failure here cannot taint (and thus schedule for
+# replacement) the environment.
+resource "terraform_data" "disable_ce" {
+  input = aws_batch_compute_environment.fleet.name
+  provisioner "local-exec" {
+    command = "aws batch update-compute-environment --compute-environment ${self.input} --state DISABLED >/dev/null"
   }
 }
 
