@@ -212,6 +212,18 @@ def cmd_manifest(args) -> int:
         print("manifest: --variant/--engine/--limit are ignored (sets always cover every variant)", file=sys.stderr)
     args.variant = args.engine = None
     args.limit = None
+    if args.songs_json_only:
+        # Rebuild songs.json from the set documents already under out/public, validating and
+        # packing nothing. This is how a cloud run finishes: the shards published each song's
+        # /a /c /s themselves, but no single shard knows the whole corpus, so songs.json is
+        # written once at the end from what is actually published.
+        from .manifest import build_manifests as _bm
+        args.all = True          # only to load the corpus; the planned jobs are discarded
+        _, settings, engines_json, songs, variants = select_jobs(args, paths)
+        print(json.dumps(_bm(paths, songs, variants, settings, engines_json, {},
+                             defaults={"song": args.default_song, "variant": args.default_variant}),
+                         indent=1))
+        return 0
     if not args.song:
         args.all = True
     jobs, settings, engines_json, songs, variants = select_jobs(args, paths)
@@ -284,6 +296,9 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--thorough", action="store_true", help="decode every segment with opusdec")
         s.add_argument("--workers", type=int, default=None,
                        help="parallel validation threads (default: min(24, cpus))")
+        s.add_argument("--songs-json-only", action="store_true",
+                       help="rebuild songs.json from the sets already in out/public; validate "
+                            "and pack nothing (finishes a cloud run)")
         s.add_argument("--default-song"); s.add_argument("--default-variant", default="adl-b58")
     s = sub.add_parser("publish", help="aws s3 sync out/public (dry-run first!)"); add_path_args(s)
     s.add_argument("--bucket"); s.add_argument("--distribution")
