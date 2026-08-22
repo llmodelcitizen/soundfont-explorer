@@ -14,14 +14,18 @@ import json, os, pathlib, subprocess, sys, threading, time
 FONTS_BUCKET = os.environ["SFR_FONTS_BUCKET"]
 SITE_BUCKET = os.environ["SFR_SITE_BUCKET"]
 INDEX = int(os.environ.get("AWS_BATCH_JOB_ARRAY_INDEX", "0"))
-WORK = pathlib.Path(os.environ.get("SFR_WORK", "/scratch"))
-FONTS = pathlib.Path(os.environ.get("SFR_FONTS", "/scratch/fonts"))
-OUT = pathlib.Path(os.environ.get("SFR_OUT", "/scratch/out"))
+# NB: deliberately not read from SFR_WORK/SFR_FONTS/..., which the image sets to the local
+# bind-mount paths (/work, /fonts, /songs). A Batch container has no bind mounts, and inheriting
+# those defaults silently put every path on the container overlay instead of /scratch.
+SCRATCH = pathlib.Path(os.environ.get("SFR_SCRATCH", "/scratch"))
+WORK = SCRATCH / "work"
+FONTS = SCRATCH / "fonts"
+OUT = SCRATCH / "out"
 # songs/ and catalog/ are bind mounts for a local run; in Batch there is nothing to bind, so they
 # are staged from the same bucket as the fonts. Keeping them out of the image means the image does
 # not have to be rebuilt to add a song, and owner-supplied songs/private/ never enters a registry.
-SONGS = pathlib.Path(os.environ.get("SFR_SONGS", "/scratch/songs"))
-CATALOG = pathlib.Path(os.environ.get("SFR_CATALOG", "/scratch/catalog"))
+SONGS = SCRATCH / "songs"
+CATALOG = SCRATCH / "catalog"
 def _allocated_cpus() -> int:
     """os.cpu_count() reports the HOST's CPUs inside a container, not this task's share. Batch
     pins the container to its requested vCPUs via the cgroup, so read the quota and only fall
@@ -85,25 +89,49 @@ def expected(song: str, sel: list[str]) -> int:
     knows when the song is finished. Must take `sel`: with an engine filter the song's total is
     not its full variant count, and the publisher would otherwise wait for renders never queued."""
     r = subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", str(SONGS),
-                        "--catalog", str(CATALOG), "--work", str(WORK), "--song", song, "plan", *sel],
+                        "--catalog", str(CATALOG), "--work", str(WORK), "plan", "--song", song, *sel],
                        capture_output=True, text=True, check=True)
-    return int(r.stdout.split(" jobs", 1)[0].strip())
+    n = int(r.stdout.split(" jobs", 1)[0].strip())
+    if n <= 0:
+        # never let a bad count mean "everything is already done"
+        raise RuntimeError(f"{song}: plan reports {n} jobs — refusing to treat that as complete")
+    return n
 
 
-def publish_song(song: str) -> None:
+def publish_song(song: str) -> bool:
+    """Manifest the song, then upload only if it really produced variants.
+
+    The guard is the point: a manifest run against a partially rendered song writes a
+    plausible-looking set document with a subset of the variants, and publishing that would
+    quietly degrade the song on the live site."""
     t = time.monotonic()
-    if sfr("manifest", "--song", song, "--thorough").returncode:
-        log(f"!! manifest failed for {song}"); return
+    r = subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", str(SONGS),
+                        "--catalog", str(CATALOG), "--work", str(WORK), "--out", str(OUT),
+                        "manifest", "--song", song, "--thorough"],
+                       capture_output=True, text=True)
+    sys.stdout.write(r.stdout[-4000:])
+    if r.returncode:
+        log(f"!! manifest failed for {song} rc={r.returncode}: {r.stderr[-500:]}")
+        return False
+    try:
+        report = json.loads(r.stdout[r.stdout.index("{"):])
+        got = int(report["songs"][song]["variants"])
+    except (ValueError, KeyError, TypeError) as e:
+        log(f"!! could not read the manifest report for {song}: {e}"); return False
+    if got <= 0:
+        log(f"!! {song}: manifest produced {got} variants — NOT publishing")
+        return False
     # objects under a/ c/ s/ are immutable and content-addressed, so they go straight to the
     # site bucket; songs.json is written once at the end by submit.py, not per shard.
     for pre in ("a", "c", "s"):
         d = OUT / "public" / pre
         if d.exists():
             sh(["s5cmd", "sync", "--size-only", f"{d}/", f"s3://{SITE_BUCKET}/{pre}/"])
-    log(f"published {song} in {time.monotonic() - t:.0f}s")
+    log(f"published {song}: {got} variants in {time.monotonic() - t:.0f}s")
+    return True
 
 
-def publisher(songs: list[str], sel: list[str], done: threading.Event) -> None:
+def publisher(songs: list[str], sel: list[str], done: threading.Event, failed: list) -> None:
     """Poll for songs whose jobs have all landed and publish them while rendering continues."""
     want = {s: expected(s, sel) for s in songs}
     left = list(songs)
@@ -112,13 +140,15 @@ def publisher(songs: list[str], sel: list[str], done: threading.Event) -> None:
             n = len(list((WORK / "renders" / song).glob("*/meta.json"))) if (WORK / "renders" / song).exists() else 0
             if n >= want[song]:
                 left.remove(song)
-                publish_song(song)
+                if not publish_song(song):
+                    failed.append(song)
         if left and not done.wait(20):
             continue
         if done.is_set():
             break
     for song in left:            # renderer finished; publish whatever remains
-        publish_song(song)
+        if not publish_song(song):
+            failed.append(song)
 
 
 def main() -> int:
@@ -135,7 +165,8 @@ def main() -> int:
         sel += ["--limit", str(shards[INDEX]["limit"])]
 
     done = threading.Event()
-    pub = threading.Thread(target=publisher, args=(songs, sel, done), daemon=True)
+    failed: list[str] = []
+    pub = threading.Thread(target=publisher, args=(songs, sel, done, failed), daemon=True)
     pub.start()
 
     t = time.monotonic()
@@ -146,6 +177,9 @@ def main() -> int:
 
     done.set()
     pub.join(timeout=3600)
+    if failed:
+        log(f"!! shard failed to publish: {' '.join(failed)}")
+        return 1
     log("shard complete")
     return rc
 
