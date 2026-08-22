@@ -17,6 +17,11 @@ INDEX = int(os.environ.get("AWS_BATCH_JOB_ARRAY_INDEX", "0"))
 WORK = pathlib.Path(os.environ.get("SFR_WORK", "/scratch"))
 FONTS = pathlib.Path(os.environ.get("SFR_FONTS", "/scratch/fonts"))
 OUT = pathlib.Path(os.environ.get("SFR_OUT", "/scratch/out"))
+# songs/ and catalog/ are bind mounts for a local run; in Batch there is nothing to bind, so they
+# are staged from the same bucket as the fonts. Keeping them out of the image means the image does
+# not have to be rebuilt to add a song, and owner-supplied songs/private/ never enters a registry.
+SONGS = pathlib.Path(os.environ.get("SFR_SONGS", "/scratch/songs"))
+CATALOG = pathlib.Path(os.environ.get("SFR_CATALOG", "/scratch/catalog"))
 WORKERS = int(os.environ.get("SFR_WORKERS", str(os.cpu_count() or 8)))
 # 256 MB admission units; leave ~12% of RAM for page cache and the encoders
 MEM_UNITS = int(os.environ.get("SFR_MEM_UNITS", "0")) or max(
@@ -31,29 +36,34 @@ def sh(argv, **kw):
     return subprocess.run(argv, check=True, **kw)
 
 
-def stage_fonts(needed: list[str]) -> None:
-    """Pull only the SF2s this shard actually renders. s5cmd because it saturates the NIC where
-    a serial GET loop does not; the full set is 46 GiB."""
-    FONTS.mkdir(parents=True, exist_ok=True)
+def stage_inputs(needed: list[str]) -> None:
+    """Pull songs, catalog and the SF2s this shard renders. s5cmd because it saturates the NIC
+    where a serial GET loop does not; the full font set is 46 GiB."""
     t = time.monotonic()
-    if needed:
+    for d, pre in ((SONGS, "songs"), (CATALOG, "catalog")):
+        d.mkdir(parents=True, exist_ok=True)
+        sh(["s5cmd", "sync", f"s3://{FONTS_BUCKET}/{pre}/*", f"{d}/"])
+    FONTS.mkdir(parents=True, exist_ok=True)
+    if needed:   # only the fonts this shard needs
         spec = "\n".join(f"cp s3://{FONTS_BUCKET}/soundfonts/{n} {FONTS}/{n}" for n in needed)
         sh(["s5cmd", "run"], input=spec.encode())
+    else:        # whole matrix: every variant, so every font
+        sh(["s5cmd", "sync", f"s3://{FONTS_BUCKET}/soundfonts/*", f"{FONTS}/"])
     n = sum(1 for _ in FONTS.glob("*.sf2"))
     b = sum(p.stat().st_size for p in FONTS.glob("*.sf2"))
-    log(f"staged {n} fonts, {b / 2**30:.1f} GiB in {time.monotonic() - t:.0f}s")
+    log(f"staged {n} fonts ({b / 2**30:.1f} GiB), songs and catalog in {time.monotonic() - t:.0f}s")
 
 
 def sfr(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", "/songs",
-                           "--catalog", "/catalog", "--work", str(WORK), "--out", str(OUT), *args],
+    return subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", str(SONGS),
+                           "--catalog", str(CATALOG), "--work", str(WORK), "--out", str(OUT), *args],
                           check=False)
 
 
 def expected(song: str) -> int:
     """How many jobs this song plans, so the publisher knows when the song is finished."""
-    r = subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", "/songs",
-                        "--catalog", "/catalog", "--work", str(WORK), "--song", song, "plan"],
+    r = subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", str(SONGS),
+                        "--catalog", str(CATALOG), "--work", str(WORK), "--song", song, "plan"],
                        capture_output=True, text=True, check=True)
     return int(r.stdout.split(" jobs", 1)[0].strip())
 
@@ -90,10 +100,12 @@ def publisher(songs: list[str], done: threading.Event) -> None:
 
 
 def main() -> int:
+    WORK.mkdir(parents=True, exist_ok=True)
+    sh(["s5cmd", "cp", f"s3://{FONTS_BUCKET}/shards.json", "/scratch/shards.json"])
     shards = json.loads(pathlib.Path("/scratch/shards.json").read_text())
     songs = shards[INDEX]["songs"]
     log(f"{len(songs)} songs: {' '.join(songs)}  workers={WORKERS} mem_units={MEM_UNITS}")
-    stage_fonts(shards[INDEX].get("fonts", []))
+    stage_inputs(shards[INDEX].get("fonts", []))
 
     done = threading.Event()
     pub = threading.Thread(target=publisher, args=(songs, done), daemon=True)
