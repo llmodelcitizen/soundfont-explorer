@@ -97,8 +97,11 @@ def stage_inputs(needed: list[str]) -> None:
         sh(["s5cmd", "run"], input=spec.encode())
     else:        # whole matrix: every variant, so every font
         sh(["s5cmd", "sync", f"s3://{FONTS_BUCKET}/soundfonts/*", f"{FONTS}/"])
-    n = sum(1 for _ in FONTS.glob("*.sf2"))
-    b = sum(p.stat().st_size for p in FONTS.glob("*.sf2"))
+    # case-insensitive: five fonts in the corpus are named .SF2, and a `*.sf2` glob silently
+    # undercounts them — the same mistake that kept them out of S3 in the first place
+    sf2 = [p for p in FONTS.iterdir() if p.suffix.lower() == ".sf2"]
+    n = len(sf2)
+    b = sum(p.stat().st_size for p in sf2)
     log(f"staged {n} fonts ({b / 2**30:.1f} GiB), songs and catalog in {time.monotonic() - t:.0f}s")
 
 
