@@ -1,0 +1,136 @@
+"""Submit a render run to the burst fleet, watch it, and put the fleet back to sleep.
+
+    python3 render/cloud/submit.py --all --shards 8 --dry-run     # always start here
+    python3 render/cloud/submit.py --song freedoom-e1m1 --song bach-bwv565
+
+The compute environment ships DISABLED and is disabled again on the way out (including on
+Ctrl-C and on failure), so the fleet cannot be left running by walking away from this script.
+The watchdog Lambda is the backstop for when it is not walked away from politely.
+"""
+from __future__ import annotations
+
+import argparse, json, os, pathlib, subprocess, sys, time
+
+REPO = pathlib.Path(__file__).resolve().parents[2]
+# measured 2026-08-21 (docs/validation.md "M5"/"M7"): 116 CPU-h for 7935 jobs after
+# PIPELINE_VERSION 2, i.e. ~53 CPU-s per job. Spot c7a is ~$0.019/vCPU-h.
+CPU_S_PER_JOB = 53.0
+USD_PER_VCPU_HOUR = 0.019
+
+
+def aws(*args: str) -> dict:
+    r = subprocess.run(["aws", *args, "--output", "json"], capture_output=True, text=True, check=True)
+    return json.loads(r.stdout) if r.stdout.strip() else {}
+
+
+def outputs() -> dict:
+    o = json.loads((REPO / "infra/live/outputs.json").read_text())
+    rf = (o.get("render_fleet") or {}).get("value")
+    if not rf:
+        sys.exit("render fleet is not deployed: set enable_render_fleet=true, terraform apply, "
+                 "then terraform -chdir=infra/live output -json > infra/live/outputs.json")
+    return rf
+
+
+def song_ids(args) -> list[str]:
+    ids = []
+    for p in ("songs/songs.json", "songs/private/songs.json"):
+        f = REPO / p
+        if f.exists():
+            ids += [s["id"] for s in json.loads(f.read_text())["songs"]]
+    return ids if args.all else [s for s in ids if s in set(args.song)]
+
+
+def plan_shards(songs: list[str], n: int) -> list[dict]:
+    """Longest-first round robin over shards. Song cost tracks duration_s, and the tail of a run
+    is bounded by the slowest shard, so the long songs are dealt first."""
+    meta = {}
+    for p in ("songs/songs.json", "songs/private/songs.json"):
+        f = REPO / p
+        if f.exists():
+            for s in json.loads(f.read_text())["songs"]:
+                meta[s["id"]] = s["duration_s"]
+    order = sorted(songs, key=lambda s: -meta.get(s, 180))
+    shards: list[dict] = [{"songs": [], "d": 0} for _ in range(min(n, len(order)))]
+    for s in order:
+        t = min(shards, key=lambda x: x["d"])
+        t["songs"].append(s); t["d"] += meta.get(s, 180)
+    return [{"songs": x["songs"], "duration_total_s": x["d"]} for x in shards if x["songs"]]
+
+
+def estimate(shards: list[dict], variants: int) -> tuple[float, float]:
+    jobs = sum(len(s["songs"]) for s in shards) * variants
+    cpu_h = jobs * CPU_S_PER_JOB / 3600
+    return cpu_h, cpu_h * USD_PER_VCPU_HOUR
+
+
+def set_state(ce: str, state: str) -> None:
+    subprocess.run(["aws", "batch", "update-compute-environment",
+                    "--compute-environment", ce, "--state", state], check=True, capture_output=True)
+    print(f"[submit] compute environment {ce} -> {state}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--song", action="append", default=[])
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--shards", type=int, default=8)
+    ap.add_argument("--variants", type=int, default=566, help="variants per song, for the estimate")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--max-usd", type=float, default=60.0,
+                    help="refuse to submit above this estimate; raise deliberately")
+    args = ap.parse_args()
+
+    songs = song_ids(args)
+    if not songs:
+        sys.exit("no songs selected (use --all or --song ID)")
+    shards = plan_shards(songs, args.shards)
+    cpu_h, usd = estimate(shards, args.variants)
+
+    print(f"[submit] {len(songs)} songs across {len(shards)} shards")
+    for i, s in enumerate(shards):
+        print(f"   shard {i}: {len(s['songs']):>2} songs, D={s['duration_total_s']:>5}s  "
+              f"{' '.join(s['songs'])}")
+    print(f"[submit] estimate: {len(songs) * args.variants} jobs, {cpu_h:.0f} CPU-h, "
+          f"~${usd:.2f} of spot (ceiling ${args.max_usd:.2f})")
+    if usd > args.max_usd:
+        sys.exit(f"[submit] REFUSING: estimate ${usd:.2f} exceeds --max-usd ${args.max_usd:.2f}")
+    if args.dry_run:
+        print("[submit] dry run, nothing submitted")
+        return 0
+
+    rf = outputs()
+    (REPO / "work").mkdir(exist_ok=True)
+    sf = REPO / "work" / "shards.json"
+    sf.write_text(json.dumps(shards, indent=1))
+    subprocess.run(["aws", "s3", "cp", str(sf), f"s3://{rf['fonts_bucket']}/shards.json"], check=True)
+
+    set_state(rf["compute_environment"], "ENABLED")
+    job_id = None
+    try:
+        sub = aws("batch", "submit-job", "--job-name", "soundfont-explorer-render",
+                  "--job-queue", rf["job_queue"], "--job-definition", rf["job_definition"],
+                  *(["--array-properties", f"size={len(shards)}"] if len(shards) > 1 else []))
+        job_id = sub["jobId"]
+        print(f"[submit] job {job_id}  (aws batch describe-jobs --jobs {job_id})")
+        while True:
+            j = aws("batch", "describe-jobs", "--jobs", job_id)["jobs"][0]
+            st = j.get("arrayProperties", {}).get("statusSummary") or {j["status"]: 1}
+            print(f"[submit] {time.strftime('%H:%M:%S')} {st}", flush=True)
+            if j["status"] in ("SUCCEEDED", "FAILED"):
+                print(f"[submit] terminal: {j['status']}")
+                return 0 if j["status"] == "SUCCEEDED" else 1
+            time.sleep(30)
+    except KeyboardInterrupt:
+        if job_id:
+            subprocess.run(["aws", "batch", "terminate-job", "--job-id", job_id,
+                            "--reason", "operator interrupt"], check=False)
+            print(f"[submit] terminated {job_id}")
+        return 130
+    finally:
+        # the whole point: the fleet is never left able to scale up unattended
+        set_state(rf["compute_environment"], "DISABLED")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -51,6 +51,20 @@ module "circuit_breaker" {
   alert_email     = var.alert_email
 }
 
+# Off by default: creating it costs ~$0.46/mo (the font bucket) and nothing else until a run
+# is submitted, but it is real compute infrastructure and should be a deliberate choice.
+module "render_fleet" {
+  source      = "../modules/render-fleet"
+  count       = var.enable_render_fleet ? 1 : 0
+  providers   = { aws = aws.render }
+  alert_email = var.alert_email
+  site_bucket = module.site.bucket_name
+
+  max_vcpus            = var.render_max_vcpus
+  max_instance_minutes = var.render_max_instance_minutes
+  budget_limit_usd     = var.render_budget_limit_usd
+}
+
 module "phase2" {
   source = "../modules/phase2"
   count  = var.enable_phase2 ? 1 : 0

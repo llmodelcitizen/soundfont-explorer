@@ -171,6 +171,16 @@ RUN apt-get update \
  && fluidsynth --version | head -1 && ffmpeg -hide_banner -version | head -1 && opusenc --version | head -1 \
  && timidity --version >/dev/null 2>&1 && test -r /etc/timidity/freepats.cfg
 
+# s5cmd for bulk S3 transfer (font staging, publishing). Pinned by version + sha256; only the
+# cloud path uses it, but it is 10 MB and keeps local and cloud on one image.
+ARG S5CMD_VERSION=2.2.2
+ARG S5CMD_SHA256=a15f83d2a6dc091e43b2a120f29f8f6c86d146c381766c0197ec75d7985af2b6
+ADD https://github.com/peak/s5cmd/releases/download/v${S5CMD_VERSION}/s5cmd_${S5CMD_VERSION}_Linux-64bit.tar.gz /tmp/s5cmd.tgz
+RUN echo "${S5CMD_SHA256}  /tmp/s5cmd.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/s5cmd.tgz -C /usr/local/bin s5cmd \
+ && rm /tmp/s5cmd.tgz \
+ && s5cmd version
+
 COPY --from=builder /opt/bin/ /usr/local/bin/
 COPY --from=builder /opt/licenses/ /opt/licenses/
 COPY --from=builder /opt/banks/ /opt/banks/
@@ -178,6 +188,8 @@ COPY --from=rom-engines /opt/rom/bin/ /usr/local/bin/
 COPY --from=rom-engines /opt/rom/licenses/ /opt/licenses/rom-engines/
 COPY scripts/sfr /usr/local/bin/sfr
 COPY sfr/ /opt/sfr/
+# cloud shard runner (render/cloud/shard.py) — unused by local runs, tiny, keeps one image
+COPY cloud/ /opt/cloud/
 # the image carries the engines.json it was built from; the driver bind-mounts the checkout's copy over it
 COPY engines.json /opt/engines.json
 ENV SFR_ENGINES=/opt/engines.json

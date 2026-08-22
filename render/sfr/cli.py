@@ -167,7 +167,8 @@ def cmd_render(args, retry_failed: bool = False) -> int:
     logs = Logs(paths.jobs_log, paths.errors_log)
     runner = Runner(args.workers, args.mem_units, logs)
     outcomes = runner.run_all(jobs, lambda j: run_job(j, paths, sem=runner.sem, retry=retry_failed or args.retry,
-                                                      keep_tmp=args.keep_tmp, engines_json=engines_json, logs=logs))
+                                                      keep_tmp=args.keep_tmp, keep_masters=args.keep_masters,
+                                                      engines_json=engines_json, logs=logs))
     c = Counter(o.status for o in outcomes)
     reasons = Counter(o.reason.split(":")[0] for o in outcomes if o.status == "failed")
     print(f"[sfr] finished: {dict(c)}" + (f" failure reasons: {dict(reasons)}" if reasons else ""))
@@ -271,6 +272,9 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--workers", type=int, default=32)
         s.add_argument("--mem-units", type=int, default=64, help=f"{MEM_UNIT_BYTES >> 20} MB admission units")
         s.add_argument("--retry", action="store_true", help="also re-run previously failed jobs")
+        s.add_argument("--keep-masters", action="store_true",
+                       help="also write master.flac (~25 MB/variant); only needed to re-encode "
+                            "without re-rendering. Encoded output is identical either way.")
         s.add_argument("--keep-tmp", action="store_true")
     # `pack` is an alias of `manifest`: packing is part of the manifest and idempotent, and a single
     # code path keeps order/groups from ever diverging from the set documents

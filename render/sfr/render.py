@@ -9,7 +9,7 @@ from . import PIPELINE_VERSION, engines
 from .engines import ffmpeg_input_args
 from .config import Paths, load_engines
 from .jobs import Job, State, classify, clean_dir, now_iso, read_meta, write_meta
-from .loudness import gain_db, is_silent, measure, write_master
+from .loudness import gain_db, is_silent, master_pcm, measure
 from .ogg import OggError, opus_info
 from .encode import decode_padded, encode_tiers
 from .sched import JobError, Outcome, WeightedSemaphore, run
@@ -24,9 +24,11 @@ def _fail(job: Job, paths: Paths, meta: dict, reason: str, detail: str, t0: floa
 
 
 def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, retry: bool = False,
-            keep_tmp: bool = False, engines_json: dict | None = None, logs=None) -> Outcome:
+            keep_tmp: bool = False, keep_masters: bool = False, engines_json: dict | None = None,
+            logs=None) -> Outcome:
     t0 = time.monotonic()
     engines_json = engines_json or load_engines(paths)
+    keep_masters = bool(keep_masters)
     state = classify(job, paths)
     if state == State.DONE:
         return Outcome(job.key, "skipped", "done", 0.0)
@@ -45,7 +47,9 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
         "spec_hash": job.spec_hash, "master_hash": job.master_hash, "render_hash": job.render_hash,
         "duration_s": job.duration_s, "n_slices": job.n_slices, "n_listen": job.n_listen,
         "encode_params": job.encode_params, "pipeline_version": PIPELINE_VERSION,
+        "master_kept": keep_masters,
     }
+    pcm: bytes | None = None
     try:
         if state == State.REENCODE:
             prev = read_meta(job.meta_path(paths)) or {}
@@ -93,9 +97,10 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                 meta["start_offset_s"] = off
                 meta["drift_ppm"] = drift
                 tms = time.monotonic()
-                write_master(spec.out_wav, job.master_path(paths), g, job.settings, job.duration_s,
-                             start_offset_s=off, drift_ppm=drift, native_rate=spec.native_rate,
-                             in_args=ffmpeg_input_args(spec))
+                pcm = master_pcm(spec.out_wav, g, job.settings, job.duration_s,
+                                 start_offset_s=off, drift_ppm=drift, native_rate=spec.native_rate,
+                                 master_flac=job.master_path(paths) if keep_masters else None,
+                                 in_args=ffmpeg_input_args(spec))
                 timings["master_s"] = round(time.monotonic() - tms, 2)
             finally:
                 if sem is not None and weight:
@@ -110,8 +115,10 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
         seg_dir, lis_dir = job.seg_dir(paths), job.listen_dir(paths)
         clean_dir(seg_dir)
         clean_dir(lis_dir)
-        pcm = decode_padded(job.master_path(paths), job.settings, job.duration_s)
-        sizes = encode_tiers(pcm, seg_dir, lis_dir, job.settings, job.duration_s)
+        if pcm is None:   # REENCODE: audio unchanged, encode recipe changed → decode the kept master
+            pcm = decode_padded(job.master_path(paths), job.settings, job.duration_s)
+        sizes = encode_tiers(pcm, seg_dir, lis_dir, job.settings, job.duration_s,
+                             serial_seed=job.render_hash)
         del pcm
         timings["encode_s"] = round(time.monotonic() - te, 2)
         # quick structural check of the first/last segment of each tier
@@ -125,9 +132,10 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
             if info.samples != want:
                 raise JobError("verify", f"{p.name} has {info.samples} samples, expected {want}")
         meta.update({
-            "status": "ok", "timings": timings, "sizes": {"seg_bytes": sum(sizes["seg"]),
-                                                          "listen_bytes": sum(sizes["listen"]),
-                                                          "master_bytes": job.master_path(paths).stat().st_size},
+            "status": "ok", "timings": timings, "sizes": {
+                "seg_bytes": sum(sizes["seg"]), "listen_bytes": sum(sizes["listen"]),
+                "master_bytes": job.master_path(paths).stat().st_size
+                if job.master_path(paths).exists() else 0},
             "created": now_iso(), "seconds": round(time.monotonic() - t0, 2),
         })
         write_meta(job.meta_path(paths), meta)
