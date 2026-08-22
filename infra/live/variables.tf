@@ -32,3 +32,27 @@ variable "enable_phase2" {
   type    = bool
   default = false
 }
+
+variable "enable_render_fleet" {
+  type        = bool
+  default     = false
+  description = "Create the burst render fleet (AWS Batch on spot). Idle cost is the font bucket alone."
+}
+
+variable "render_max_vcpus" {
+  type        = number
+  default     = 2304
+  description = "Hard ceiling on concurrent fleet vCPUs (12 x c7a.48xlarge)."
+}
+
+variable "render_max_instance_minutes" {
+  type        = number
+  default     = 240
+  description = "Watchdog terminates any fleet instance older than this, unconditionally."
+}
+
+variable "render_budget_limit_usd" {
+  type        = number
+  default     = 100
+  description = "Monthly budget for project=soundfont-explorer-render, separate from the site budget."
+}
