@@ -22,7 +22,27 @@ OUT = pathlib.Path(os.environ.get("SFR_OUT", "/scratch/out"))
 # not have to be rebuilt to add a song, and owner-supplied songs/private/ never enters a registry.
 SONGS = pathlib.Path(os.environ.get("SFR_SONGS", "/scratch/songs"))
 CATALOG = pathlib.Path(os.environ.get("SFR_CATALOG", "/scratch/catalog"))
-WORKERS = int(os.environ.get("SFR_WORKERS", str(os.cpu_count() or 8)))
+def _allocated_cpus() -> int:
+    """os.cpu_count() reports the HOST's CPUs inside a container, not this task's share. Batch
+    pins the container to its requested vCPUs via the cgroup, so read the quota and only fall
+    back to the host count."""
+    for quota, period in (("/sys/fs/cgroup/cpu.max", None),
+                          ("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", "/sys/fs/cgroup/cpu/cpu.cfs_period_us")):
+        try:
+            txt = pathlib.Path(quota).read_text().split()
+            q = txt[0]
+            if q in ("max", "-1"):
+                continue
+            per = float(txt[1]) if period is None else float(pathlib.Path(period).read_text())
+            n = int(float(q) / per)
+            if n > 0:
+                return n
+        except (OSError, ValueError, IndexError):
+            continue
+    return os.cpu_count() or 8
+
+
+WORKERS = int(os.environ.get("SFR_WORKERS", "0")) or _allocated_cpus()
 # 256 MB admission units; leave ~12% of RAM for page cache and the encoders
 MEM_UNITS = int(os.environ.get("SFR_MEM_UNITS", "0")) or max(
     64, int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") * 0.88 / (256 << 20)))
@@ -60,10 +80,12 @@ def sfr(*args: str) -> subprocess.CompletedProcess:
                           check=False)
 
 
-def expected(song: str) -> int:
-    """How many jobs this song plans, so the publisher knows when the song is finished."""
+def expected(song: str, sel: list[str]) -> int:
+    """How many jobs this song plans under the same selection the renderer uses, so the publisher
+    knows when the song is finished. Must take `sel`: with an engine filter the song's total is
+    not its full variant count, and the publisher would otherwise wait for renders never queued."""
     r = subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", str(SONGS),
-                        "--catalog", str(CATALOG), "--work", str(WORK), "--song", song, "plan"],
+                        "--catalog", str(CATALOG), "--work", str(WORK), "--song", song, "plan", *sel],
                        capture_output=True, text=True, check=True)
     return int(r.stdout.split(" jobs", 1)[0].strip())
 
@@ -81,9 +103,9 @@ def publish_song(song: str) -> None:
     log(f"published {song} in {time.monotonic() - t:.0f}s")
 
 
-def publisher(songs: list[str], done: threading.Event) -> None:
+def publisher(songs: list[str], sel: list[str], done: threading.Event) -> None:
     """Poll for songs whose jobs have all landed and publish them while rendering continues."""
-    want = {s: expected(s) for s in songs}
+    want = {s: expected(s, sel) for s in songs}
     left = list(songs)
     while left:
         for song in list(left):
@@ -107,13 +129,19 @@ def main() -> int:
     log(f"{len(songs)} songs: {' '.join(songs)}  workers={WORKERS} mem_units={MEM_UNITS}")
     stage_inputs(shards[INDEX].get("fonts", []))
 
+    # optional narrowing, for smoke runs and partial re-renders
+    sel = [a for e in shards[INDEX].get("engines", []) for a in ("--engine", e)]
+    if shards[INDEX].get("limit"):
+        sel += ["--limit", str(shards[INDEX]["limit"])]
+
     done = threading.Event()
-    pub = threading.Thread(target=publisher, args=(songs, done), daemon=True)
+    pub = threading.Thread(target=publisher, args=(songs, sel, done), daemon=True)
     pub.start()
 
     t = time.monotonic()
-    sel = [a for s in songs for a in ("--song", s)]
-    rc = sfr("render", *sel, "--workers", str(WORKERS), "--mem-units", str(MEM_UNITS)).returncode
+    songsel = [a for s in songs for a in ("--song", s)]
+    rc = sfr("render", *songsel, *sel, "--workers", str(WORKERS),
+             "--mem-units", str(MEM_UNITS)).returncode
     log(f"render finished rc={rc} in {time.monotonic() - t:.0f}s")
 
     done.set()
