@@ -119,3 +119,28 @@ class DiagnosticTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDefaultDrumRules(unittest.TestCase):
+    """Imports rarely carry a program change on channel 10. check_programs still demands one (so
+    every engine picks the same kit); default_drum_rules supplies the GM default rather than
+    exempting the channel."""
+
+    def test_supplies_kit_zero_for_bare_drum_channel(self):
+        m = S.Smf(0, 96, [[ch(0, 0x99, 36, 100), ch(48, 0x89, 36, 0)]])
+        self.assertEqual(IP.check_programs(m), [10])
+        rules = IP.default_drum_rules(m)
+        self.assertEqual(rules, [{"track": 0, "channel": 10, "program": 0, "name": "standard kit"}])
+        IP.apply_rules(m, rules)
+        self.assertEqual(IP.check_programs(m), [])
+
+    def test_no_rule_when_channel_10_already_has_one(self):
+        m = S.Smf(0, 96, [[ch(0, 0xC9, 16), ch(0, 0x99, 36, 100)]])
+        self.assertEqual(IP.default_drum_rules(m), [])
+
+    def test_never_defaults_a_melodic_channel(self):
+        """A melodic channel with no program must keep failing: program 0 is piano, and silently
+        rendering the whole corpus as piano is worse than refusing the import."""
+        m = S.Smf(0, 96, [[ch(0, 0x90, 60, 100)]])
+        self.assertEqual(IP.default_drum_rules(m), [])
+        self.assertEqual(IP.check_programs(m), [1])

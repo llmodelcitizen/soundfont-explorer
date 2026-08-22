@@ -26,7 +26,7 @@
         "partial"
       ],
       "default": true,
-      "file": "freedoom-e1m1.mid",
+      "file": "rendered/freedoom-e1m1.mid",
       "src": "src/freedoom-d_e1m1.mid",
       "src_sha256": "d7e43ae0b04d7476acde1cb27bfd918badc1eb88f23604738de16002387b24b5",
       "original_midi_end_s": 186.178,
@@ -57,7 +57,7 @@
         "partial"
       ],
       "default": false,
-      "file": "freedoom-map20.mid",
+      "file": "rendered/freedoom-map20.mid",
       "src": "src/freedoom-d_map20.mid",
       "src_sha256": "658081c2ee6ff155629a381e64c214e3e1ea6732963d80779cf7faeda1299a64",
       "original_midi_end_s": 206.197,
@@ -88,7 +88,7 @@
         "partial"
       ],
       "default": false,
-      "file": "freedoom-e2m5.mid",
+      "file": "rendered/freedoom-e2m5.mid",
       "src": "src/freedoom-d_e2m5.mid",
       "src_sha256": "fc8e36cbe907e3dd89fc6c93c60826508a3001e0f6a56ba06de902f57249fe91",
       "original_midi_end_s": 216.464,
@@ -119,7 +119,7 @@
         "partial"
       ],
       "default": false,
-      "file": "freedoom-e2m4.mid",
+      "file": "rendered/freedoom-e2m4.mid",
       "src": "src/freedoom-d_e2m4.mid",
       "src_sha256": "f31cff9b4ee165425cef1208f873d41d88e269da637b7e117476a736882df6f2",
       "original_midi_end_s": 215.377,
@@ -150,7 +150,7 @@
         "partial"
       ],
       "default": false,
-      "file": "freedoom-e3m8.mid",
+      "file": "rendered/freedoom-e3m8.mid",
       "src": "src/freedoom-d_e3m8.mid",
       "src_sha256": "a0acf8021f0387bab3e385d74cdb93fe9aa5a833b33c9cd55053369f853a3c8b",
       "original_midi_end_s": 151.986,
@@ -181,7 +181,7 @@
         "partial"
       ],
       "default": false,
-      "file": "freedoom-map02.mid",
+      "file": "rendered/freedoom-map02.mid",
       "src": "src/freedoom-d_map02.mid",
       "src_sha256": "5ddc052d57820399fbfb838a3dba40d50a7488c07c9db75519239203f9b80e10",
       "original_midi_end_s": 122.171,
@@ -212,7 +212,7 @@
         "partial"
       ],
       "default": false,
-      "file": "freedoom-map01.mid",
+      "file": "rendered/freedoom-map01.mid",
       "src": "src/freedoom-d_map01.mid",
       "src_sha256": "d63d4caec74dafe0604d6b024789cf826cea5aaff43a15e0cb5c01172b9daf83",
       "original_midi_end_s": 83.467,
@@ -244,7 +244,7 @@
         "single_instrument:piano"
       ],
       "default": false,
-      "file": "joplin-maple-leaf.mid",
+      "file": "rendered/joplin-maple-leaf.mid",
       "src": "src/mutopia-maple.mid",
       "src_sha256": "3dd712a85fabd267f5a2cee5cb23af4683408c2f29b8814721844498f1ee4f66",
       "original_midi_end_s": 144.0,
@@ -290,7 +290,7 @@
         "single_instrument:piano"
       ],
       "default": false,
-      "file": "joplin-entertainer.mid",
+      "file": "rendered/joplin-entertainer.mid",
       "src": "src/mutopia-entertainer.mid",
       "src_sha256": "33e4e81ee64ffb2edf90d1c6a1ddee7276507296bfb915c2bb775231a467f066",
       "original_midi_end_s": 252.917,
@@ -335,7 +335,7 @@
         "partial"
       ],
       "default": false,
-      "file": "bach-bwv565.mid",
+      "file": "rendered/bach-bwv565.mid",
       "src": "src/mutopia-BWV565-ToccataFugue.mid",
       "src_sha256": "1aabd00967aded08d6633482c211af46f679d97f01cfeaca43c83a59dfeeeb6b",
       "original_midi_end_s": 572.0,
@@ -391,7 +391,7 @@
         "partial"
       ],
       "default": false,
-      "file": "sousa-stars-stripes.mid",
+      "file": "rendered/sousa-stars-stripes.mid",
       "src": "src/mutopia-TheStarsAndStripesForever.mid",
       "src_sha256": "73e75e76c0708dbec4697ab61438b5c63ca3b5c1a56de59f1f5ab0478fd3b274",
       "original_midi_end_s": 211.75,
@@ -452,7 +452,7 @@
         "partial"
       ],
       "default": false,
-      "file": "oga-casual-afternoon.mid",
+      "file": "rendered/oga-casual-afternoon.mid",
       "src": "src/oga-roppychop-casual-afternoon.mid",
       "src_sha256": "185b02a04e46ca37eee19645053cdafe1c21d2d0687504353fe7d0c895981494",
       "original_midi_end_s": 86.875,
@@ -484,7 +484,7 @@
         "drums_only"
       ],
       "default": false,
-      "file": "sfp-diagnostic.mid",
+      "file": "rendered/sfp-diagnostic.mid",
       "src": null,
       "src_sha256": "b2cab684abd5b6ddbd2cc0cde8dba3b1536f04e5de11aea6db210a20f5b35faf",
       "original_midi_end_s": 169.74,
@@ -493,6 +493,378 @@
       "format": 1,
       "division": 480,
       "tracks": 4
+    },
+    {
+      "id": "videogame-music-crystalis-crystalistown",
+      "title": "videogame-music/crystalis/Crystalistown",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "none",
+      "midi_end_s": 134.242,
+      "duration_s": 138,
+      "sha256": "f828fe7bd7f6ae3d0f44797e43dd8da98beb39042f00620395aadd56a3f0555a",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_Leaf.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_Leaf.mid",
+      "src_sha256": "26856cc77531cb0e2e57d3af745b5baccd7a378a2b9ec66bba9c96fa9e6f9e06",
+      "original_midi_end_s": 134.242,
+      "original_last_event_s": 134.703,
+      "end_marker_s": 137.245,
+      "format": 1,
+      "division": 96,
+      "tracks": 4
+    },
+    {
+      "id": "videogame-music-crystalis-honky-tonk-piano",
+      "title": "videogame-music/crystalis/Honky-Tonk Piano",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "none",
+      "midi_end_s": 142.657,
+      "duration_s": 146,
+      "sha256": "117145dc3d23b48f8036a023428e7cdf5e62b819cad04b11a539e05363e59cff",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_Outside-Leaf1.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_Outside-Leaf1.mid",
+      "src_sha256": "70a458cf2cc0fc7d9f41200768d36fffb3e2d1cc9ce57ea840a44bcfefbe068c",
+      "original_midi_end_s": 142.657,
+      "original_last_event_s": 142.657,
+      "end_marker_s": 145.658,
+      "format": 1,
+      "division": 480,
+      "tracks": 18
+    },
+    {
+      "id": "videogame-music-crystalis-cryfield",
+      "title": "videogame-music/crystalis/cryfield",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "program change injected at tick 0: ch10 = 0 (GM standard kit, implicit in the source)",
+      "midi_end_s": 89.556,
+      "duration_s": 94,
+      "sha256": "aa4b7723ac222d2409411f932836ac1fdb76033f3c40e233887319eeb4506d65",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_Outside-Leaf2.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_Outside-Leaf2.mid",
+      "src_sha256": "5d4a153bc1c56be05ff923a9004933c932c60b6bef89edf0a51bb3cbe96ecd78",
+      "original_midi_end_s": 89.556,
+      "original_last_event_s": 89.556,
+      "end_marker_s": 92.558,
+      "format": 1,
+      "division": 96,
+      "tracks": 8
+    },
+    {
+      "id": "videogame-music-crystalis-crys-cave",
+      "title": "videogame-music/crystalis/crys_cave",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "none",
+      "midi_end_s": 83.0,
+      "duration_s": 86,
+      "sha256": "c02520f2c2d2fe239dca20fa807bb9f2295ff4e2a7a71fdf9356179f7a9e072b",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_cave.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_cave.mid",
+      "src_sha256": "89bf7b1587e5ea1da7f43020796988af567f04341815d5b8476261cd9d08da07",
+      "original_midi_end_s": 83.0,
+      "original_last_event_s": 83.0,
+      "end_marker_s": 86.001,
+      "format": 1,
+      "division": 384,
+      "tracks": 8
+    },
+    {
+      "id": "videogame-music-crystalis-crystalis-desert",
+      "title": "videogame-music/crystalis/Crystalis Desert",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "none",
+      "midi_end_s": 25.644,
+      "duration_s": 30,
+      "sha256": "e0378a68ec8c06f976e5107a508bb9fb45336318242f34038e182ecc9d97a59f",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_desert.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_desert.mid",
+      "src_sha256": "ad4392678bd9300d6e064643132b2659e6223a63488346408307df5748d80480",
+      "original_midi_end_s": 25.644,
+      "original_last_event_s": 25.644,
+      "end_marker_s": 28.645,
+      "format": 1,
+      "division": 192,
+      "tracks": 5
+    },
+    {
+      "id": "videogame-music-crystalis-crys-ocean",
+      "title": "videogame-music/crystalis/crys_ocean",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "none",
+      "midi_end_s": 88.226,
+      "duration_s": 92,
+      "sha256": "b07b741ea7a7931238f0913727de7593548e878374f3b1a8e12f23f09b753a14",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_ocean.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_ocean.mid",
+      "src_sha256": "183e6ff3a6532f9f493bf7e9c286fd0679b021be7ecd954140ddc6761f9eff8f",
+      "original_midi_end_s": 88.226,
+      "original_last_event_s": 88.226,
+      "end_marker_s": 91.227,
+      "format": 1,
+      "division": 384,
+      "tracks": 8
+    },
+    {
+      "id": "videogame-music-crystalis-crys-pyramid1",
+      "title": "videogame-music/crystalis/crys_pyramid1",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "none",
+      "midi_end_s": 91.567,
+      "duration_s": 96,
+      "sha256": "da416ee21123c69cbd37796eb20fa2caeaf4bf32d8e174aaf0c1f3cfc9de11df",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_pyramid1.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_pyramid1.mid",
+      "src_sha256": "1e98c869b25bd8f883780ebc80766649be56648aa0e18c43a6e29d470a4e2014",
+      "original_midi_end_s": 91.567,
+      "original_last_event_s": 91.567,
+      "end_marker_s": 94.567,
+      "format": 1,
+      "division": 384,
+      "tracks": 17
+    },
+    {
+      "id": "videogame-music-crystalis-crys-pyramid2",
+      "title": "videogame-music/crystalis/crys_pyramid2",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "none",
+      "midi_end_s": 87.761,
+      "duration_s": 92,
+      "sha256": "ee4565370860e57171ed26ac3a88b01b5385d54cbb6069048184d3dcf1c1dd2d",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_pyramid2.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_pyramid2.mid",
+      "src_sha256": "5a1d00bf44746d7fe501c9b329078327c7757ac6575189e9bc505ff3b3db009f",
+      "original_midi_end_s": 87.761,
+      "original_last_event_s": 87.761,
+      "end_marker_s": 90.761,
+      "format": 1,
+      "division": 384,
+      "tracks": 8
+    },
+    {
+      "id": "videogame-music-crystalis-crys-saber",
+      "title": "videogame-music/crystalis/crys-saber",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "program change injected at tick 0: ch10 = 0 (GM standard kit, implicit in the source)",
+      "midi_end_s": 39.179,
+      "duration_s": 44,
+      "sha256": "ef48d6733a056fc12033a4e98f8ef03be7d30e9fa25ffea07f5d832c60f93f4e",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_sabre.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_sabre.mid",
+      "src_sha256": "587236964537553005e4cc89aba7ae14738d49fb87e70efc6b58604056ec7e80",
+      "original_midi_end_s": 39.179,
+      "original_last_event_s": 39.179,
+      "end_marker_s": 42.181,
+      "format": 1,
+      "division": 192,
+      "tracks": 7
+    },
+    {
+      "id": "videogame-music-crystalis-crys-title",
+      "title": "videogame-music/crystalis/crys_title",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "program change injected at tick 0: ch10 = 0 (GM standard kit, implicit in the source)",
+      "midi_end_s": 7.324,
+      "duration_s": 12,
+      "sha256": "bbc809337b8f21465528d4e0a9bbcef358b8c6a333226666bc465333640722da",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_title.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_title.mid",
+      "src_sha256": "1f60ca9d3ce662342963d369010a8fd8470bb3cd055ea7ccfe2a5b4ebe7ea893",
+      "original_midi_end_s": 7.324,
+      "original_last_event_s": 7.324,
+      "end_marker_s": 10.328,
+      "format": 1,
+      "division": 120,
+      "tracks": 4
+    },
+    {
+      "id": "videogame-music-crystalis-crystalis-floating-tower",
+      "title": "videogame-music/crystalis/Crystalis - Floating Tower",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "program change injected at tick 0: ch10 = 0 (GM standard kit, implicit in the source)",
+      "midi_end_s": 49.651,
+      "duration_s": 54,
+      "sha256": "e5f22e922ea320bd390bfed16c0986e7e04179d90d7433676110d367ef23ea54",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_tower.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_tower.mid",
+      "src_sha256": "1d38c00d69cd4052ee789542f4704d189e71221dd3e6ce6beda17fb0d6f5e63e",
+      "original_midi_end_s": 49.651,
+      "original_last_event_s": 49.651,
+      "end_marker_s": 52.653,
+      "format": 1,
+      "division": 192,
+      "tracks": 6
+    },
+    {
+      "id": "videogame-music-crystalis-crys-town",
+      "title": "videogame-music/crystalis/crys_town",
+      "composer": "Steve Ragnone",
+      "sequencer": "Steve Ragnone",
+      "source_url": null,
+      "license": {
+        "id": "owner-supplied",
+        "url": null,
+        "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+      },
+      "modifications": "none",
+      "midi_end_s": 97.567,
+      "duration_s": 102,
+      "sha256": "f59cba894d90bd389f7c8b9d0233097f1354cf6906e7cace952beadc96f8daaa",
+      "include_classes": [
+        "full_gm",
+        "melodic_only",
+        "partial"
+      ],
+      "default": false,
+      "file": "rendered/videogame-music/crystalis/crys_town.mid",
+      "src": "import/FILES/videogame-music/crystalis/crys_town.mid",
+      "src_sha256": "5a208f09d4da8bf067783f18d37ee2756aae1500ea42fe760b754bac18d8d842",
+      "original_midi_end_s": 97.567,
+      "original_last_event_s": 97.567,
+      "end_marker_s": 100.567,
+      "format": 1,
+      "division": 384,
+      "tracks": 7
     }
   ]
 }

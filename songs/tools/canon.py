@@ -40,6 +40,8 @@ from typing import Dict, List, Optional, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SONGS_DIR = os.path.dirname(HERE)
+# canonical MIDIs live here; imported ones keep their source directory tree beneath it
+RENDERED_DIR = os.path.join(SONGS_DIR, "rendered")
 sys.path.insert(0, HERE)
 import smf as S                      # noqa: E402
 import inject_programs as IP         # noqa: E402
@@ -128,6 +130,48 @@ def sha256_bytes(blob: bytes) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
+IMPORT_ROOT = "import/FILES/"
+
+
+def sequence_title(smf: S.Smf) -> Optional[str]:
+    """The file's own title, or None.
+
+    SMF convention: in format 1 the Sequence/Track Name (meta 0x03) on **track 0** names the
+    sequence, while the same meta on later tracks names an instrument or staff. So only track 0
+    counts — otherwise a file whose first named track is 'Cave Music 1' or 'Lead' would be
+    labelled with an instrument name. Real exports still get this wrong (a track 0 called
+    'Honky-Tonk Piano'), which is why an explicit `title` in corpus.json always wins.
+    """
+    if not smf.tracks:
+        return None
+    for e in smf.tracks[0]:
+        if e.kind == "meta" and e.meta_type == 0x03:
+            t = e.data.decode("latin-1", "replace").strip()
+            # Cakewalk and friends leak the source filename into the sequence name
+            for ext in (".cw", ".mid", ".midi", ".wrk"):
+                if t.lower().endswith(ext):
+                    t = t[: -len(ext)]
+            t = t.strip()
+            return t or None
+    return None
+
+
+def import_labels(src: str, smf: S.Smf, explicit_title: Optional[str] = None) -> Tuple[str, str, str]:
+    """(id, title, output path) for a song imported from songs/import/FILES/.
+
+    The label keeps the file's directory path and ends with the song's own name:
+    ``videogame-music/crystalis/Crystalis Desert`` when the MIDI carries a title,
+    ``videogame-music/crystalis/crys_cave`` when it does not. The canonical MIDI keeps the
+    original *filename* under songs/rendered/, so the file on disk still matches its source.
+    """
+    rel = src[len(IMPORT_ROOT):] if src.startswith(IMPORT_ROOT) else src
+    rel = re.sub(r"\.midi?$", "", rel, flags=re.I)
+    parent, _, stem = rel.rpartition("/")
+    name = explicit_title or sequence_title(smf) or stem
+    title = f"{parent}/{name}" if parent else name
+    return slug(title), title, os.path.join(RENDERED_DIR, parent, stem + ".mid")
+
+
 def slug(s: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
     return s or "song"
@@ -176,6 +220,14 @@ def canonicalize(smf: S.Smf, spec: dict, tail_s: float) -> Tuple[S.Smf, dict]:
             info["modifications"].append(
                 "program changes already present in the source (" + ", ".join(
                     "ch%d=%d" % (rule["channel"], rule["program"]) for rule in rules) + "), none injected")
+    if spec.get("_imported"):
+        # imports almost never write the drum channel's program. Make the GM default explicit so
+        # every engine picks the same kit; melodic channels still have to be right in the source.
+        drum = IP.default_drum_rules(smf)
+        if drum:
+            IP.apply_rules(smf, drum)
+            info["modifications"].append(
+                "program change injected at tick 0: ch10 = 0 (GM standard kit, implicit in the source)")
     missing = IP.check_programs(smf)
     if missing:
         raise SystemExit("%s: channels whose first note has no preceding program change: %s"
@@ -235,7 +287,12 @@ def build_entry(corpus: dict, spec: dict, out_dir: str, private: bool = False) -
     back = S.parse(blob)
     assert _signature(back) == _signature(smf), "serializer mismatch"
     out_name = spec["id"] + ".mid"
-    with open(os.path.join(out_dir, out_name), "wb") as fh:
+    out_path = os.path.join(out_dir, out_name)
+    if spec.get("_out_path"):          # imported: keep the source's directory tree and filename
+        out_path = spec["_out_path"]
+        out_name = os.path.relpath(out_path, SONGS_DIR)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "wb") as fh:
         fh.write(blob)
     classes = list(spec.get("include_classes") or corpus.get("default_include_classes", []))
     classes += [c for c in spec.get("extra_include_classes", []) if c not in classes]
@@ -245,7 +302,8 @@ def build_entry(corpus: dict, spec: dict, out_dir: str, private: bool = False) -
         file_rel = "private/canon/" + out_name
     else:
         lic = license_block(corpus, spec)
-        file_rel = out_name
+        # out_name is already relative to songs/ for imports; plain songs live at rendered/<id>.mid
+        file_rel = out_name if out_name.startswith("rendered/") else "rendered/" + out_name
     entry = {
         "id": spec["id"],
         "title": spec["title"],
@@ -299,10 +357,22 @@ def stable_header(corpus: dict) -> dict:
     }
 
 
+def resolve_import(spec: dict) -> dict:
+    """Fill in id/title/output path for a spec whose src is under songs/import/FILES/."""
+    src = spec.get("src") or ""
+    if not src.startswith(IMPORT_ROOT):
+        return spec
+    smf, _ = load_source(spec)
+    sid, title, out_path = import_labels(src, smf, spec.get("title"))
+    return {**spec, "id": spec.get("id") or sid, "title": title, "_out_path": out_path,
+            "_imported": True}
+
+
 def run_public(corpus: dict, check: bool) -> Tuple[List[dict], bool]:
     entries = []
     for spec in corpus["songs"]:
-        entry, _ = build_entry(corpus, spec, SONGS_DIR)
+        spec = resolve_import(spec)
+        entry, _ = build_entry(corpus, spec, RENDERED_DIR)
         entries.append(entry)
         print("  %-22s midi_end=%8.3f s  D=%4d s  sha=%s  %s" % (
             entry["id"], entry["midi_end_s"], entry["duration_s"], entry["sha256"][:12],

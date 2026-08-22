@@ -37,3 +37,7 @@ infra/**/terraform.tfstate*
 infra/live/terraform.tfvars
 infra/live/outputs.json
 infra/modules/*/lambda/*.zip
+
+# imported music: sources are gitignored (songs/import/FILES/), so their canonical
+# copies are too — only the freely licensed corpus is committed
+songs/rendered/videogame-music/

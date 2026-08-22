@@ -87,11 +87,14 @@ class ParserWriterTests(unittest.TestCase):
             S.parse(b"not a midi file")
 
     def test_real_corpus_files_roundtrip(self):
-        songs_dir = os.path.dirname(os.path.dirname(HERE))
-        files = [f for f in os.listdir(songs_dir) if f.endswith(".mid")]
-        self.assertTrue(files, "no canonical songs present")
+        # canonical MIDIs live under songs/rendered/, imported ones in sub-directories mirroring
+        # their path under songs/import/FILES/
+        rendered = os.path.join(os.path.dirname(os.path.dirname(HERE)), "rendered")
+        files = [os.path.join(dp, f) for dp, _, fs in os.walk(rendered)
+                 for f in fs if f.endswith(".mid")]
+        self.assertTrue(files, "no canonical songs present under songs/rendered/")
         for f in files:
-            with open(os.path.join(songs_dir, f), "rb") as fh:
+            with open(f, "rb") as fh:
                 blob = fh.read()
             m = S.parse(blob)
             self.assertEqual(S.serialize(m), blob, "%s is not in canonical form" % f)

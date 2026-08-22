@@ -119,11 +119,17 @@ def programs_at_zero(smf: S.Smf) -> Dict[int, int]:
     return out
 
 
+DRUM_CHANNEL = 10   # 1-based; GM percussion
+
 def check_programs(smf: S.Smf) -> List[int]:
     """Return 1-based channels whose first note-on is not preceded by a program change.
 
     "Preceded" = an earlier tick anywhere in the file, or the same tick but
     earlier in the same track (that is how injected tick-0 changes are placed).
+
+    Channel 10 counts too: the program there selects the drum *kit*, and leaving it implicit lets
+    different engines and banks pick different kits, which defeats the point of an A/B. Imports
+    satisfy it with default_drum_program() rather than by exempting the channel.
     """
     first_note: Dict[int, Tuple[int, int, int]] = {}   # ch -> (tick, track, index)
     first_prog: Dict[int, Tuple[int, int, int]] = {}
@@ -144,6 +150,26 @@ def check_programs(smf: S.Smf) -> List[int]:
                 or (p[0] == n[0] and p[1] != n[1] and p[1] > n[1]):
             bad.append(ch + 1)
     return sorted(bad)
+
+
+def default_drum_rules(smf: S.Smf) -> List[dict]:
+    """Rules that make an import's implied drum kit explicit.
+
+    Only channel 10, and only program 0. GM already defines the standard kit as the default there,
+    so writing it changes nothing about how the file is meant to sound — it just stops each engine
+    from choosing for itself. Melodic channels are deliberately NOT defaulted: program 0 would be
+    piano, and a file that really has no program change should fail loudly instead of quietly
+    rendering as piano on all 566 variants.
+    """
+    missing = set(check_programs(smf))
+    if DRUM_CHANNEL not in missing:
+        return []
+    track = 0
+    for ti, tr in enumerate(smf.tracks):
+        if any(e.kind == "channel" and e.channel == DRUM_CHANNEL - 1 and e.is_note_on() for e in tr):
+            track = ti
+            break
+    return [{"track": track, "channel": DRUM_CHANNEL, "program": 0, "name": "standard kit"}]
 
 
 def main(argv: List[str]) -> int:
