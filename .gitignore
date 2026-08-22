@@ -36,4 +36,4 @@ infra/**/.terraform/
 infra/**/terraform.tfstate*
 infra/live/terraform.tfvars
 infra/live/outputs.json
-infra/modules/circuit-breaker/lambda/*.zip
+infra/modules/*/lambda/*.zip
