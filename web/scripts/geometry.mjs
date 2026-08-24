@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Compare modern, Windows 95, and Amiga geometry at desktop and phone sizes. */
+import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => arg.replace(/^--/, '').split('=')));
@@ -16,6 +17,11 @@ const close = (a, b, tolerance = 1) => Math.abs(a - b) <= tolerance;
 const assert = (condition, message) => {
   if (!condition) failures.push(message);
 };
+
+// period-correctness statics: the Win95 stylesheet may not use gradients or round any corner
+const win95Css = readFileSync(new URL('../src/styles/theme-win95.css', import.meta.url), 'utf8');
+assert(!/gradient\(/.test(win95Css), 'win95 stylesheet uses gradients');
+assert(!/border-radius:(?!\s*0\s*[;}])/.test(win95Css), 'win95 stylesheet rounds a corner');
 
 async function measure(theme, viewport, label) {
   const page = await browser.newPage({ viewport, hasTouch: label === 'phone' });
@@ -95,6 +101,24 @@ async function measure(theme, viewport, label) {
       optionCountColor: getComputedStyle(firstOpt.querySelector('.cnt')).color,
     };
     firstOpt.remove();
+    const probeBtn = document.createElement('button');
+    probeBtn.className = 'btn';
+    probeBtn.disabled = true;
+    probeBtn.textContent = 'probe';
+    probeBtn.style.position = 'fixed';
+    probeBtn.style.visibility = 'hidden';
+    const probeLink = document.createElement('a');
+    probeLink.href = '#';
+    probeLink.textContent = 'probe';
+    probeLink.style.position = 'fixed';
+    probeLink.style.visibility = 'hidden';
+    document.body.append(probeBtn, probeLink);
+    const states = {
+      disabledColor: getComputedStyle(probeBtn).color,
+      linkColor: getComputedStyle(probeLink).color,
+    };
+    probeBtn.remove();
+    probeLink.remove();
     return {
       viewport: { width: innerWidth, height: innerHeight },
       overflow: {
@@ -114,6 +138,7 @@ async function measure(theme, viewport, label) {
       mainButtons,
       stepButtons,
       highlight,
+      states,
       fonts: {
         msSans: document.fonts.check('11px "Pixelated MS Sans Serif"'),
         fixedsys: document.fonts.check('16px "Fixedsys Excelsior"'),
@@ -121,6 +146,26 @@ async function measure(theme, viewport, label) {
       theme: document.documentElement.dataset.theme,
       dropdown: document.querySelector('.themepick').value,
     };
+  });
+  const hoverRow = page.locator('.rows .row:not(.head):not(.sticky):not(.sel)').nth(1);
+  await hoverRow.hover();
+  result.hover = await hoverRow.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const label = el.querySelector('.label');
+    const meta = el.querySelector('.meta');
+    return {
+      background: style.backgroundColor,
+      labelColor: label ? getComputedStyle(label).color : null,
+      metaColor: meta ? getComputedStyle(meta).color : null,
+    };
+  });
+  // Tab is an app shortcut (A/B), so probe keyboard focus by focusing the theme select directly.
+  result.focusOutline = await page.evaluate(() => {
+    const select = document.querySelector('.themepick');
+    select.focus();
+    const style = getComputedStyle(select).outlineStyle;
+    select.blur();
+    return style;
   });
   await page.close();
   return result;
@@ -155,22 +200,30 @@ for (const [label, viewport] of Object.entries(viewports)) {
     if (color !== null && part !== 'rowBackground' && part !== 'optionBackground') assert(color === 'rgb(255, 255, 255)', `${label}/win95: highlighted ${part} is ${color}`);
   }
   assert(win95.highlight.optionBackground === 'rgb(0, 0, 128)', `${label}/win95: selected option background is ${win95.highlight.optionBackground}`);
-
-  for (const themed of [win95, amiga]) assert(JSON.stringify(themed.order) === JSON.stringify(modern.order), `${label}/${themed.theme}: control order changed`);
-  assert(win95.rowHeights.every((height) => close(height, 20)), `${label}/win95: rows are not the native-density 20px target`);
-
-  assert(JSON.stringify(amiga.gaps) === JSON.stringify(modern.gaps), `${label}/amiga: shared gaps changed`);
-  assert(amiga.rowHeights.every((height, index) => close(height, modern.rowHeights[index])), `${label}/amiga: row heights changed`);
-  for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) {
-      const actual = amiga.namedRects[selector];
-      const expected = modern.namedRects[selector];
-      if (actual && expected) assert(close(actual.w, expected.w) && close(actual.h, expected.h), `${label}/amiga: ${selector} changed from ${expected.w}×${expected.h} to ${actual.w}×${actual.h}`);
+  assert(win95.hover.background === 'rgb(0, 0, 128)', `${label}/win95: hovered row background is ${win95.hover.background}`);
+  for (const [part, color] of Object.entries(win95.hover)) {
+    if (color !== null && part !== 'background') assert(color === 'rgb(255, 255, 255)', `${label}/win95: hovered ${part} is ${color}`);
   }
-  for (const key of ['mainButtons', 'stepButtons']) {
-      amiga[key].forEach((button, index) => {
+  assert(win95.states.disabledColor === 'rgb(128, 128, 128)', `${label}/win95: disabled button text is ${win95.states.disabledColor}`);
+  assert(win95.states.linkColor === 'rgb(0, 0, 255)', `${label}/win95: link color is ${win95.states.linkColor}`);
+  assert(win95.focusOutline === 'dotted', `${label}/win95: keyboard focus outline is ${win95.focusOutline}, not dotted`);
+
+  // Both replacement themes are paint-only: geometry must match modern exactly.
+  for (const themed of [win95, amiga]) {
+    assert(JSON.stringify(themed.order) === JSON.stringify(modern.order), `${label}/${themed.theme}: control order changed`);
+    assert(JSON.stringify(themed.gaps) === JSON.stringify(modern.gaps), `${label}/${themed.theme}: shared gaps changed`);
+    assert(themed.rowHeights.every((height, index) => close(height, modern.rowHeights[index])), `${label}/${themed.theme}: row heights changed`);
+    for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) {
+      const actual = themed.namedRects[selector];
+      const expected = modern.namedRects[selector];
+      if (actual && expected) assert(close(actual.w, expected.w) && close(actual.h, expected.h), `${label}/${themed.theme}: ${selector} changed from ${expected.w}×${expected.h} to ${actual.w}×${actual.h}`);
+    }
+    for (const key of ['mainButtons', 'stepButtons']) {
+      themed[key].forEach((button, index) => {
         const expected = modern[key][index];
-        if (expected) assert(close(button.outer.w, expected.outer.w) && close(button.outer.h, expected.outer.h), `${label}/amiga: ${button.label} changed from ${expected.outer.w}×${expected.outer.h} to ${button.outer.w}×${button.outer.h}`);
+        if (expected) assert(close(button.outer.w, expected.outer.w) && close(button.outer.h, expected.outer.h), `${label}/${themed.theme}: ${button.label} changed from ${expected.outer.w}×${expected.outer.h} to ${button.outer.w}×${button.outer.h}`);
       });
+    }
   }
 }
 
