@@ -202,6 +202,9 @@ def main(argv) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--write-local", metavar="PATH",
+                    help="write library.json to PATH and stop (no AWS calls); for fragment.py "
+                         "runs and validation before the admin bucket exists")
     args = ap.parse_args(argv)
 
     doc, dups, suffixed = build_library()
@@ -227,6 +230,12 @@ def main(argv) -> int:
         return 1
     print("id cross-check: all published import ids reproduced exactly")
 
+    if args.write_local:
+        with open(args.write_local, "w") as fh:
+            json.dump(doc, fh, indent=1, sort_keys=True)
+            fh.write("\n")
+        print(f"wrote {args.write_local}")
+        return 0
     if args.dry_run:
         return 0
     bucket = admin_bucket()

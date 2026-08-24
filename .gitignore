@@ -40,4 +40,10 @@ infra/modules/*/lambda/*.zip
 
 # imported music: sources are gitignored (songs/import/FILES/), so their canonical
 # copies are too — only the freely licensed corpus is committed
-songs/rendered/videogame-music/
+# canonical MIDIs for imports mirror the import tree (subdirs) or land at the rendered/
+# root (imports with no directory). The 13 curated rendered/*.mid are tracked already —
+# gitignore never hides tracked files — but a NEW curated song needs `git add -f`.
+songs/rendered/*/
+songs/rendered/*.mid
+songs/corpus-imports.json
+songs/canon-report.json
