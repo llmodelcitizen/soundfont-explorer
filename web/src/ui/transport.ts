@@ -5,6 +5,7 @@ import { ICONS, setIcon } from './icons';
 
 export interface TransportCallbacks {
   onToggle(): void;
+  onStop(): void;
   onSeek(pos: number): void;
   onSkip(delta: number): void;
   onLoop(on: boolean): void;
@@ -32,6 +33,12 @@ export class Transport {
     setIcon(this.playBtn, 'play');
     this.playBtn.addEventListener('click', () => {
       cb.onToggle();
+      returnFocus();
+    });
+    const stop = h('button', { class: 'btn stop', type: 'button', title: 'stop and rewind', 'aria-label': 'stop and rewind' });
+    setIcon(stop, 'stop');
+    stop.addEventListener('click', () => {
+      cb.onStop();
       returnFocus();
     });
     const back = h('button', { class: 'btn', type: 'button', title: '−5 s (←)', 'aria-label': 'back 5 seconds' });
@@ -104,6 +111,7 @@ export class Transport {
       { class: 'transport' },
       h('div', { class: 'steps' }, mkStep(-1, 'up'), mkStep(1, 'down')),
       back,
+      stop,
       this.playBtn,
       fwd,
       this.loopBtn,

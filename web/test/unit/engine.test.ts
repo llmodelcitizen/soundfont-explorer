@@ -326,6 +326,31 @@ describe('Engine', () => {
     const seg = segmentAt(h.set, (last.buffer as FakeBuffer).tag.includes('/l/') ? 'l' : 's', pos);
     expect(last.started!.offset).toBeCloseTo(0.12 + (pos - seg.uStart) + (last.started!.when - h.engine.timeline.timeAt(pos)), 2);
   });
+
+  it('stop releases the chain, rewinds to zero, and keeps later selections silent until play', async () => {
+    const h = harness(4, 8);
+    h.engine.select('v0');
+    h.engine.play();
+    await h.run(1000);
+    h.engine.stop();
+    await h.run(20);
+    expect(h.engine.playing).toBe(false);
+    expect(h.engine.position()).toBe(0);
+    expect(h.engine.status.kind).toBe('stopped');
+    expect(h.liveSources().length).toBe(0);
+
+    h.engine.select('v1');
+    await h.run(100);
+    expect(h.engine.playing).toBe(false);
+    expect(h.engine.audible).toBe('v1');
+    expect(h.engine.position()).toBe(0);
+
+    h.engine.play();
+    await h.run(100);
+    expect(h.engine.playing).toBe(true);
+    expect(h.engine.position()).toBeLessThan(0.2);
+    expect((h.ctx.sources.at(-1)!.buffer as FakeBuffer).tag.startsWith('v1/')).toBe(true);
+  });
 });
 
 describe('SegmentStore backoff', () => {

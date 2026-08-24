@@ -65,6 +65,8 @@ export class App {
   private volTop: HTMLInputElement | null = null;
   /** set once the user has started playback in this page load (first ▶ or first row tap) */
   private everPlayed = false;
+  /** Stop → another track arms its first explicit render click as a request to play. */
+  private playOnRenderClick = false;
   private tracks!: TrackList;
   private rightPane!: HTMLElement;
   private debug = new DebugPanel();
@@ -232,6 +234,7 @@ export class App {
 
   /** switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor */
   private switchSong(id: string): void {
+    if (id !== this.song.id && this.engine.status.kind === 'stopped') this.playOnRenderClick = true;
     this.ledger.flush();
     void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined });
   }
@@ -301,8 +304,12 @@ export class App {
       this.set,
       {
         onClick: (i) => {
+          const shouldPlay = !this.everPlayed || this.playOnRenderClick;
           this.policy.jump(i, performance.now());
-          if (!this.everPlayed) this.engine.play(); // the tap that picked a font is also the tap that starts the music
+          if (shouldPlay) {
+            this.playOnRenderClick = false;
+            this.engine.play(); // first-ever tap, or Stop → track → render, asks to hear it
+          }
         },
         onStickyClick: (id) => {
           this.filters.clearAll();
@@ -341,6 +348,10 @@ export class App {
       this.set.duration_s,
       {
         onToggle: () => this.engine.toggle(),
+        onStop: () => {
+          this.playOnRenderClick = false;
+          this.engine.stop();
+        },
         onSeek: (p) => this.engine.seek(p),
         onSkip: (d) => this.engine.seek(this.engine.position() + d),
         onLoop: (on) => this.setLoop(on),
@@ -467,7 +478,10 @@ export class App {
     this.refreshListened();
     this.list.setFavorites(this.favorites.all());
     this.engine.on('status', (s) => {
-      if (s.kind === 'playing') this.everPlayed = true;
+      if (s.kind === 'playing') {
+        this.everPlayed = true;
+        this.playOnRenderClick = false;
+      }
       this.onStatus(s);
     });
     this.engine.on('audible', (v) => {
@@ -759,7 +773,7 @@ export class App {
   }
 
   private onStatus(s: Status): void {
-    const txt = s.kind === 'loading' ? `loading ${s.target ?? ''}…` : s.kind === 'wontload' ? s.message : s.kind === 'ended' ? 'end' : s.kind === 'paused' ? 'paused' : '';
+    const txt = s.kind === 'loading' ? `loading ${s.target ?? ''}…` : s.kind === 'wontload' ? s.message : s.kind === 'ended' ? 'end' : s.kind === 'paused' ? 'paused' : s.kind === 'stopped' ? 'stopped' : '';
     this.transport.setStatus(txt, s.kind);
     this.nowPlaying.setStatus(txt, s.kind);
     this.list.setLoading(s.kind === 'loading' ? (s.target ?? null) : null);

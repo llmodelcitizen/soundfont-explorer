@@ -103,6 +103,8 @@ export class FilterBar {
 
   clearAll(): void {
     this.sel = {};
+    this.query = '';
+    this.search.value = '';
     this.setFavoritesOnly(false);
     this.cb.onFavoritesOnly(false);
     this.emit();

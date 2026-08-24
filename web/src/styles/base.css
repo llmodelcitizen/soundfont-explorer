@@ -803,7 +803,7 @@ select:focus-visible {
   align-items: center;
   justify-content: center;
 }
-/* the five transport buttons share one fixed width, glyphs centred — play/pause must not change width */
+/* transport buttons share one fixed width, glyphs centred — play/pause must not change width */
 .transport > .btn,
 .transport .toggle {
   display: inline-flex;
@@ -814,6 +814,15 @@ select:focus-visible {
   padding-right: 0;
   box-sizing: border-box;
   flex: 0 0 auto;
+}
+.transport > .btn.stop {
+  /* Mobile keeps the existing five-button row; desktop has room to distinguish stop from pause. */
+  display: none;
+}
+@media (min-width: 721px) {
+  .transport > .btn.stop {
+    display: inline-flex;
+  }
 }
 /* desktop order: transport · clock · seek · loop · mute · volume */
 .transport .clock {

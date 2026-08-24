@@ -16,7 +16,7 @@ import type { SegmentStore } from './store';
 import type { ContextLike, GainLike, SegKey, Tier } from './types';
 import { keyStr } from './types';
 
-export type StatusKind = 'idle' | 'loading' | 'playing' | 'paused' | 'wontload' | 'ended';
+export type StatusKind = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'wontload' | 'ended';
 
 export interface Status {
   kind: StatusKind;
@@ -184,6 +184,22 @@ export class Engine {
       this.pending = null;
     }
     this.setStatus('paused');
+  }
+
+  /** explicit user stop: silence the current voice and reset the next play to position zero */
+  stop(): void {
+    this.endedNaturally = false;
+    const now = this.ctx.currentTime;
+    this.timeline.pause(now);
+    this.timeline.seek(0, now);
+    this.audibleChain?.release(now, AUDIO.SWITCH_XFADE);
+    this.audibleChain = null;
+    if (this.pending) {
+      // Preserve the requested variant, just as pause() does, but rewind its next start.
+      this.setAudible(this.pending.variant, null);
+      this.pending = null;
+    }
+    this.setStatus('stopped');
   }
 
   toggle(): void {

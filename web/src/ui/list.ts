@@ -139,7 +139,12 @@ export class VariantList {
     VariantList.move('sel', prev, next);
     prev?.removeAttribute('aria-selected');
     next?.setAttribute('aria-selected', 'true');
-    if (scroll) next?.scrollIntoView({ block: 'nearest' });
+    if (scroll) {
+      // Reveal the selection first (including its sticky-header margin), then its successor.
+      // The second nearest-scroll is a no-op unless the selected row is the last visible row.
+      next?.scrollIntoView({ block: 'nearest' });
+      this.rows[index + 1]?.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   setAudible(id: string | null): void {
