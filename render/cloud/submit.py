@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import argparse, json, os, pathlib, subprocess, sys, time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from planner import estimate, plan_shards, song_durations  # noqa: E402
+
 REPO = pathlib.Path(__file__).resolve().parents[2]
-# measured 2026-08-21 (docs/validation.md "M5"/"M7"): 116 CPU-h for 7935 jobs after
-# PIPELINE_VERSION 2, i.e. ~53 CPU-s per job. Spot c7a is ~$0.019/vCPU-h.
-CPU_S_PER_JOB = 53.0
-USD_PER_VCPU_HOUR = 0.019
 
 
 def aws(*args: str) -> dict:
@@ -41,29 +40,6 @@ def song_ids(args) -> list[str]:
     return ids if args.all else [s for s in ids if s in set(args.song)]
 
 
-def plan_shards(songs: list[str], n: int) -> list[dict]:
-    """Longest-first round robin over shards. Song cost tracks duration_s, and the tail of a run
-    is bounded by the slowest shard, so the long songs are dealt first."""
-    meta = {}
-    for p in ("songs/songs.json", "songs/private/songs.json"):
-        f = REPO / p
-        if f.exists():
-            for s in json.loads(f.read_text())["songs"]:
-                meta[s["id"]] = s["duration_s"]
-    order = sorted(songs, key=lambda s: -meta.get(s, 180))
-    shards: list[dict] = [{"songs": [], "d": 0} for _ in range(min(n, len(order)))]
-    for s in order:
-        t = min(shards, key=lambda x: x["d"])
-        t["songs"].append(s); t["d"] += meta.get(s, 180)
-    return [{"songs": x["songs"], "duration_total_s": x["d"]} for x in shards if x["songs"]]
-
-
-def estimate(shards: list[dict], variants: int) -> tuple[float, float]:
-    jobs = sum(len(s["songs"]) for s in shards) * variants
-    cpu_h = jobs * CPU_S_PER_JOB / 3600
-    return cpu_h, cpu_h * USD_PER_VCPU_HOUR
-
-
 def set_state(ce: str, state: str) -> None:
     subprocess.run(["aws", "batch", "update-compute-environment",
                     "--compute-environment", ce, "--state", state], check=True, capture_output=True)
@@ -84,7 +60,7 @@ def main() -> int:
     songs = song_ids(args)
     if not songs:
         sys.exit("no songs selected (use --all or --song ID)")
-    shards = plan_shards(songs, args.shards)
+    shards = plan_shards(songs, args.shards, song_durations(REPO))
     cpu_h, usd = estimate(shards, args.variants)
 
     print(f"[submit] {len(songs)} songs across {len(shards)} shards")

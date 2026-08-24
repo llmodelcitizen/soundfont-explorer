@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, bootstrapstate, routes_library
+from . import auth, bootstrapstate, routes_library, routes_runs
 from .config import get_config
 
 OPEN_PATHS = ("/auth/", "/healthz")
@@ -45,6 +45,7 @@ async def require_auth(request: Request, call_next):
 
 app.include_router(auth.router)
 app.include_router(routes_library.router)
+app.include_router(routes_runs.router)
 
 
 @app.get("/healthz")
@@ -77,6 +78,28 @@ def shutdown() -> JSONResponse:
     import boto3
     boto3.client("ec2").terminate_instances(InstanceIds=[iid])
     return JSONResponse({"ok": True, "msg": f"terminating {iid}"})
+
+
+# The run reconciler (and its no-live-run ⇒ CE-DISABLED invariant) must hold even if
+# nobody opens the Renders tab: start the manager as soon as bootstrap reports ready.
+def _kick_reconciler() -> None:
+    import time
+
+    from . import renders
+    while True:
+        try:
+            if bootstrapstate.ready():
+                if get_config().render_enabled:
+                    renders.get_manager()
+                return
+        except Exception:
+            return  # not a real deployment (tests, local run) — routes still work lazily
+        time.sleep(10)
+
+
+import threading  # noqa: E402
+
+threading.Thread(target=_kick_reconciler, name="reconciler-kick", daemon=True).start()
 
 
 # ---------------------------------------------------------------- SPA (built by deploy.sh)

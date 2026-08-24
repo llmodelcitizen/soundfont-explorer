@@ -12,14 +12,20 @@ cd "$(dirname "$0")/../.."
 
 OUT=infra/live/outputs.json
 [[ -f "$OUT" ]] || { echo "missing $OUT — run: terraform -chdir=infra/live output -json > $OUT" >&2; exit 1; }
-read -r BUCKET HOSTNAME ZONE < <(python3 - "$OUT" <<'PY'
+read -r BUCKET HOSTNAME ZONE SITE DIST FONTS QUEUE JOBDEF CE LOGGRP < <(python3 - "$OUT" <<'PY'
 import json, sys
-admin = json.load(open(sys.argv[1])).get("admin", {}).get("value")
+o = json.load(open(sys.argv[1]))
+admin = o.get("admin", {}).get("value")
 if not admin:
     sys.exit("admin outputs are empty — apply with -var enable_admin=true and refresh outputs.json")
-print(admin["bucket"], admin["hostname"], admin["zone_id"])
+rf = o.get("render_fleet", {}).get("value") or {}
+print(admin["bucket"], admin["hostname"], admin["zone_id"],
+      o["bucket"]["value"], o["distribution_id"]["value"],
+      rf.get("fonts_bucket", "-"), rf.get("job_queue", "-"), rf.get("job_definition", "-"),
+      rf.get("compute_environment", "-"), rf.get("log_group", "-"))
 PY
 )
+[[ "$FONTS" == "-" ]] && echo "WARN: render fleet not deployed — render submission will be unavailable on the box"
 GITSHA=$(git rev-parse --short HEAD)
 [[ -z "$(git status --porcelain -- admin songs render catalog)" ]] \
   || echo "WARN: uncommitted changes in admin/songs/render/catalog will NOT be in the bundle (git archive HEAD)"
@@ -43,6 +49,13 @@ pip3 download -q -r admin/server/requirements.txt -d "$STAGE/admin/wheels" \
 cat > "$STAGE/admin/bundle.env" <<ENV
 SFADMIN_HOSTNAME=$HOSTNAME
 SFADMIN_ZONE_ID=$ZONE
+SFADMIN_SITE_BUCKET=$SITE
+SFADMIN_DISTRIBUTION=$DIST
+SFADMIN_FONTS_BUCKET=${FONTS/#-/}
+SFADMIN_JOB_QUEUE=${QUEUE/#-/}
+SFADMIN_JOB_DEFINITION=${JOBDEF/#-/}
+SFADMIN_COMPUTE_ENV=${CE/#-/}
+SFADMIN_LOG_GROUP=${LOGGRP/#-/}
 ENV
 TAR="$STAGE.tar.gz"
 tar -C "$STAGE" -czf "$TAR" .

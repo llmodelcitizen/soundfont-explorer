@@ -1,6 +1,7 @@
 import './style.css';
 import { get, post, type BootstrapStatus, type Me } from './api';
 import { LibraryView } from './library';
+import { RunsView } from './runs';
 
 const app = document.getElementById('app')!;
 
@@ -43,10 +44,32 @@ async function waitUntilReady(): Promise<void> {
 
 function shell(me: Me): void {
   const lib = new LibraryView();
-  const main = el('main', {}, lib.root);
-  lib.load().catch((e) => {
-    main.replaceChildren(el('div', { class: 'notice' }, `library failed to load: ${e.message}`));
-  });
+  const runs = new RunsView();
+  const main = el('main', {});
+  const tabs = el('nav', { class: 'tabs' });
+  const views: [string, () => void][] = [
+    ['Library', () => {
+      runs.stop();
+      main.replaceChildren(lib.root);
+      lib.load().catch((e) => main.replaceChildren(
+        el('div', { class: 'notice' }, `library failed to load: ${e.message}`)));
+    }],
+    ['Renders', () => {
+      main.replaceChildren(runs.root);
+      runs.load();
+    }],
+  ];
+  for (const [name, show] of views) {
+    const b = el('button', { class: 'tab' }, name);
+    b.onclick = () => {
+      tabs.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+      b.classList.add('active');
+      show();
+    };
+    tabs.append(b);
+  }
+  (tabs.firstChild as HTMLButtonElement).classList.add('active');
+  views[0]![1]();
   const update = el('button', {}, 'Update & restart');
   update.onclick = async () => {
     update.disabled = true;
@@ -64,6 +87,7 @@ function shell(me: Me): void {
   app.replaceChildren(
     el('header', { class: 'topbar' },
       el('h1', {}, 'Soundfont Explorer admin'),
+      tabs,
       el('div', { class: 'spacer' }),
       update, shutdown,
       el('span', { class: 'who' }, me.email),

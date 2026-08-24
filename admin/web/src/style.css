@@ -104,3 +104,35 @@ a.btnish:hover { border-color: var(--accent); }
 .canonbox { border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .canonbox .reason { color: var(--danger); word-break: break-word; }
 .ids { color: var(--dim); font-size: 11px; }
+
+/* ---- tabs + runs ---- */
+.tabs { display: flex; gap: 4px; }
+.tab { border: none; background: none; color: var(--dim); padding: 6px 10px; }
+.tab.active { color: var(--fg); border-bottom: 2px solid var(--accent); border-radius: 0; }
+.runs h2 { font-size: 16px; margin: 0; }
+.submitbox {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.picktree { max-height: 40vh; overflow-y: auto; font-size: 14px; }
+.picktree summary { cursor: pointer; padding: 3px 0; font-weight: 600; }
+.picktree .pick { display: block; padding: 1px 0 1px 26px; cursor: pointer; }
+.knobs { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.knobs label { display: flex; gap: 6px; align-items: center; color: var(--dim); }
+.knobs input {
+  font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;
+}
+.runrow {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 8px;
+}
+.runhead { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+.chip { font-size: 11px; padding: 1px 8px; border-radius: 8px; background: var(--bg); color: var(--dim); }
+.chip.c-succeeded { color: var(--ok); }
+.chip.c-failed { color: var(--danger); }
+.chip.c-running { color: var(--accent); }
+.logbox {
+  margin: 8px 0 0; padding: 8px; background: var(--bg); border-radius: 6px;
+  font-size: 11px; max-height: 300px; overflow: auto; white-space: pre-wrap;
+}

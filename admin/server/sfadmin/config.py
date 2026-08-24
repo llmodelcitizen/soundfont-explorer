@@ -37,8 +37,23 @@ class Config:
         self.data = env("SFADMIN_DATA", "/opt/sfadmin/data")
         self.cache = env("SFADMIN_CACHE", "/var/cache/sfadmin")
         self.status_file = env("SFADMIN_STATUS", "/run/sfadmin/bootstrap.json")
+        # render-fleet + site plumbing, baked into bundle.env by deploy.sh from
+        # infra/live/outputs.json (which never reaches the box). Empty when the
+        # fleet is disabled — render submission is then unavailable.
+        self.site_bucket = os.environ.get("SFADMIN_SITE_BUCKET", "")
+        self.distribution = os.environ.get("SFADMIN_DISTRIBUTION", "")
+        self.fonts_bucket = os.environ.get("SFADMIN_FONTS_BUCKET", "")
+        self.job_queue = os.environ.get("SFADMIN_JOB_QUEUE", "")
+        self.job_definition = os.environ.get("SFADMIN_JOB_DEFINITION", "")
+        self.compute_env = os.environ.get("SFADMIN_COMPUTE_ENV", "")
+        self.log_group = os.environ.get("SFADMIN_LOG_GROUP", "")
         self._ssm_lock = threading.Lock()
         self._ssm: dict[str, str] = {}
+
+    @property
+    def render_enabled(self) -> bool:
+        return bool(self.fonts_bucket and self.job_queue and self.job_definition
+                    and self.compute_env and self.site_bucket)
 
     # boto3 clients are cheap to hold and thread-safe to use
     @property
