@@ -969,16 +969,26 @@ kbd {
   padding: 8px 10px;
   z-index: 5;
   border-radius: var(--radius);
+  max-height: calc(100dvh - 8px);
+  display: flex;
+  flex-direction: column;
 }
 .dbg-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.debug.dragging {
+  opacity: 0.96;
 }
 .dbg-actions {
   display: flex;
   gap: 6px;
+  cursor: default;
 }
 .btn.close {
   padding: 2px 9px;
@@ -989,6 +999,7 @@ kbd {
   margin: 0;
   white-space: pre-wrap;
   font-size: 0.85em;
+  overflow: auto;
 }
 
 /* credits / fatal */

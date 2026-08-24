@@ -89,6 +89,10 @@ export class Engine {
   private order: string[] = [];
   private cursorIndex = 0;
 
+  get currentTier(): Tier | null {
+    return this.lastTier;
+  }
+
   constructor(
     readonly ctx: ContextLike,
     readonly set: SetDoc,

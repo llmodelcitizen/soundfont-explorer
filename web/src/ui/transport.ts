@@ -35,7 +35,7 @@ export class Transport {
       cb.onToggle();
       returnFocus();
     });
-    const stop = h('button', { class: 'btn stop', type: 'button', title: 'stop and rewind', 'aria-label': 'stop and rewind' });
+    const stop = h('button', { class: 'btn stop', type: 'button', title: 'stop and rewind (X)', 'aria-label': 'stop and rewind' });
     setIcon(stop, 'stop');
     stop.addEventListener('click', () => {
       cb.onStop();

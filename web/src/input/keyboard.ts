@@ -1,6 +1,7 @@
 /**
  * Keymap (plan §10): ↑/↓ variant · PgUp/PgDn ±10 · Home/End · Space · ←/→ ±5 s (Shift ±30 s) ·
- * L loop · M mute · / search · Esc · [ ] song · P pin A · Tab A/B · F filters · T theme · D debug · ? keymap.
+ * X stop · V favorite · L loop · M mute · / search · Esc · [ ] song · P pin A · Tab A/B ·
+ * F filters · T theme · D debug · ? keymap.
  * ↑/↓ go through the InputPolicy (with e.repeat); everything else bypasses it.
  */
 export interface KeyActions {
@@ -10,9 +11,11 @@ export interface KeyActions {
   home(at: number): void;
   end(at: number): void;
   toggle(): void;
+  stop(): void;
   skip(seconds: number): void;
   loop(): void;
   mute(): void;
+  favorite(): void;
   focusSearch(): void;
   escape(): void;
   song(delta: number): void;
@@ -30,9 +33,11 @@ export const KEYMAP: [string, string][] = [
   ['PgUp / PgDn', '±10 variants'],
   ['Home / End', 'first / last variant'],
   ['Space', 'play / pause'],
+  ['X', 'stop and rewind'],
   ['← / →', '−5 s / +5 s (Shift: ±30 s)'],
   ['L', 'loop'],
   ['M', 'mute'],
+  ['V', 'favorite / unfavorite current variant'],
   ['/', 'search'],
   ['Esc', 'close / clear'],
   ['[ / ]', 'previous / next song'],
@@ -113,6 +118,12 @@ export function installKeyboard(target: Window, a: KeyActions): () => void {
         break;
       case 'm':
         a.mute();
+        break;
+      case 'v':
+        a.favorite();
+        break;
+      case 'x':
+        a.stop();
         break;
       case '/':
         e.preventDefault();

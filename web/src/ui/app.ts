@@ -18,7 +18,7 @@ import { FilterIndex, type Selection } from '../state/filterIndex';
 import { parseUrl, writeUrl, type UrlState } from '../state/urlstate';
 import { renderCredits } from './credits';
 import { DebugPanel } from './debug';
-import { clear, h } from './dom';
+import { clear, fmtBytes, h } from './dom';
 import { FilterBar } from './filters';
 import { showGate } from './gate';
 import { KeymapOverlay } from './keymapOverlay';
@@ -65,7 +65,7 @@ export class App {
   private volTop: HTMLInputElement | null = null;
   /** set once the user has started playback in this page load (first ▶ or first row tap) */
   private everPlayed = false;
-  /** Stop → another track arms its first explicit render click as a request to play. */
+  /** Stop/end → another track arms its first explicit render click as a request to play. */
   private playOnRenderClick = false;
   /** Survives the engine/UI rebuild caused by changing tracks after an explicit Stop. */
   private stoppedByUser = false;
@@ -237,7 +237,8 @@ export class App {
 
   /** switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor */
   private switchSong(id: string): void {
-    if (id !== this.song.id && this.stoppedByUser) this.playOnRenderClick = true;
+    const stopped = this.stoppedByUser || this.engine.status.kind === 'stopped' || this.engine.status.kind === 'ended';
+    if (id !== this.song.id && stopped) this.playOnRenderClick = true;
     this.trackScrollTop = this.tracks?.scrollTop ?? this.trackScrollTop;
     this.ledger.flush();
     void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined });
@@ -308,7 +309,7 @@ export class App {
       this.policy.jump(i, performance.now());
       if (shouldPlay) {
         this.playOnRenderClick = false;
-        this.engine.play(); // first-ever tap, or Stop → track → render, asks to hear it
+        this.engine.play(); // first-ever tap, or Stop/end → track → render, asks to hear it
       }
     };
     this.list = new VariantList(
@@ -342,12 +343,7 @@ export class App {
     this.filters.setFavoritesOnly(this.favoritesOnly);
     this.nowPlaying = new NowPlaying(this.catalog, this.set, this.song, {
       isFavorite: (id) => this.favorites.has(id),
-      toggleFavorite: (id) => {
-        const on = this.favorites.toggle(id);
-        this.list.setFavorites(this.favorites.all());
-        if (this.favoritesOnly || this.sort.key === 'fav') this.applyFilters(this.filters.sel, this.filters.query);
-        return on;
-      },
+      toggleFavorite: (id) => this.toggleFavorite(id),
     });
     this.transport = new Transport(
       this.set.duration_s,
@@ -448,9 +444,11 @@ export class App {
       home: (at) => this.policy.jump(0, at),
       end: (at) => this.policy.jump(this.visible.length - 1, at),
       toggle: () => this.togglePlayback(),
+      stop: () => this.stopPlayback(),
       skip: (s) => this.engine.seek(this.engine.position() + s),
       loop: () => this.setLoop(!this.engine.timeline.loop),
       mute: () => this.toggleMute(),
+      favorite: () => this.toggleCurrentFavorite(),
       focusSearch: () => this.filters.search.focus(),
       escape: () => {
         this.keymap.toggle(false);
@@ -732,6 +730,19 @@ export class App {
     this.engine.stop();
   }
 
+  private toggleCurrentFavorite(): void {
+    const id = this.engine.audible ?? this.visible[this.cursor];
+    if (id) this.toggleFavorite(id);
+  }
+
+  private toggleFavorite(id: string): boolean {
+    const on = this.favorites.toggle(id);
+    this.list.setFavorites(this.favorites.all());
+    this.nowPlaying.refreshFavorite(id);
+    if (this.favoritesOnly || this.sort.key === 'fav') this.applyFilters(this.filters.sel, this.filters.query);
+    return on;
+  }
+
   private effectiveColumns(): ColKey[] {
     return (isCompact() ? this.prefs.mobileColumns : this.prefs.columns) as ColKey[];
   }
@@ -855,6 +866,12 @@ export class App {
         const d = this.decoder.stats;
         const proto = (performance.getEntriesByType?.('resource') as PerformanceResourceTiming[] | undefined)?.at(-1)?.nextHopProtocol ?? '';
         const sess = audioSession();
+        const nav = navigator as Navigator & {
+          deviceMemory?: number;
+          connection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean };
+        };
+        const conn = nav.connection;
+        const heap = (performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
         this.debug.update(
           this.engine.snapshot({
             decodeKind: this.decodeKind,
@@ -868,14 +885,25 @@ export class App {
           proto,
           {
             ...this.diag,
+            track: this.song.id,
+            variant: this.engine.audible ?? 'none',
+            selection: `${this.cursor + 1}/${this.visible.length} visible (${this.set.order.length} total)`,
+            position: `${this.engine.position().toFixed(2)} / ${this.set.duration_s.toFixed(2)} s`,
+            tier: this.engine.currentTier ?? 'n/a',
             ctxState: this.ctx.state,
             audioSession: sess ? `${sess.type}/${sess.state ?? '?'}` : 'n/a',
+            decodeQueue: `${d.active} active / ${d.queued} queued / ${d.errors} errors`,
+            fetchTotal: `${f.completed}/${f.requests} completed / ${f.aborted} aborted`,
             decodedOk: this.store.stats.decodedOk,
             decodeErrors: this.store.stats.decodeErrors,
             fetchErrors: this.store.stats.fetchErrors,
             lastError: this.store.lastError ?? '',
             audibleRms: this.engine.audibleRms(),
             status: `${this.engine.status.kind} ${this.engine.status.message}`.trim(),
+            network: `${navigator.onLine ? 'online' : 'offline'}${conn ? ` / ${conn.effectiveType ?? '?'} / ${conn.downlink ?? '?'} Mbps / ${conn.rtt ?? '?'} ms RTT${conn.saveData ? ' / save-data' : ''}` : ''}`,
+            page: `${innerWidth}×${innerHeight} @${devicePixelRatio}x / ${document.visibilityState}`,
+            device: `${nav.hardwareConcurrency ?? '?'} cores / ${nav.deviceMemory ?? '?'} GiB`,
+            jsHeap: heap ? `${fmtBytes(heap.usedJSHeapSize)} / ${fmtBytes(heap.jsHeapSizeLimit)}` : 'n/a',
             ua: navigator.userAgent.slice(0, 90),
           },
         );

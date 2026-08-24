@@ -14,6 +14,8 @@ export class NowPlaying {
   private tierEl: HTMLElement;
   private statusEl: HTMLElement;
   private body: HTMLElement;
+  private favoriteId: string | null = null;
+  private favoriteBtn: HTMLButtonElement | null = null;
 
   constructor(private readonly catalog: CatalogDoc, private readonly set: SetDoc, private readonly song: SongEntry, private actions: NowPlayingActions) {
     this.tierEl = h('span', { class: 'tier', title: `audio tier: scrub (${set.scrub.bitrate} kbps) or listen (${set.listen.bitrate} kbps)` }, '');
@@ -39,7 +41,9 @@ export class NowPlaying {
   }
 
   private actionsBar(id: string): HTMLElement {
-    const fav = h('button', { class: 'btn fav-btn', type: 'button' }) as HTMLButtonElement;
+    const fav = h('button', { class: 'btn fav-btn', type: 'button', title: 'favorite / unfavorite (V)' }) as HTMLButtonElement;
+    this.favoriteId = id;
+    this.favoriteBtn = fav;
     this.paintFav(fav, id);
     fav.addEventListener('click', () => {
       this.actions.toggleFavorite(id);
@@ -50,8 +54,14 @@ export class NowPlaying {
     return h('div', { class: 'np-actions' }, fav, dl);
   }
 
+  refreshFavorite(id: string): void {
+    if (id === this.favoriteId && this.favoriteBtn) this.paintFav(this.favoriteBtn, id);
+  }
+
   show(id: string | null): void {
     clear(this.body);
+    this.favoriteId = null;
+    this.favoriteBtn = null;
     if (!id) return;
     const v = this.catalog.byId.get(id);
     const sv = this.set.variants[id];
