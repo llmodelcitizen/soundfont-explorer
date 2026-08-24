@@ -189,9 +189,12 @@ def stage_and_upload(doc: dict, bucket: str, force: bool) -> None:
 
 
 def verify(doc: dict, bucket: str) -> None:
-    n = int(subprocess.run(["aws", "s3api", "list-objects-v2", "--bucket", bucket,
-                            "--prefix", "library/FILES/", "--query", "length(Contents)",
-                            "--output", "text"], capture_output=True, text=True, check=True).stdout.strip())
+    # the CLI applies --query to each pagination page, so length(Contents) prints one
+    # count per 1000-key page ("1000\n1000\n800") — sum them ("None" = an empty page)
+    out = subprocess.run(["aws", "s3api", "list-objects-v2", "--bucket", bucket,
+                          "--prefix", "library/FILES/", "--query", "length(Contents)",
+                          "--output", "text"], capture_output=True, text=True, check=True).stdout
+    n = sum(int(x) for x in out.split() if x != "None")
     want = len(doc["entries"])
     if n != want:
         raise SystemExit(f"verify FAILED: {n} objects under library/FILES/, expected {want}")
