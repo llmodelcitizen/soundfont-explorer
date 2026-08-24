@@ -9,7 +9,7 @@ for (const theme of ['modern', 'win95', 'amiga']) {
   await p.goto(`${url}?theme=${theme}`, { waitUntil: 'networkidle' });
   await p.waitForSelector('.rows .row', { timeout: 20000 });
   await p.evaluate(async () => {
-    await Promise.all([document.fonts.load('11px "Pixelated MS Sans Serif"'), document.fonts.load('16px "Fixedsys Excelsior"')]);
+    await Promise.all([document.fonts.load('14px "SFP IBM Plex Sans"', 'Soundfont Explorer'), document.fonts.load('11px "Pixelated MS Sans Serif"'), document.fonts.load('16px "Fixedsys Excelsior"')]);
     await document.fonts.ready;
   });
   await p.keyboard.press(' ');
@@ -44,7 +44,7 @@ for (const theme of ['modern', 'win95', 'amiga']) {
     creditsUrl.hash = '/credits';
     await p.goto(creditsUrl.href, { waitUntil: 'networkidle' });
     await p.evaluate(async () => {
-      await Promise.all([document.fonts.load('11px "Pixelated MS Sans Serif"'), document.fonts.load('16px "Fixedsys Excelsior"')]);
+      await Promise.all([document.fonts.load('14px "SFP IBM Plex Sans"', 'Soundfont Explorer'), document.fonts.load('11px "Pixelated MS Sans Serif"'), document.fonts.load('16px "Fixedsys Excelsior"')]);
       await document.fonts.ready;
     });
     await p.screenshot({ path: `${out}/win95-about.png`, fullPage: true });
@@ -56,7 +56,7 @@ for (const theme of ['modern', 'win95', 'amiga']) {
   await m.goto(`${url}?theme=${theme}`, { waitUntil: 'networkidle' });
   await m.waitForSelector('.rows .row', { timeout: 20000 });
   await m.evaluate(async () => {
-    await Promise.all([document.fonts.load('11px "Pixelated MS Sans Serif"'), document.fonts.load('16px "Fixedsys Excelsior"')]);
+    await Promise.all([document.fonts.load('14px "SFP IBM Plex Sans"', 'Soundfont Explorer'), document.fonts.load('11px "Pixelated MS Sans Serif"'), document.fonts.load('16px "Fixedsys Excelsior"')]);
     await document.fonts.ready;
   });
   await m.tap('.rows .row:nth-child(3)');

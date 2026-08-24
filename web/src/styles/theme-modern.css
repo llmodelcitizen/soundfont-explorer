@@ -25,7 +25,8 @@
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   --radius: 3px;
   --row-h: 24px;
-  --font: 14px/1.4 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --modern-font: 'SFP IBM Plex Sans', system-ui, sans-serif;
+  --font: 14px/1.4 var(--modern-font);
   --mono: 12px/1.4 ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace;
   --c-sf2: #2b4b7a;
   --c-opl: #7a3a2b;
@@ -34,4 +35,19 @@
   --c-gus: #7a6a2b;
   --c-sc55: #3a3a7a;
   --c-la: #7a2b5a;
+}
+
+[data-theme='modern'] .top .title.font-cycler {
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+[data-theme='modern'] .top .title.font-cycler:hover .domain {
+  color: var(--fg);
+}
+[data-theme='modern'] .top .title.font-cycler:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+[data-theme='modern'] .filterrow > .btn {
+  white-space: nowrap;
 }

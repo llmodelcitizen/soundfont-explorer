@@ -30,6 +30,7 @@ import { adjacentTrackId, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
+import { applyModernFont, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
 import { audioSession, createContext, installResumeOnGesture, unlock } from '../audio/unlock';
 import { Transport } from './transport';
 
@@ -111,6 +112,7 @@ export class App {
   };
   private policy!: InputPolicy;
   private theme: ThemeName;
+  private modernFontId: ModernFontId = readModernFont();
   private pinnedA: string | null = null;
   private sort: { key: ColKey | null; dir: 1 | -1 } = { key: null, dir: 1 };
   private favoritesOnly = false;
@@ -123,12 +125,14 @@ export class App {
   private volume = 1;
   private main!: HTMLElement;
   private header!: HTMLElement;
+  private title!: HTMLElement;
   private uninstallKeys: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
     this.url = parseUrl();
     this.theme = readTheme(this.url.theme);
+    applyModernFont(this.modernFontId);
     applyTheme(this.theme);
   }
 
@@ -407,10 +411,17 @@ export class App {
       '<circle cx="12" cy="12" r="3.2"/>' +
       '<path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
     settingsBtn.addEventListener('click', () => this.settings.toggle());
+    this.title = h('div', { class: 'title font-cycler' }, h('span', { class: 'brand' }, 'Soundfont Explorer'), h('span', { class: 'domain' }, ` - ${location.host}`));
+    this.title.addEventListener('click', () => this.cycleModernFont());
+    this.title.addEventListener('keydown', (event) => {
+      if (this.theme !== 'modern' || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      this.cycleModernFont();
+    });
     this.header = h(
       'header',
       { class: 'top' },
-      h('div', { class: 'title' }, h('span', { class: 'brand' }, 'Soundfont Explorer'), h('span', { class: 'domain' }, ` - ${location.host}`)),
+      this.title,
       this.picker.el,
       h('div', { class: 'spacer' }),
       themeSel,
@@ -420,6 +431,7 @@ export class App {
       h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
       volTop,
     );
+    this.syncFontCycler();
     this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => this.switchSong(id), {
       value: this.prefs.preserveTrackPosition,
       onChange: (v) => {
@@ -809,9 +821,34 @@ export class App {
   private setTheme(t: ThemeName): void {
     this.theme = t;
     applyTheme(t);
+    this.syncFontCycler();
     const sel = this.header.querySelector('.themepick') as HTMLSelectElement | null;
     if (sel) sel.value = t;
     this.syncUrl();
+  }
+
+  private cycleModernFont(): void {
+    if (this.theme !== 'modern') return;
+    this.modernFontId = nextModernFont(this.modernFontId);
+    applyModernFont(this.modernFontId);
+    saveModernFont(this.modernFontId);
+    this.syncFontCycler();
+  }
+
+  private syncFontCycler(): void {
+    if (!this.title) return;
+    if (this.theme !== 'modern') {
+      this.title.removeAttribute('role');
+      this.title.removeAttribute('tabindex');
+      this.title.removeAttribute('title');
+      this.title.removeAttribute('aria-label');
+      return;
+    }
+    const font = modernFont(this.modernFontId);
+    this.title.setAttribute('role', 'button');
+    this.title.tabIndex = 0;
+    this.title.title = `Modern font: ${font.label}. Click to cycle.`;
+    this.title.setAttribute('aria-label', `Soundfont Explorer - ${location.host}. Modern font: ${font.label}. Click to cycle.`);
   }
 
   private onStatus(s: Status): void {

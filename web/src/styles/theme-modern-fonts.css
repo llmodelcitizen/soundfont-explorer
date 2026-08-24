@@ -1,0 +1,141 @@
+/* Self-hosted Latin builds from Google Fonts. Individual OFL texts live beside the files. */
+@font-face {
+  font-family: 'SFP IBM Plex Sans';
+  src: url('../assets/fonts/modern/ibm-plex-sans.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Inter';
+  src: url('../assets/fonts/modern/inter.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Space Grotesk';
+  src: url('../assets/fonts/modern/space-grotesk.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Manrope';
+  src: url('../assets/fonts/modern/manrope.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Outfit';
+  src: url('../assets/fonts/modern/outfit.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Urbanist';
+  src: url('../assets/fonts/modern/urbanist.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Sora';
+  src: url('../assets/fonts/modern/sora.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Exo 2';
+  src: url('../assets/fonts/modern/exo-2.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Titillium Web';
+  src: url('../assets/fonts/modern/titillium-web-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Titillium Web';
+  src: url('../assets/fonts/modern/titillium-web-600.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Titillium Web';
+  src: url('../assets/fonts/modern/titillium-web-700.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Chakra Petch';
+  src: url('../assets/fonts/modern/chakra-petch-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Chakra Petch';
+  src: url('../assets/fonts/modern/chakra-petch-600.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Chakra Petch';
+  src: url('../assets/fonts/modern/chakra-petch-700.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Rajdhani';
+  src: url('../assets/fonts/modern/rajdhani-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Rajdhani';
+  src: url('../assets/fonts/modern/rajdhani-600.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Rajdhani';
+  src: url('../assets/fonts/modern/rajdhani-700.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Oxanium';
+  src: url('../assets/fonts/modern/oxanium.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Orbitron';
+  src: url('../assets/fonts/modern/orbitron.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SFP Victor Mono';
+  src: url('../assets/fonts/modern/victor-mono.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}

@@ -1,4 +1,5 @@
 import './styles/base.css';
+import './styles/theme-modern-fonts.css';
 import './styles/theme-modern.css';
 import './styles/theme-win95.css';
 import './styles/theme-amiga.css';

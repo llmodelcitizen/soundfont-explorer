@@ -35,6 +35,7 @@ async function measure(theme, viewport, label) {
   await page.waitForSelector('.rows .row', { timeout: 20000 });
   await page.evaluate(async () => {
     await Promise.all([
+      document.fonts.load('14px "SFP IBM Plex Sans"', 'Soundfont Explorer'),
       document.fonts.load('11px "Pixelated MS Sans Serif"'),
       document.fonts.load('16px "Fixedsys Excelsior"'),
     ]);
@@ -269,6 +270,48 @@ async function measure(theme, viewport, label) {
     select.blur();
     return style;
   });
+  result.fontCycle = theme === 'modern' ? await page.evaluate(async () => {
+    const title = document.querySelector('.top .title');
+    const root = document.documentElement;
+    if (!(title instanceof HTMLElement)) return null;
+    const states = [];
+    for (let index = 0; index < 14; index++) {
+      const family = getComputedStyle(document.body).fontFamily;
+      const primary = family.split(',')[0];
+      const loaded = (await document.fonts.load(`14px ${primary}`, 'Soundfont Explorer 1990s')).length > 0;
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      const controls = Array.from(document.querySelectorAll('.top > .themepick, .top > .btn, .top > .vol-top')).map((element) => element.getBoundingClientRect());
+      const overlaps = controls.some((a, i) => controls.slice(i + 1).some((b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5));
+      states.push({
+        id: root.dataset.modernFont ?? null,
+        family,
+        stored: localStorage.getItem('sfp.modern-font.v1'),
+        loaded,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        headerOverlap: overlaps,
+        filterHeight: document.querySelector('.filterbar')?.getBoundingClientRect().height ?? null,
+        rowHeights: [...new Set(Array.from(document.querySelectorAll('.rows .row')).slice(0, 8).map((row) => row.getBoundingClientRect().height))],
+      });
+      title.click();
+    }
+    return {
+      states,
+      wrapped: { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') },
+      role: title.getAttribute('role'),
+      tabIndex: title.tabIndex,
+    };
+  }) : await page.evaluate(() => {
+    const title = document.querySelector('.top .title');
+    const root = document.documentElement;
+    const before = { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') };
+    title?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return {
+      before,
+      after: { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') },
+      role: title?.getAttribute('role') ?? null,
+      tabIndex: title instanceof HTMLElement ? title.tabIndex : null,
+    };
+  });
   await page.close();
   return result;
 }
@@ -315,6 +358,28 @@ for (const [label, viewport] of Object.entries(viewports)) {
   assert(win95.states.disabledColor === 'rgb(128, 128, 128)', `${label}/win95: disabled button text is ${win95.states.disabledColor}`);
   assert(win95.states.linkColor === 'rgb(0, 0, 255)', `${label}/win95: link color is ${win95.states.linkColor}`);
   assert(win95.focusOutline === 'dotted', `${label}/win95: keyboard focus outline is ${win95.focusOutline}, not dotted`);
+  const expectedFonts = [
+    ['ibm-plex-sans', 'SFP IBM Plex Sans'], ['inter', 'SFP Inter'], ['space-grotesk', 'SFP Space Grotesk'],
+    ['manrope', 'SFP Manrope'], ['outfit', 'SFP Outfit'], ['urbanist', 'SFP Urbanist'], ['sora', 'SFP Sora'],
+    ['exo-2', 'SFP Exo 2'], ['titillium-web', 'SFP Titillium Web'], ['chakra-petch', 'SFP Chakra Petch'],
+    ['rajdhani', 'SFP Rajdhani'], ['oxanium', 'SFP Oxanium'], ['orbitron', 'SFP Orbitron'], ['victor-mono', 'SFP Victor Mono'],
+  ];
+  assert(modern.fontCycle?.states.length === expectedFonts.length, `${label}/modern: font cycle length is wrong: ${JSON.stringify(modern.fontCycle)}`);
+  modern.fontCycle?.states.forEach((state, index) => {
+    const [id, family] = expectedFonts[index];
+    assert(state.id === id && state.family.includes(family), `${label}/modern: font ${index + 1} is wrong: ${JSON.stringify(state)}`);
+    assert(state.loaded, `${label}/modern: ${id} did not load`);
+    assert(state.overflow <= 0.5 && !state.headerOverlap && state.rowHeights.length === 1, `${label}/modern: ${id} breaks layout: ${JSON.stringify(state)}`);
+    assert(close(state.filterHeight, modern.fontCycle.states[0].filterHeight), `${label}/modern: ${id} changes the filter bar height: ${JSON.stringify(state)}`);
+    const expectedStored = index === 0 ? null : id;
+    assert(state.stored === expectedStored, `${label}/modern: ${id} was not persisted correctly: ${JSON.stringify(state)}`);
+  });
+  assert(modern.fontCycle?.wrapped.id === 'ibm-plex-sans' && modern.fontCycle.wrapped.stored === 'ibm-plex-sans', `${label}/modern: font cycle did not wrap: ${JSON.stringify(modern.fontCycle)}`);
+  assert(modern.fontCycle?.role === 'button' && modern.fontCycle.tabIndex === 0, `${label}/modern: font title is not keyboard-accessible: ${JSON.stringify(modern.fontCycle)}`);
+  for (const themed of [win95, amiga]) {
+    assert(themed.fontCycle.after.id === themed.fontCycle.before.id && themed.fontCycle.after.stored === null, `${label}/${themed.theme}: title click changed the Modern font preference: ${JSON.stringify(themed.fontCycle)}`);
+    assert(themed.fontCycle.role === null && themed.fontCycle.tabIndex === -1, `${label}/${themed.theme}: title incorrectly exposes the Modern font control: ${JSON.stringify(themed.fontCycle)}`);
+  }
   for (const themed of [win95, amiga]) {
     const titleBar = themed.debugTitleBar;
     assert(titleBar?.height === 36 && titleBar.paddingLeft === '8px', `${label}/${themed.theme}: debug title bar does not have the themed dimensions: ${JSON.stringify(titleBar)}`);
