@@ -93,7 +93,7 @@ export class VariantList {
       const cell = h(
         'button',
         { type: 'button', class: `cell col-${c.key} hcell${c.align ? ' ' + c.align : ''}${active ? ' sorted' : ''}`, title: `${columnTitle(c, this.set)} — click to sort`, 'aria-sort': active ? (this.sort.dir === 1 ? 'ascending' : 'descending') : 'none' },
-        c.label,
+        h('span', { class: 'hlabel' }, c.label),
         active && !c.noArrow ? h('span', { class: 'arrow' }, this.sort.dir === 1 ? '▲' : '▼') : '',
       );
       cell.addEventListener('click', () => this.cb.onSort(c.key));

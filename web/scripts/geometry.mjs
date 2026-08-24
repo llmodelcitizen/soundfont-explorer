@@ -81,14 +81,13 @@ async function measure(theme, viewport, label) {
       const style = getComputedStyle(header);
       return { offset: inner.cy - outer.cy, paddingLeft: style.paddingLeft, paddingRight: style.paddingRight };
     };
-    const verticallyCenteredGlyph = (selector) => {
+    const opticallyPositionedGlyph = (selector) => {
       const cell = document.querySelector(selector);
+      const label = cell?.querySelector('.hlabel');
       const outer = rect(cell);
-      if (!cell || !outer) return null;
-      const range = document.createRange();
-      range.selectNodeContents(cell);
-      const glyph = range.getBoundingClientRect();
-      return { offset: glyph.y + glyph.height / 2 - outer.cy, fontSize: getComputedStyle(cell).fontSize };
+      const glyph = rect(label);
+      if (!cell || !label || !outer || !glyph) return null;
+      return { offset: glyph.cy - outer.cy, fontSize: getComputedStyle(cell).fontSize, transform: getComputedStyle(label).transform };
     };
     const namedRects = {};
     for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) namedRects[selector] = rect(document.querySelector(selector));
@@ -180,9 +179,19 @@ async function measure(theme, viewport, label) {
       amigaVerticalAlignment: {
         tracks: verticallyCenteredHeader('.tracks .np-head'),
         nowPlaying: verticallyCenteredHeader('.nowplaying .np-head'),
-        favoriteHeader: verticallyCenteredGlyph('.row.head .hcell.col-fav'),
-        listenedHeader: verticallyCenteredGlyph('.row.head .hcell.col-dot'),
-        favoriteContentSize: getComputedStyle(document.querySelector('.row:not(.head) .cell.fav')).fontSize,
+        favoriteHeader: opticallyPositionedGlyph('.row.head .hcell.col-fav'),
+        listenedHeader: opticallyPositionedGlyph('.row.head .hcell.col-dot'),
+        favoriteContent: (() => {
+          const cell = document.querySelector('.row:not(.head) .cell.fav');
+          const row = cell?.closest('.row');
+          if (!cell || !row) return null;
+          const wasFavorite = row.classList.contains('favorite');
+          row.classList.add('favorite');
+          const style = getComputedStyle(cell);
+          const result = { fontSize: style.fontSize, height: style.height, background: style.backgroundColor, color: style.color };
+          if (!wasFavorite) row.classList.remove('favorite');
+          return result;
+        })(),
         listenedContentSize: (() => {
           const dot = rect(document.querySelector('.row:not(.head) .cell.dot'));
           return dot ? `${dot.w}x${dot.h}` : null;
@@ -286,13 +295,19 @@ for (const [label, viewport] of Object.entries(viewports)) {
   assert(win95.states.linkColor === 'rgb(0, 0, 255)', `${label}/win95: link color is ${win95.states.linkColor}`);
   assert(win95.focusOutline === 'dotted', `${label}/win95: keyboard focus outline is ${win95.focusOutline}, not dotted`);
   for (const [name, alignment] of Object.entries(amiga.amigaVerticalAlignment)) {
-    if (name === 'favoriteContentSize' || name === 'listenedContentSize') continue;
+    if (name === 'favoriteContent' || name === 'listenedContentSize') continue;
     if (name === 'tracks' && label === 'phone') continue; // the phone layout replaces Tracks with the song dropdown
-    assert(alignment && close(alignment.offset, 0, 0.75), `${label}/amiga: ${name} is not vertically centered: ${JSON.stringify(alignment)}`);
+    const expectedOffset = name === 'favoriteHeader' ? -3 : name === 'listenedHeader' ? -4 : 0;
+    assert(alignment && close(alignment.offset, expectedOffset, 0.75), `${label}/amiga: ${name} lacks its expected vertical alignment: ${JSON.stringify(alignment)}`);
     if (name === 'tracks' || name === 'nowPlaying') assert(alignment?.paddingLeft === '12px' && alignment?.paddingRight === '12px', `${label}/amiga: ${name} title padding is not 12px: ${JSON.stringify(alignment)}`);
-    else assert(alignment?.fontSize === '16px', `${label}/amiga: ${name} is not 16px: ${JSON.stringify(alignment)}`);
+    else {
+      assert(alignment?.fontSize === '16px', `${label}/amiga: ${name} is not 16px: ${JSON.stringify(alignment)}`);
+      const expectedTransform = name === 'favoriteHeader' ? 'matrix(1, 0, 0, 1, 0, -3)' : 'matrix(1, 0, 0, 1, 0, -4)';
+      assert(alignment?.transform === expectedTransform, `${label}/amiga: ${name} lacks its optical correction: ${JSON.stringify(alignment)}`);
+    }
   }
-  assert(amiga.amigaVerticalAlignment.favoriteContentSize === '13px', `${label}/amiga: row heart size changed: ${amiga.amigaVerticalAlignment.favoriteContentSize}`);
+  const favoriteContent = amiga.amigaVerticalAlignment.favoriteContent;
+  assert(favoriteContent?.fontSize === '16px' && favoriteContent.height === '16px' && favoriteContent.background === 'rgba(0, 0, 0, 0)' && favoriteContent.color === 'rgb(0, 0, 0)', `${label}/amiga: row heart is not a transparent 16px black glyph: ${JSON.stringify(favoriteContent)}`);
   assert(amiga.amigaVerticalAlignment.listenedContentSize === '10x10', `${label}/amiga: row listened dot size changed: ${amiga.amigaVerticalAlignment.listenedContentSize}`);
 
   // Both replacement themes are paint-only: geometry must match modern exactly.

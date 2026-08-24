@@ -166,9 +166,18 @@
 [data-theme='amiga'] .track-folder:hover .folder-count {
   color: #000000;
 }
-[data-theme='amiga'] .row.audible .label,
-[data-theme='amiga'] .row.favorite .fav {
+[data-theme='amiga'] .row.audible .label {
   background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] .row .cell.fav {
+  height: 16px;
+  line-height: 16px;
+  font-size: 16px;
+  background: transparent;
+}
+[data-theme='amiga'] .row.favorite .fav {
+  background: transparent;
   color: #000000;
 }
 [data-theme='amiga'] .row.sel.cached .dot,
@@ -204,6 +213,12 @@
   align-content: center;
   font-size: 16px;
   line-height: 1;
+}
+[data-theme='amiga'] .row.head > button.hcell.col-fav .hlabel {
+  transform: translateY(-3px);
+}
+[data-theme='amiga'] .row.head > button.hcell.col-dot .hlabel {
+  transform: translateY(-4px);
 }
 [data-theme='amiga'] .row.sticky {
   background: #0050a0;
