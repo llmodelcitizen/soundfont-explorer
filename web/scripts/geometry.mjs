@@ -72,6 +72,24 @@ async function measure(theme, viewport, label) {
       const style = getComputedStyle(element);
       return { column: style.columnGap, row: style.rowGap };
     };
+    const centeredHeader = (selector) => {
+      const header = document.querySelector(selector);
+      const title = header?.querySelector('.np-title');
+      const outer = rect(header);
+      const inner = rect(title);
+      if (!header || !outer || !inner) return null;
+      const style = getComputedStyle(header);
+      return { offset: inner.cx - outer.cx, paddingLeft: style.paddingLeft, paddingRight: style.paddingRight };
+    };
+    const centeredGlyph = (selector) => {
+      const cell = document.querySelector(selector);
+      const outer = rect(cell);
+      if (!cell || !outer) return null;
+      const range = document.createRange();
+      range.selectNodeContents(cell);
+      const glyph = range.getBoundingClientRect();
+      return { offset: glyph.x + glyph.width / 2 - outer.cx };
+    };
     const namedRects = {};
     for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) namedRects[selector] = rect(document.querySelector(selector));
     const headerControls = allRects('.top > .themepick, .top > .btn, .top > .vol-top');
@@ -159,6 +177,12 @@ async function measure(theme, viewport, label) {
       highlight,
       states,
       titleTypography,
+      amigaAlignment: {
+        tracks: centeredHeader('.tracks .np-head'),
+        nowPlaying: centeredHeader('.nowplaying .np-head'),
+        favorite: centeredGlyph('.row.head .hcell.col-fav'),
+        listened: centeredGlyph('.row.head .hcell.col-dot'),
+      },
       folderEdge: (() => {
         const folder = document.createElement('div');
         folder.className = 'track-folder';
@@ -256,6 +280,11 @@ for (const [label, viewport] of Object.entries(viewports)) {
   assert(win95.states.disabledColor === 'rgb(128, 128, 128)', `${label}/win95: disabled button text is ${win95.states.disabledColor}`);
   assert(win95.states.linkColor === 'rgb(0, 0, 255)', `${label}/win95: link color is ${win95.states.linkColor}`);
   assert(win95.focusOutline === 'dotted', `${label}/win95: keyboard focus outline is ${win95.focusOutline}, not dotted`);
+  for (const [name, alignment] of Object.entries(amiga.amigaAlignment)) {
+    if (name === 'tracks' && label === 'phone') continue; // the phone layout replaces Tracks with the song dropdown
+    assert(alignment && close(alignment.offset, 0, 0.5), `${label}/amiga: ${name} is not horizontally centered: ${JSON.stringify(alignment)}`);
+    if (name === 'tracks' || name === 'nowPlaying') assert(alignment?.paddingLeft === '12px' && alignment?.paddingRight === '12px', `${label}/amiga: ${name} title padding is not 12px: ${JSON.stringify(alignment)}`);
+  }
 
   // Both replacement themes are paint-only: geometry must match modern exactly.
   for (const themed of [win95, amiga]) {
