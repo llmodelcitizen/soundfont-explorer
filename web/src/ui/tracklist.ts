@@ -32,6 +32,13 @@ export function adjacentTrackId(songs: SongEntry[], current: string, delta: numb
   return ids[(i + delta + ids.length) % ids.length];
 }
 
+export function trackMetadata(s: Pick<SongEntry, 'duration_s' | 'variant_count' | 'composer'>): string {
+  const mm = Math.floor(s.duration_s / 60);
+  const ss = String(Math.round(s.duration_s % 60)).padStart(2, '0');
+  const composer = s.composer?.trim();
+  return [`${mm}:${ss}`, `${s.variant_count} variants`, composer?.toLowerCase() === 'unknown' ? '' : composer ?? ''].filter(Boolean).join(' · ');
+}
+
 export class TrackList {
   readonly el: HTMLElement;
   private rows = new Map<string, HTMLElement>();
@@ -145,13 +152,11 @@ export class TrackList {
   }
 
   private row(s: SongEntry, inFolder = false): HTMLElement {
-    const mm = Math.floor(s.duration_s / 60);
-    const ss = String(Math.round(s.duration_s % 60)).padStart(2, '0');
     const row = h(
       'div',
       { class: inFolder ? 'track in-folder' : 'track', role: 'option', dataset: { id: s.id }, title: s.path ? `${s.path}/ — ${songTitle(s)}` : songTitle(s) },
       h('span', { class: 'track-title' }, s.title),
-      h('span', { class: 'track-meta' }, [`${mm}:${ss}`, `${s.variant_count} variants`, s.composer ?? ''].filter(Boolean).join(' · ')),
+      h('span', { class: 'track-meta' }, trackMetadata(s)),
     );
     row.addEventListener('click', () => this.onPick(s.id));
     this.rows.set(s.id, row);

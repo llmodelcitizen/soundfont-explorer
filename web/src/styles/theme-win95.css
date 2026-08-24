@@ -83,7 +83,6 @@
 }
 
 /* Bitmap faces render cleanly only at their native size: every fractional em becomes exactly 11px. */
-[data-theme='win95'] .top .title,
 [data-theme='win95'] .chip,
 [data-theme='win95'] .facet-name,
 [data-theme='win95'] .opt,
@@ -179,9 +178,18 @@
 }
 [data-theme='win95'] .top .brand {
   color: #ffffff;
+  letter-spacing: normal;
 }
 [data-theme='win95'] .top .domain {
   color: #c0c0c0;
+  font-weight: 700;
+}
+/* Match the About headings' exact 2× bitmap scale. The pinned line box fits beside the
+   existing 30px controls without increasing or visually crowding the title bar. */
+[data-theme='win95'] .top .title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 29px;
 }
 [data-theme='win95'] a:not(.btn) {
   color: #0000ff;

@@ -119,6 +119,25 @@ async function measure(theme, viewport, label) {
     };
     probeBtn.remove();
     probeLink.remove();
+    const headingProbe = document.createElement('h2');
+    const creditsProbe = document.createElement('div');
+    creditsProbe.className = 'credits';
+    creditsProbe.style.position = 'fixed';
+    creditsProbe.style.visibility = 'hidden';
+    creditsProbe.append(headingProbe);
+    document.body.append(creditsProbe);
+    const titleStyle = getComputedStyle(document.querySelector('.top .title'));
+    const headingStyle = getComputedStyle(headingProbe);
+    const titleTypography = {
+      fontFamily: titleStyle.fontFamily,
+      fontSize: titleStyle.fontSize,
+      fontWeight: titleStyle.fontWeight,
+      lineHeight: titleStyle.lineHeight,
+      headingFamily: headingStyle.fontFamily,
+      headingSize: headingStyle.fontSize,
+      headingWeight: headingStyle.fontWeight,
+    };
+    creditsProbe.remove();
     return {
       viewport: { width: innerWidth, height: innerHeight },
       overflow: {
@@ -139,6 +158,7 @@ async function measure(theme, viewport, label) {
       stepButtons,
       highlight,
       states,
+      titleTypography,
       folderEdge: (() => {
         const folder = document.createElement('div');
         folder.className = 'track-folder';
@@ -218,6 +238,8 @@ for (const [label, viewport] of Object.entries(viewports)) {
   }
 
   assert(win95.fonts.msSans && win95.fonts.fixedsys, `${label}/win95: bundled fonts did not load`);
+  assert(win95.titleTypography.fontFamily === win95.titleTypography.headingFamily && win95.titleTypography.fontSize === win95.titleTypography.headingSize && win95.titleTypography.fontWeight === win95.titleTypography.headingWeight, `${label}/win95: title typography does not match About headings: ${JSON.stringify(win95.titleTypography)}`);
+  assert(win95.titleTypography.lineHeight === '29px', `${label}/win95: title line height is ${win95.titleTypography.lineHeight}, not 29px`);
   assert(win95.folderEdge?.content === '\"\"' && win95.folderEdge.width === '1px' && win95.folderEdge.background === 'rgb(128, 128, 128)' && win95.folderEdge.shadow.includes('rgb(0, 0, 0)'), `${label}/win95: folder header does not preserve the Tracks well edge: ${JSON.stringify(win95.folderEdge)}`);
   assert(new Set(win95.clockPositions.map((position) => JSON.stringify(position.chars))).size === 1, `${label}/win95: clock character slots shift as the current time changes: ${JSON.stringify(win95.clockPositions)}`);
   assert(new Set(win95.clockPositions.map((position) => position.separator)).size === 1, `${label}/win95: clock separator shifts as the current time changes: ${JSON.stringify(win95.clockPositions)}`);

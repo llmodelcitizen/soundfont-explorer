@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SongEntry } from '../../src/contracts/songs';
-import { adjacentTrackId, trackOrder } from '../../src/ui/tracklist';
+import { adjacentTrackId, trackMetadata, trackOrder } from '../../src/ui/tracklist';
 
 const song = (id: string, path: string | null): SongEntry => ({ id, path } as SongEntry);
 
@@ -23,5 +23,18 @@ describe('track display order', () => {
     expect(adjacentTrackId(songs, 'last-folder-track', 1)).toBe('first');
     expect(adjacentTrackId(songs, 'first', -1)).toBe('last-folder-track');
     expect(adjacentTrackId(songs, 'starwars', 1)).toBe('folder-a');
+  });
+});
+
+describe('track metadata', () => {
+  const metadata = (composer: string | null) => trackMetadata({ duration_s: 364, variant_count: 564, composer });
+
+  it('omits the unknown-composer placeholder', () => {
+    expect(metadata('unknown')).toBe('6:04 · 564 variants');
+    expect(metadata(' Unknown ')).toBe('6:04 · 564 variants');
+  });
+
+  it('keeps known composers', () => {
+    expect(metadata('John Williams')).toBe('6:04 · 564 variants · John Williams');
   });
 });
