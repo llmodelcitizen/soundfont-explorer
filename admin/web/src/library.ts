@@ -523,15 +523,24 @@ export class LibraryView {
       this.note(`canon: ${(e as Error).message}`, true);
       return;
     }
+    interface CanonResult {
+      totals: Record<string, number>;
+      ran?: Record<string, { status: string; reason: string | null }>;
+    }
     const poll = async (): Promise<void> => {
-      const s = await get<{ running: boolean; error?: string; result?: Record<string, number> }>('/api/library/canon/status');
+      const s = await get<{ running: boolean; error?: string; result?: CanonResult }>('/api/library/canon/status');
       if (s.running) {
         this.note('canon: running… (a full run takes a few minutes on this box)');
         setTimeout(poll, 3000);
         return;
       }
       if (s.error) this.note(`canon: ${s.error}`, true);
-      else this.note(`canon: ${JSON.stringify(s.result)}`);
+      else if (s.result?.ran) {
+        const parts = Object.entries(s.result.ran)
+          .map(([id, c]) => `${id}: ${c.status}${c.reason ? ` (${c.reason.slice(0, 80)})` : ''}`);
+        const shown = parts.slice(0, 3).join(' · ') + (parts.length > 3 ? ` · +${parts.length - 3} more` : '');
+        this.note(`canon: ${shown}`, Object.values(s.result.ran).some((c) => c.status !== 'ok'));
+      } else this.note(`canon (library totals): ${JSON.stringify(s.result?.totals ?? s.result)}`);
       await this.load();
     };
     poll();

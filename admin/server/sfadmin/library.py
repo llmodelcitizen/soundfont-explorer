@@ -415,10 +415,15 @@ class Library:
             self.doc["updated_at"] = ts
             self._save()
         counts = {"ok": 0, "refused": 0, "unparsed": 0, "pending": 0}
+        result: dict = {"totals": counts}
         with self.lock:
             for e in self.doc["entries"].values():
                 counts[e["canon"]["status"]] = counts.get(e["canon"]["status"], 0) + 1
-        return counts
+            if only is not None:
+                # a targeted run should report the tracks it ran, not the library totals
+                result["ran"] = {sid: dict(self.doc["entries"][sid]["canon"])
+                                 for sid in only if sid in self.doc["entries"]}
+        return result
 
 
 _library: Library | None = None
