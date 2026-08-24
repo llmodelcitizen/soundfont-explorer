@@ -13,6 +13,7 @@ const OPEN_KEY = 'sfp.folders.v1';
 export class TrackList {
   readonly el: HTMLElement;
   private rows = new Map<string, HTMLElement>();
+  private rowOrder: HTMLElement[] = [];
   private body: HTMLElement;
   private songs: SongEntry[] = [];
   private current = '';
@@ -45,6 +46,11 @@ export class TrackList {
   setSongs(songs: SongEntry[], current: string): void {
     this.songs = songs;
     this.current = current;
+    const path = songs.find((s) => s.id === current)?.path;
+    if (path && !this.open.has(path)) {
+      this.open.add(path);
+      this.saveOpen();
+    }
     this.render();
   }
 
@@ -60,6 +66,28 @@ export class TrackList {
     this.applyCurrent();
   }
 
+  get scrollTop(): number {
+    return this.body.scrollTop;
+  }
+
+  /** Restore a rebuilt pane, moving only when needed to retain one track above and below. */
+  restoreView(scrollTop: number): void {
+    if (!this.body.clientHeight) return; // hidden mobile track pane
+    this.body.scrollTop = scrollTop;
+    const row = this.rows.get(this.current);
+    const i = row ? this.rowOrder.indexOf(row) : -1;
+    if (!row || i < 0) return;
+    const first = this.rowOrder[Math.max(0, i - 1)]!;
+    const last = this.rowOrder[Math.min(this.rowOrder.length - 1, i + 1)]!;
+    const viewport = this.body.getBoundingClientRect();
+    const contextTop = first.getBoundingClientRect().top - viewport.top + this.body.scrollTop;
+    const contextBottom = last.getBoundingClientRect().bottom - viewport.top + this.body.scrollTop;
+    if (contextTop < this.body.scrollTop) this.body.scrollTop = contextTop;
+    else if (contextBottom > this.body.scrollTop + this.body.clientHeight) {
+      this.body.scrollTop = contextBottom - this.body.clientHeight;
+    }
+  }
+
   private saveOpen(): void {
     try {
       localStorage.setItem(OPEN_KEY, JSON.stringify([...this.open]));
@@ -69,6 +97,7 @@ export class TrackList {
   private render(): void {
     clear(this.body);
     this.rows.clear();
+    this.rowOrder = [];
     const root = this.songs.filter((s) => !s.path);
     const byPath = new Map<string, SongEntry[]>();
     for (const s of this.songs) {
@@ -109,6 +138,7 @@ export class TrackList {
     );
     row.addEventListener('click', () => this.onPick(s.id));
     this.rows.set(s.id, row);
+    this.rowOrder.push(row);
     return row;
   }
 
@@ -117,7 +147,6 @@ export class TrackList {
       row.classList.toggle('current', sid === this.current);
       if (sid === this.current) {
         row.setAttribute('aria-selected', 'true');
-        row.scrollIntoView({ block: 'nearest' });
       } else row.removeAttribute('aria-selected');
     }
   }

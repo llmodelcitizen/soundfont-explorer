@@ -70,6 +70,7 @@ export class App {
   /** Survives the engine/UI rebuild caused by changing tracks after an explicit Stop. */
   private stoppedByUser = false;
   private tracks!: TrackList;
+  private trackScrollTop = 0;
   private rightPane!: HTMLElement;
   private debug = new DebugPanel();
   private keymap = new KeymapOverlay();
@@ -237,6 +238,7 @@ export class App {
   /** switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor */
   private switchSong(id: string): void {
     if (id !== this.song.id && this.stoppedByUser) this.playOnRenderClick = true;
+    this.trackScrollTop = this.tracks?.scrollTop ?? this.trackScrollTop;
     this.ledger.flush();
     void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined });
   }
@@ -424,6 +426,11 @@ export class App {
     this.applySplit();
     this.applyPaneSizes();
     this.root.append(this.header, this.main, this.transport.el, this.debug.el, this.keymap.el, this.settings.el);
+    this.tracks.restoreView(this.trackScrollTop);
+    const trackScrollTop = this.trackScrollTop;
+    // applySplit() measures on the next frame and can resize this pane; restore again after
+    // that measurement so the temporary height cannot clamp a deep scroll position.
+    requestAnimationFrame(() => this.tracks.restoreView(trackScrollTop));
     this.policy = new InputPolicy({
       move: (d) => this.moveCursor(this.cursor + d),
       moveTo: (i) => this.moveCursor(i),
