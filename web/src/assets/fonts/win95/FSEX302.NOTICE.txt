@@ -1,0 +1,12 @@
+Fixedsys Excelsior 3.09.10
+https://github.com/kika/fixedsys/releases/tag/v3.09.10
+
+The font was originally authored by Darien Valentine. This derivative is
+maintained at https://github.com/kika/fixedsys.
+
+The creator(s) have released it to the public domain. For jurisdictions where
+that is not permitted, it is released under the Creative Commons Zero (CC0)
+Dedication.
+
+Bundled file: FSEX302.ttf
+SHA-256: 842f8fbf80f57d867aeb1d2988140d3ea8b4718e5f687035b0a3b66756df3899

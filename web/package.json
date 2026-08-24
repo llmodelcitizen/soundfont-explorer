@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest",
+    "test:geometry": "node scripts/geometry.mjs",
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

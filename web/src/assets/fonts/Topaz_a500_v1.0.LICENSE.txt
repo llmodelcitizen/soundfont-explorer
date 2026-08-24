@@ -1,0 +1,20 @@
+Topaz_a500_v1.0.ttf licensing notice
+=====================================
+
+Source: https://github.com/rewtnull/amigafonts
+Upstream revision: d42987535d94ebbfb51e64fee76f9974c6ae145a
+SHA-256: 1bc35eb880c3b35bc66e16f89f30d5a31163a5d5b11a351cba49b537223b2791
+
+The following is the upstream project's legal notice, preserved from its
+README:
+
+    These fonts are released under the GPL-FE license:
+
+    http://www.gnu.org/licenses/gpl-faq.html#FontException
+
+    Topaz is © AmigaInc.
+    ttf, fon, eot, raw & psf v1/v2 versions of Topaz are © dMG/t!s^dS!
+
+The upstream README describes Topaz_a500_v1.0 as the original Topaz
+Kickstart 1.x version. The GPL font-exception information is available at
+the URL above; the source repository is the preferred form for modification.

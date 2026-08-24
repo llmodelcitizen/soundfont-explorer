@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Playwright smoke (plan M6 / §14.3): Space starts playback → hold ↓ (30 presses at 33 ms) → audible === end point,
- * warm switch p95 < 20 ms scheduled, no console errors, theme toggle, deep link.
+ * warm switch p95 < 20 ms scheduled, no console errors, three-theme cycle, persistence, deep link.
  *
  *   node scripts/smoke.mjs [--url http://127.0.0.1:5173/] [--headed]
  * Requires: a server for out/public on :8000 (python3 web/test/proto/serve.py --root out/public --port 8000)
@@ -67,16 +67,41 @@ try {
   results.steps.playing = { pos1, pos2, advancing: pos1 !== pos2 };
   if (pos1 === pos2) results.ok = false;
 
-  // theme toggle + deep link
-  await page.keyboard.press('t');
-  await page.waitForTimeout(400); // URL sync is debounced (settleMs + 30)
-  const theme = await page.evaluate(() => document.documentElement.dataset.theme);
-  results.steps.theme = { afterT: theme };
-  if (theme !== 'win95') results.ok = false;
+  // complete keyboard cycle, including dropdown + URL synchronization at every stop
+  const cycle = [];
+  for (const expected of ['win95', 'amiga', 'modern']) {
+    await page.keyboard.press('t');
+    await page.waitForTimeout(400); // URL sync is debounced (settleMs + 30)
+    const state = await page.evaluate(() => ({
+      root: document.documentElement.dataset.theme,
+      dropdown: document.querySelector('.themepick')?.value,
+      url: new URL(location.href).searchParams.get('theme') ?? 'modern',
+    }));
+    cycle.push(state);
+    if (state.root !== expected || state.dropdown !== expected || state.url !== expected) results.ok = false;
+  }
+
+  // dropdown selection must update root, URL and persisted state
+  await page.selectOption('.themepick', 'amiga');
+  await page.waitForTimeout(400);
+  const selected = await page.evaluate(() => ({
+    root: document.documentElement.dataset.theme,
+    dropdown: document.querySelector('.themepick')?.value,
+    url: new URL(location.href).searchParams.get('theme'),
+    stored: localStorage.getItem('sfp.theme'),
+  }));
+  results.steps.theme = { cycle, selected };
+  if (selected.root !== 'amiga' || selected.dropdown !== 'amiga' || selected.url !== 'amiga' || selected.stored !== 'amiga') results.ok = false;
   const href = await page.evaluate(() => location.href);
   results.steps.url = href;
+
+  // An explicit Amiga link wins over an old preference, and that choice survives a URL-free reload.
   const page2 = await browser.newPage();
-  await page2.goto(href.replace(/([?&])t=\d+/, '$1t=30'), { waitUntil: 'networkidle' });
+  await page2.goto(url, { waitUntil: 'networkidle' });
+  await page2.evaluate(() => localStorage.setItem('sfp.theme', 'modern'));
+  const amigaLink = new URL(href.replace(/([?&])t=\d+/, '$1t=30'));
+  amigaLink.searchParams.set('theme', 'amiga');
+  await page2.goto(amigaLink.href, { waitUntil: 'networkidle' });
   await page2.waitForSelector('.rows .row', { timeout: 20000 });
   const theme2 = await page2.evaluate(() => document.documentElement.dataset.theme);
   await page2.keyboard.press(' ');
@@ -85,7 +110,39 @@ try {
   const clock2 = await page2.$eval('.clock', (e) => e.textContent);
   results.steps.deeplink = { theme: theme2, audible: audible2, clock: clock2 };
   const wantV = new URL(href).searchParams.get('v');
-  if (theme2 !== 'win95' || audible2 !== wantV) results.ok = false;
+  if (theme2 !== 'amiga' || audible2 !== wantV) results.ok = false;
+
+  const cleanUrl = new URL(url);
+  cleanUrl.searchParams.delete('theme');
+  await page2.goto(cleanUrl.href, { waitUntil: 'networkidle' });
+  await page2.waitForSelector('.rows .row', { timeout: 20000 });
+  const persisted = await page2.evaluate(() => ({ root: document.documentElement.dataset.theme, dropdown: document.querySelector('.themepick')?.value, stored: localStorage.getItem('sfp.theme') }));
+  results.steps.persistence = persisted;
+  if (persisted.root !== 'amiga' || persisted.dropdown !== 'amiga' || persisted.stored !== 'amiga') results.ok = false;
+
+  // The replacement Windows theme has the same deep-link and URL-free persistence contract.
+  const win95Link = new URL(href);
+  win95Link.searchParams.set('theme', 'win95');
+  await page2.goto(win95Link.href, { waitUntil: 'networkidle' });
+  await page2.waitForSelector('.rows .row', { timeout: 20000 });
+  const win95DeepLink = await page2.evaluate(() => ({
+    root: document.documentElement.dataset.theme,
+    dropdown: document.querySelector('.themepick')?.value,
+    stored: localStorage.getItem('sfp.theme'),
+  }));
+  results.steps.win95Deeplink = win95DeepLink;
+  if (win95DeepLink.root !== 'win95' || win95DeepLink.dropdown !== 'win95' || win95DeepLink.stored !== 'win95') results.ok = false;
+
+  await page2.goto(cleanUrl.href, { waitUntil: 'networkidle' });
+  await page2.waitForSelector('.rows .row', { timeout: 20000 });
+  const win95Persisted = await page2.evaluate(() => ({
+    root: document.documentElement.dataset.theme,
+    dropdown: document.querySelector('.themepick')?.value,
+    stored: localStorage.getItem('sfp.theme'),
+  }));
+  results.steps.win95Persistence = win95Persisted;
+  if (win95Persisted.root !== 'win95' || win95Persisted.dropdown !== 'win95' || win95Persisted.stored !== 'win95') results.ok = false;
+
   // credits page
   await page2.goto(new URL('/#/credits', url).href, { waitUntil: 'networkidle' });
   results.steps.credits = { h1: await page2.$eval('h1', (e) => e.textContent).catch(() => null) };

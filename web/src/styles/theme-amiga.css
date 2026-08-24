@@ -1,0 +1,375 @@
+/* Amiga Workbench 1.3: its four-colour palette and Topaz Kickstart 1.x type. */
+@font-face {
+  font-family: 'Topaz Amiga';
+  src: url('../assets/fonts/Topaz_a500_v1.0.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+[data-theme='amiga'] {
+  --bg: #0050a0;
+  --panel: #0050a0;
+  --panel-2: #0050a0;
+  --fg: #ffffff;
+  --fg-dim: #ffffff;
+  --line: #000000;
+  --line-faint: #000000;
+  --accent: #f08000;
+  --accent-fg: #000000;
+  --sel: #f08000;
+  --sel-fg: #000000;
+  --row-hover: #ffffff;
+  --btn-bg: #0050a0;
+  --btn-hover: #f08000;
+  --input-bg: #ffffff;
+  --badge-bg: #ffffff;
+  --badge-fg: #000000;
+  --warn: #f08000;
+  --bad: #000000;
+  --heart: #f08000;
+  --overlay: rgba(0, 0, 0, 0.55);
+  --shadow: inset 1px 1px #ffffff, inset -1px -1px #000000;
+  --radius: 0;
+  --font: 14px/1.4 'Topaz Amiga', monospace;
+  --mono: 12px/1.4 'Topaz Amiga', monospace;
+  --c-sf2: #ffffff;
+  --c-opl: #000000;
+  --c-opn: #f08000;
+  --c-edm: #0050a0;
+  --c-gus: #ffffff;
+  --c-sc55: #f08000;
+  --c-la: #000000;
+  --amiga-out: inset 1px 1px #ffffff, inset -1px -1px #000000;
+  --amiga-in: inset 1px 1px #000000, inset -1px -1px #ffffff;
+  color-scheme: light;
+  font-synthesis: none;
+}
+
+[data-theme='amiga'] body {
+  font-synthesis: none;
+}
+
+[data-theme='amiga'] #app {
+  background: var(--panel);
+  box-shadow: inset 1px 1px #ffffff, inset -1px -1px #000000;
+}
+
+/* Workbench title surfaces are white, set into blue window chrome. */
+[data-theme='amiga'] .top {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: inset 1px 1px #ffffff, inset -1px -1px #000000;
+}
+[data-theme='amiga'] .top .brand {
+  color: #0050a0;
+}
+[data-theme='amiga'] .top .domain {
+  color: #000000;
+}
+[data-theme='amiga'] a:not(.btn) {
+  background: #f08000;
+  color: #000000;
+}
+
+/* Flat Workbench gadgets: white/black edges reverse while pressed. */
+[data-theme='amiga'] .btn,
+[data-theme='amiga'] .opt {
+  background: #0050a0;
+  color: #ffffff;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+}
+[data-theme='amiga'] .btn:hover,
+[data-theme='amiga'] .opt:hover {
+  background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] .btn:active,
+[data-theme='amiga'] .btn.on,
+[data-theme='amiga'] .btn[aria-pressed='true'],
+[data-theme='amiga'] .opt:active,
+[data-theme='amiga'] .opt.on {
+  background: #f08000;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--amiga-in);
+}
+[data-theme='amiga'] .btn.primary {
+  background: #f08000;
+  color: #000000;
+  border-color: #000000;
+}
+[data-theme='amiga'] .btn:disabled,
+[data-theme='amiga'] .np-actions .btn:disabled {
+  background: #ffffff;
+  color: #000000;
+  opacity: 1;
+}
+[data-theme='amiga'] .btn.danger,
+[data-theme='amiga'] .btn.danger:hover {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
+}
+
+[data-theme='amiga'] .search,
+[data-theme='amiga'] .songpicker,
+[data-theme='amiga'] .themepick,
+[data-theme='amiga'] .settings .num {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--amiga-in);
+}
+[data-theme='amiga'] option {
+  background: #ffffff;
+  color: #000000;
+}
+
+[data-theme='amiga'] .chip {
+  background: #f08000;
+  color: #000000;
+  border-color: #f08000;
+  border-radius: 0;
+}
+[data-theme='amiga'] .chip:hover {
+  background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] .opt.zero {
+  background: #000000;
+  color: #ffffff;
+  opacity: 1;
+}
+[data-theme='amiga'] .opt:hover .cnt {
+  color: #000000;
+}
+
+[data-theme='amiga'] .row:hover,
+[data-theme='amiga'] .track:hover,
+[data-theme='amiga'] .track-folder:hover {
+  background: #ffffff;
+  color: #000000;
+}
+[data-theme='amiga'] .row.sel,
+[data-theme='amiga'] .track.current {
+  background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] .row:hover .idx,
+[data-theme='amiga'] .row:hover .meta,
+[data-theme='amiga'] .row:hover .num,
+[data-theme='amiga'] .track:hover .track-meta,
+[data-theme='amiga'] .track-folder:hover .folder-twist,
+[data-theme='amiga'] .track-folder:hover .folder-count {
+  color: #000000;
+}
+[data-theme='amiga'] .row.audible .label,
+[data-theme='amiga'] .row.favorite .fav {
+  background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] .row.sel.cached .dot,
+[data-theme='amiga'] .row.sel.audible .dot,
+[data-theme='amiga'] .row.sel.loading .dot,
+[data-theme='amiga'] .row:hover.cached .dot,
+[data-theme='amiga'] .row:hover.audible .dot,
+[data-theme='amiga'] .row:hover.loading .dot {
+  background: #000000;
+  border-color: #000000;
+}
+[data-theme='amiga'] .track.current .track-meta {
+  color: #000000;
+  opacity: 1;
+}
+[data-theme='amiga'] .row.head,
+[data-theme='amiga'] .row.head:hover {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: var(--amiga-out);
+}
+[data-theme='amiga'] .hcell {
+  color: #000000;
+}
+[data-theme='amiga'] .hcell:hover,
+[data-theme='amiga'] .hcell.sorted {
+  background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] .row.sticky {
+  background: #0050a0;
+  border-color: #ffffff;
+}
+
+[data-theme='amiga'] .badge.e-fluidsynth,
+[data-theme='amiga'] .badge.e-timidity {
+  color: #000000;
+}
+[data-theme='amiga'] .badge.e-adlmidi,
+[data-theme='amiga'] .badge.e-munt {
+  color: #ffffff;
+}
+[data-theme='amiga'] .badge.e-opnmidi,
+[data-theme='amiga'] .badge.e-sc55 {
+  color: #000000;
+}
+[data-theme='amiga'] .badge.e-edmidi {
+  color: #ffffff;
+}
+
+[data-theme='amiga'] .np-actions .fav-btn.on,
+[data-theme='amiga'] .fav-filter.on {
+  background: #f08000;
+  color: #000000;
+  border-color: #000000;
+}
+
+/* White title strips distinguish Workbench-style panes and movable windows. */
+[data-theme='amiga'] .np-head,
+[data-theme='amiga'] .dbg-head,
+[data-theme='amiga'] .gate-box h1,
+[data-theme='amiga'] .overlay-box h2 {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
+}
+[data-theme='amiga'] .np-head .np-title,
+[data-theme='amiga'] .np-head .preserve,
+[data-theme='amiga'] .np-head .tier,
+[data-theme='amiga'] .np-head .np-status,
+[data-theme='amiga'] .np-head .muted {
+  color: #000000;
+}
+[data-theme='amiga'] .np-head .tier.l,
+[data-theme='amiga'] .np-head .np-status.loading {
+  background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] .np-status.loading,
+[data-theme='amiga'] .status.loading {
+  background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] .np-status.wontload,
+[data-theme='amiga'] .status.wontload {
+  background: #ffffff;
+  color: #000000;
+}
+
+[data-theme='amiga'] .gate-box,
+[data-theme='amiga'] .overlay-box,
+[data-theme='amiga'] .debug {
+  background: #0050a0;
+  color: #ffffff;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+}
+[data-theme='amiga'] .dbg-body,
+[data-theme='amiga'] kbd,
+[data-theme='amiga'] .tag {
+  border-color: #000000;
+  box-shadow: var(--amiga-in);
+}
+[data-theme='amiga'] .debug.dragging {
+  opacity: 1;
+}
+
+[data-theme='amiga'] .split,
+[data-theme='amiga'] .vsplit,
+[data-theme='amiga'] .hsplit {
+  background: #0050a0;
+  box-shadow: var(--amiga-out);
+}
+[data-theme='amiga'] .split::after,
+[data-theme='amiga'] .vsplit::after,
+[data-theme='amiga'] .hsplit::after {
+  background: #f08000;
+  opacity: 1;
+}
+
+[data-theme='amiga'] input[type='checkbox'],
+[data-theme='amiga'] input[type='range'] {
+  accent-color: #f08000;
+}
+[data-theme='amiga'] .btn:focus-visible,
+[data-theme='amiga'] .opt:focus-visible,
+[data-theme='amiga'] input:focus-visible,
+[data-theme='amiga'] select:focus-visible {
+  outline-color: #ffffff;
+}
+[data-theme='amiga'] .top .btn:focus-visible,
+[data-theme='amiga'] .top input:focus-visible,
+[data-theme='amiga'] .top select:focus-visible,
+[data-theme='amiga'] .dbg-head .btn:focus-visible {
+  outline-color: #000000;
+}
+[data-theme='amiga'] input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+[data-theme='amiga'] input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #ffffff;
+  border: 1px solid #000000;
+  box-shadow: var(--amiga-in);
+}
+[data-theme='amiga'] input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  background: #f08000;
+  border: 1px solid #000000;
+  border-radius: 0;
+  box-shadow: var(--amiga-out);
+}
+[data-theme='amiga'] input[type='range']::-moz-range-track {
+  height: 4px;
+  background: #ffffff;
+  border: 1px solid #000000;
+  box-shadow: var(--amiga-in);
+}
+[data-theme='amiga'] input[type='range']::-moz-range-progress {
+  height: 4px;
+  background: #f08000;
+  border: 1px solid #000000;
+}
+[data-theme='amiga'] input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #f08000;
+  border: 1px solid #000000;
+  border-radius: 0;
+  box-shadow: var(--amiga-out);
+}
+[data-theme='amiga'] ::selection {
+  background: #f08000;
+  color: #000000;
+}
+[data-theme='amiga'] * {
+  scrollbar-color: #f08000 #0050a0;
+}
+[data-theme='amiga'] *::-webkit-scrollbar-track {
+  background: #0050a0;
+}
+[data-theme='amiga'] *::-webkit-scrollbar-thumb {
+  background: #f08000;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+}
+[data-theme='amiga'] *::-webkit-scrollbar-corner {
+  background: #000000;
+}
+
+[data-theme='amiga'] .row.loading .dot {
+  animation: amiga-blink 0.6s steps(2) infinite;
+}
+@keyframes amiga-blink {
+  to {
+    background: #ffffff;
+  }
+}

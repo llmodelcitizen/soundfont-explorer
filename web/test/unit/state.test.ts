@@ -100,6 +100,12 @@ describe('URL state', () => {
     expect(buildSearch({ theme: 'modern', t: 0 })).toBe('');
   });
 
+  it('round-trips the Amiga theme', () => {
+    const search = buildSearch({ theme: 'amiga' });
+    expect(search).toBe('?theme=amiga');
+    expect(parseUrl(search).theme).toBe('amiga');
+  });
+
   it('ignores hostile or malformed values', () => {
     const st = parseUrl('?t=-5&f=bogus:1;engine:adlmidi;;:x&loop=yes&song=<script>');
     expect(st.t).toBeUndefined();

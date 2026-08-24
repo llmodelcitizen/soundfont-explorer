@@ -40,6 +40,10 @@ input {
   font: inherit;
   color: inherit;
 }
+input[type='range'] {
+  /* custom theme paint must not change the native control's established outer geometry */
+  height: 16px;
+}
 a {
   color: var(--accent);
 }
@@ -89,6 +93,8 @@ pre {
   background: var(--input-bg);
   border: 1px solid var(--line);
   padding: 4px 6px;
+  /* native select line boxes vary by font; pin the established modern control height */
+  height: 30px;
   max-width: 44vw;
 }
 
@@ -1012,11 +1018,15 @@ kbd {
 }
 .credits,
 .fatal {
-  max-width: 820px;
   margin: 0 auto;
   padding: 24px 18px;
-  overflow: auto;
-  height: 100%;
+}
+.credits {
+  max-width: 1200px;
+  min-height: 100%;
+}
+.fatal {
+  max-width: 820px;
 }
 .credits li {
   margin-bottom: 8px;

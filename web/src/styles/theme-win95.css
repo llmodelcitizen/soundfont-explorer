@@ -1,290 +1,664 @@
-/* Windows 95 light mode (easter egg, T / ?theme=win95). Hand-rolled bevels, no 98.css. */
+/* Windows 95 RTM: solid system colours, bitmap UI type, and classic 3D edges. */
+@font-face {
+  font-family: 'Pixelated MS Sans Serif';
+  src: url('../assets/fonts/win95/ms_sans_serif.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pixelated MS Sans Serif';
+  src: url('../assets/fonts/win95/ms_sans_serif_bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Fixedsys Excelsior';
+  src: url('../assets/fonts/win95/FSEX302.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 [data-theme='win95'] {
   --bg: #008080;
   --panel: #c0c0c0;
   --panel-2: #c0c0c0;
-  --fg: #000;
-  --fg-dim: #404040;
+  --fg: #000000;
+  --fg-dim: #000000;
   --line: #808080;
-  --line-faint: #dcdcdc;
+  --line-faint: #c0c0c0;
   --accent: #000080;
-  --accent-fg: #fff;
+  --accent-fg: #ffffff;
   --sel: #000080;
-  --sel-fg: #fff;
-  --row-hover: #d4d0c8;
+  --sel-fg: #ffffff;
+  --row-hover: #c0c0c0;
   --btn-bg: #c0c0c0;
-  --btn-hover: #d4d0c8;
-  --input-bg: #fff;
+  --btn-hover: #c0c0c0;
+  --input-bg: #ffffff;
   --badge-bg: #808080;
-  --badge-fg: #fff;
+  --badge-fg: #ffffff;
   --warn: #800000;
-  --bad: #ff0000;
-  --heart: #c00040;
-  --overlay: rgba(0, 0, 0, 0.35);
-  --shadow: none;
+  --bad: #800000;
+  --heart: #000080;
+  --overlay: rgba(0, 0, 0, 0.5);
+  --shadow: 1px 1px #000000;
   --radius: 0;
   --row-h: 20px;
-  --font: 11px/1.35 Tahoma, 'MS Sans Serif', 'Microsoft Sans Serif', Arial, sans-serif;
-  --mono: 11px/1.35 'Fixedsys', 'Lucida Console', Consolas, monospace;
-  --c-sf2: #000080;
-  --c-opl: #800000;
-  --c-opn: #800080;
-  --c-edm: #008000;
-  --c-gus: #808000;
-  --c-sc55: #000080;
-  --c-la: #800080;
-  --bevel-out: inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
-  --bevel-in: inset 1px 1px #000, inset -1px -1px #fff, inset 2px 2px #808080, inset -2px -2px #dfdfdf;
-  --titlebar: linear-gradient(90deg, #000080, #1084d0);
+  --font: 11px/1.35 'Pixelated MS Sans Serif', Arial, sans-serif;
+  --mono: 11px/1.35 'Pixelated MS Sans Serif', Arial, sans-serif;
+  --c-sf2: #c0c0c0;
+  --c-opl: #c0c0c0;
+  --c-opn: #c0c0c0;
+  --c-edm: #c0c0c0;
+  --c-gus: #c0c0c0;
+  --c-sc55: #c0c0c0;
+  --c-la: #c0c0c0;
+  --win95-raised: inset -1px -1px #000000, inset 1px 1px #ffffff, inset -2px -2px #808080;
+  --win95-sunken: inset 1px 1px #000000, inset -1px -1px #ffffff, inset 2px 2px #808080;
+  color-scheme: light;
+  font-synthesis: none;
 }
+
+[data-theme='win95'] body {
+  font-synthesis: none;
+  -webkit-font-smoothing: none;
+}
+
 [data-theme='win95'] #app {
-  background: var(--panel);
-  margin: 6px;
-  height: calc(100% - 12px);
-  box-shadow: var(--bevel-out);
-  padding: 3px;
+  background: #c0c0c0;
 }
+
+/* A real caption is its own strip; application commands sit in the gray toolbar below. */
 [data-theme='win95'] .top {
-  background: var(--titlebar);
-  color: #fff;
-  border: 0;
-  padding: 3px 6px;
-  position: relative;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  padding: 2px 3px 3px;
+  background: #c0c0c0;
+  color: #000000;
+  border-color: #000000;
+}
+[data-theme='win95'] .top .title {
+  flex: 1 1 100%;
+  height: 18px;
+  padding: 0 3px;
+  background: #000080;
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 18px;
 }
 [data-theme='win95'] .top .brand,
 [data-theme='win95'] .top .domain {
-  color: #fff;
+  color: #ffffff;
 }
-[data-theme='win95'] .row.head {
-  box-shadow: var(--bevel-out);
+[data-theme='win95'] .top .spacer {
+  display: none;
 }
-/* header cells: plain black, no hover colour (this rule comes after base's .hcell:hover at equal specificity) */
-[data-theme='win95'] .hcell {
-  color: var(--fg);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 11px;
+[data-theme='win95'] .top .btn,
+[data-theme='win95'] .top .themepick {
+  height: 20px;
 }
-[data-theme='win95'] .hcell.sorted {
-  color: var(--accent);
-}
-[data-theme='win95'] .top .title {
-  font-size: 16px;
-  line-height: 22px;
-}
-[data-theme='win95'] .top .songpicker,
-[data-theme='win95'] .top .themepick,
 [data-theme='win95'] .top .btn {
-  color: var(--fg);
+  padding: 1px 6px;
 }
-/* background/colour are restated on purpose: at equal specificity this later rule neutralises base's
-   .btn:hover and .fav-filter.on, so win95 buttons only change through the bevel */
+[data-theme='win95'] .top .btn.icon {
+  padding: 1px 3px;
+}
+[data-theme='win95'] .top .btn.icon svg {
+  width: 16px;
+  height: 16px;
+}
+[data-theme='win95'] .top .songpicker {
+  height: 22px;
+}
+
+/* Raised command buttons. The inset edges reverse without moving the control. */
 [data-theme='win95'] .btn,
 [data-theme='win95'] .opt {
-  border: 0;
-  box-shadow: var(--bevel-out);
-  background: var(--btn-bg);
-  color: var(--fg);
+  background: #c0c0c0;
+  color: #000000;
+  border-color: #c0c0c0;
+  border-radius: 0;
+  box-shadow: var(--win95-raised);
+}
+[data-theme='win95'] .btn {
+  padding: 3px 8px;
+}
+[data-theme='win95'] .btn:hover,
+[data-theme='win95'] .opt:hover {
+  background: #c0c0c0;
+  color: #000000;
 }
 [data-theme='win95'] .btn:active,
 [data-theme='win95'] .btn.on,
 [data-theme='win95'] .btn[aria-pressed='true'],
-[data-theme='win95'] .opt.on {
-  box-shadow: var(--bevel-in);
-  background: #dfdfdf;
-  color: var(--fg);
+[data-theme='win95'] .opt:active {
+  background: #c0c0c0;
+  color: #000000;
+  box-shadow: var(--win95-sunken);
 }
 [data-theme='win95'] .btn.primary {
-  background: var(--btn-bg);
-  color: var(--fg);
-  outline: 1px solid #000;
-  outline-offset: -4px;
+  background: #c0c0c0;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--win95-raised);
+  padding: 4px 12px;
 }
+[data-theme='win95'] .btn:disabled,
+[data-theme='win95'] .np-actions .btn:disabled {
+  background: #c0c0c0;
+  color: #808080;
+  opacity: 1;
+  text-shadow: 1px 1px #ffffff;
+}
+[data-theme='win95'] .btn.danger,
+[data-theme='win95'] .btn.danger:hover {
+  background: #c0c0c0;
+  color: #800000;
+  border-color: #c0c0c0;
+}
+
+/* Selected facets use the system highlight pair, not a later glossy button state. */
+[data-theme='win95'] .opt.on,
+[data-theme='win95'] .opt.on:hover {
+  background: #000080;
+  color: #ffffff;
+  border-color: #000080;
+  box-shadow: var(--win95-sunken);
+}
+[data-theme='win95'] .opt.on .cnt {
+  color: #ffffff;
+}
+[data-theme='win95'] .opt.zero {
+  color: #808080;
+  opacity: 1;
+  text-shadow: 1px 1px #ffffff;
+}
+
+/* White client controls with a hard recessed edge. */
 [data-theme='win95'] .search,
 [data-theme='win95'] .songpicker,
 [data-theme='win95'] .themepick,
+[data-theme='win95'] .settings .num {
+  background-color: #ffffff;
+  color: #000000;
+  border-color: #c0c0c0;
+  border-radius: 0;
+  box-shadow: var(--win95-sunken);
+}
+[data-theme='win95'] .search {
+  height: 22px;
+  padding: 2px 5px;
+}
+[data-theme='win95'] .themepick {
+  padding: 2px 19px 2px 4px;
+}
+[data-theme='win95'] .songpicker {
+  padding: 2px 19px 2px 4px;
+}
+[data-theme='win95'] option {
+  background: #ffffff;
+  color: #000000;
+}
+
+/* Paint the drop-down button as part of the recessed combo box. */
+[data-theme='win95'] select.songpicker,
+[data-theme='win95'] select.themepick {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='17' height='17' viewBox='0 0 17 17'><rect width='17' height='17' fill='%23c0c0c0'/><path d='M0 0h17v1H0zM0 0h1v17H0z' fill='%23fff'/><path d='M0 16h17v1H0zM16 0h1v17h-1z' fill='%23000'/><path d='M1 15h14v1H1zM15 1h1v14h-1z' fill='%23808080'/><path d='M5 7h7l-3.5 4z' fill='%23000'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 2px center;
+  background-size: 15px 15px;
+}
+
+[data-theme='win95'] .chip {
+  background: #c0c0c0;
+  color: #000080;
+  border: 1px dotted #000000;
+  border-radius: 0;
+  height: 22px;
+  padding: 1px 7px;
+}
+[data-theme='win95'] .chip:hover {
+  background: #000080;
+  color: #ffffff;
+}
+[data-theme='win95'] .facet-name {
+  color: #000000;
+}
+[data-theme='win95'] .filterrow {
+  gap: 4px;
+  padding: 3px 4px;
+}
+[data-theme='win95'] .filterrow .btn {
+  height: 22px;
+  padding: 2px 6px;
+}
+[data-theme='win95'] .facets {
+  gap: 4px 12px;
+  padding: 3px 5px 6px;
+}
+[data-theme='win95'] .opt {
+  padding: 1px 5px;
+}
+
+/* Client areas are white; their surrounding panes remain button-face gray. */
 [data-theme='win95'] .list,
 [data-theme='win95'] .track-rows,
 [data-theme='win95'] .nowplaying,
 [data-theme='win95'] .dbg-body {
-  border: 0;
-  box-shadow: var(--bevel-in);
-  background: var(--input-bg);
+  background: #ffffff;
+  color: #000000;
+  box-shadow: var(--win95-sunken);
+}
+[data-theme='win95'] .row,
+[data-theme='win95'] .track,
+[data-theme='win95'] .track-folder {
+  border-color: transparent;
 }
 [data-theme='win95'] .row {
-  border-bottom: 0;
+  gap: 6px;
+  padding-left: 5px;
 }
-[data-theme='win95'] .gate-box,
-[data-theme='win95'] .overlay-box,
-[data-theme='win95'] .debug {
-  border: 0;
-  box-shadow: var(--bevel-out);
-  padding: 0 0 12px;
+[data-theme='win95'] .row:hover,
+[data-theme='win95'] .track:hover,
+[data-theme='win95'] .track-folder:hover {
+  background: #c0c0c0;
+  color: #000000;
+}
+[data-theme='win95'] .row:hover .idx,
+[data-theme='win95'] .row:hover .meta,
+[data-theme='win95'] .row:hover .num,
+[data-theme='win95'] .track:hover .track-meta,
+[data-theme='win95'] .track-folder:hover .folder-twist,
+[data-theme='win95'] .track-folder:hover .folder-count {
+  color: #000000;
+}
+
+/* Every textual descendant adopts the highlight-text colour when selected. */
+[data-theme='win95'] .row.sel,
+[data-theme='win95'] .track.current {
+  background: #000080;
+  color: #ffffff;
+}
+[data-theme='win95'] .row.sel .idx,
+[data-theme='win95'] .row.sel .meta,
+[data-theme='win95'] .row.sel .num,
+[data-theme='win95'] .row.sel .label,
+[data-theme='win95'] .row.sel .fav,
+[data-theme='win95'] .track.current .track-title,
+[data-theme='win95'] .track.current .track-meta,
+[data-theme='win95'] .track.current .folder-twist,
+[data-theme='win95'] .track.current .folder-count {
+  color: #ffffff;
+  opacity: 1;
+}
+[data-theme='win95'] .row.audible .label,
+[data-theme='win95'] .row.favorite .fav {
+  color: #000080;
+}
+[data-theme='win95'] .row.sel.audible .label,
+[data-theme='win95'] .row.sel.favorite .fav {
+  color: #ffffff;
+}
+[data-theme='win95'] .row.sel.cached .dot,
+[data-theme='win95'] .row.sel.audible .dot,
+[data-theme='win95'] .row.sel.loading .dot {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+/* Header cells act like adjacent classic push buttons. */
+[data-theme='win95'] .row.head,
+[data-theme='win95'] .row.head:hover {
+  background: #c0c0c0;
+  color: #000000;
+  border-color: #808080;
+  box-shadow: none;
+}
+[data-theme='win95'] .hcell {
+  padding: 0 3px;
+  background: #c0c0c0;
+  color: #000000;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  box-shadow: var(--win95-raised);
+}
+[data-theme='win95'] .hcell:hover,
+[data-theme='win95'] .hcell.sorted {
+  background: #c0c0c0;
+  color: #000000;
+  box-shadow: var(--win95-sunken);
+}
+[data-theme='win95'] .row.sticky {
+  background: #c0c0c0;
+  border-color: #000080;
+}
+
+/* Engine identity stays textual; rainbow labels are not part of the system UI. */
+[data-theme='win95'] .row .badge {
+  background: #c0c0c0;
+  border: 1px solid #c0c0c0;
+  border-radius: 0;
+  color: #000000;
+  box-shadow: var(--win95-raised);
+}
+[data-theme='win95'] .np-actions .fav-btn.on,
+[data-theme='win95'] .fav-filter.on {
+  background: #000080;
+  color: #ffffff;
+  border-color: #000080;
+  text-shadow: none;
+}
+
+/* Pane headers are controls, not child-window title bars. */
+[data-theme='win95'] .np-head {
+  flex: 0 0 20px;
+  height: 20px;
+  padding: 0 3px;
+  margin-bottom: 3px;
+  background: #c0c0c0;
+  color: #000000;
+  border-color: #808080;
+  box-shadow: var(--win95-raised);
+}
+[data-theme='win95'] .np-head .np-title,
+[data-theme='win95'] .np-head .preserve,
+[data-theme='win95'] .np-head .tier,
+[data-theme='win95'] .np-head .np-status,
+[data-theme='win95'] .np-head .muted {
+  color: #000000;
+}
+
+/* Actual movable/secondary windows get the active caption colour. */
+[data-theme='win95'] .dbg-head,
+[data-theme='win95'] .gate-box h1,
+[data-theme='win95'] .overlay-box h2 {
+  background: #000080;
+  color: #ffffff;
+  border-color: #000000;
+  font-size: 11px;
 }
 [data-theme='win95'] .gate-box h1,
 [data-theme='win95'] .overlay-box h2 {
-  background: var(--titlebar);
-  color: #fff;
-  font-size: 12px;
-  font-weight: bold;
-  padding: 3px 6px;
-  margin: 3px 3px 12px;
-}
-[data-theme='win95'] .gate-box p,
-[data-theme='win95'] .gate-box .btn,
-[data-theme='win95'] .overlay-box table,
-[data-theme='win95'] .overlay-box p {
-  margin-left: 16px;
-  margin-right: 16px;
-}
-[data-theme='win95'] .transport,
-[data-theme='win95'] .filterbar {
-  border: 0;
-}
-
-/* debug pane: the shared dialog rule strips padding; give it a real frame and centre its header */
-[data-theme='win95'] .debug {
-  padding: 10px 12px 14px;
-}
-[data-theme='win95'] .dbg-head {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 8px 8px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid var(--line);
+  height: 18px;
+  padding: 0 3px;
+  line-height: 18px;
 }
 [data-theme='win95'] .dbg-head strong {
-  font-size: 12px;
+  color: #ffffff;
 }
-[data-theme='win95'] .dbg-actions {
-  justify-content: flex-end;
-  gap: 8px;
+[data-theme='win95'] .np-status.loading,
+[data-theme='win95'] .status.loading,
+[data-theme='win95'] .np-status.wontload,
+[data-theme='win95'] .status.wontload {
+  color: #800000;
+  font-weight: 700;
 }
-[data-theme='win95'] .dbg-body {
-  padding: 8px 10px;
-  margin: 0;
-}
-[data-theme='win95'] .btn.icon {
-  padding: 3px 7px;
+[data-theme='win95'] .np-head .np-status.loading,
+[data-theme='win95'] .np-head .np-status.wontload {
+  color: #800000;
 }
 
-/* settings dialog: mirror the modern layout inside the win95 chrome */
-[data-theme='win95'] .settings {
-  padding: 0 0 14px;
-}
-[data-theme='win95'] .settings .setting,
-[data-theme='win95'] .settings > .btnrow {
-  margin: 0 16px;
-}
-[data-theme='win95'] .settings .setting {
-  margin-bottom: 14px;
-}
-[data-theme='win95'] .settings label {
-  margin-bottom: 8px;
-  line-height: 2;
-}
-[data-theme='win95'] .settings .num {
-  border: 0;
-  box-shadow: var(--bevel-in);
-  margin: 0 4px;
-}
-[data-theme='win95'] .settings input[type='range'] {
-  margin: 6px 0 10px;
-}
-[data-theme='win95'] .settings p {
-  margin: 6px 0;
-}
-[data-theme='win95'] .settings .btnrow {
-  margin-top: 10px;
-  gap: 8px;
-}
-[data-theme='win95'] .settings .btn {
-  min-width: 88px;
-  padding: 4px 12px;
-}
-/* colour restated on purpose: it also applies on hover (base's .chip:hover is earlier at equal specificity) */
-[data-theme='win95'] .chip {
+[data-theme='win95'] .gate-box,
+[data-theme='win95'] .overlay-box,
+[data-theme='win95'] .debug {
+  background: #c0c0c0;
+  color: #000000;
+  border-color: #c0c0c0;
   border-radius: 0;
-  color: var(--accent);
+  box-shadow: var(--win95-raised), 1px 1px #000000;
+}
+[data-theme='win95'] .debug {
+  padding: 3px 3px 8px;
+}
+[data-theme='win95'] .dbg-head {
+  height: 22px;
+  margin: 0 0 4px;
+  padding: 0 0 0 3px;
+  line-height: 22px;
+}
+[data-theme='win95'] .gate-box,
+[data-theme='win95'] .overlay-box {
+  padding: 3px 3px 12px;
+}
+[data-theme='win95'] .gate-box h1,
+[data-theme='win95'] .overlay-box h2 {
+  margin: 0 0 10px;
+}
+[data-theme='win95'] .gate-box > p,
+[data-theme='win95'] .gate-box > .btn,
+[data-theme='win95'] .overlay-box > p,
+[data-theme='win95'] .overlay-box > table,
+[data-theme='win95'] .settings > .setting,
+[data-theme='win95'] .settings > .btnrow {
+  margin-left: 12px;
+  margin-right: 12px;
+}
+[data-theme='win95'] .settings > .setting {
+  margin-bottom: 10px;
+}
+[data-theme='win95'] .settings .setting-title {
+  font-size: 11px;
+  letter-spacing: 0;
+}
+[data-theme='win95'] kbd,
+[data-theme='win95'] .tag {
+  background: #c0c0c0;
+  color: #000000;
+  border-color: #c0c0c0;
+  border-radius: 0;
+  box-shadow: var(--win95-raised);
+}
+[data-theme='win95'] .debug.dragging {
+  opacity: 1;
 }
 
-/* header buttons: 2 px taller at the bottom */
-[data-theme='win95'] .top .btn {
-  padding-bottom: 6px;
-}
-[data-theme='win95'] .top .btn.icon {
-  padding: 3px 7px 5px;
-}
-
-[data-theme='win95'] .track-rows {
-  margin: 0;
-}
-[data-theme='win95'] .track {
-  border-bottom: 0;
-}
-/* split handles: bevelled bars, no grip */
 [data-theme='win95'] .split,
 [data-theme='win95'] .vsplit,
 [data-theme='win95'] .hsplit {
-  background: var(--panel);
-  box-shadow: var(--bevel-out);
+  background: #c0c0c0;
+  box-shadow: var(--win95-raised);
 }
 [data-theme='win95'] .split::after,
 [data-theme='win95'] .vsplit::after,
 [data-theme='win95'] .hsplit::after {
-  display: none;
+  background: #000000;
+  border-radius: 0;
+  opacity: 1;
 }
 
-[data-theme='win95'] .preserve {
-  color: var(--fg);
-}
-[data-theme='win95'] .preserve input {
-  accent-color: var(--fg);
-}
-
-@media (max-width: 720px) and (orientation: portrait) {
-  /* centre the song dropdown between the button row and the bottom edge of the title bar */
-  [data-theme='win95'] .top .songpicker {
-    margin-bottom: 3px;
-  }
-}
-
-/* win95 dropdowns: a bevelled ▼ button as the indicator (iOS Safari drops the native arrow on styled selects) */
-[data-theme='win95'] select.themepick,
-[data-theme='win95'] select.songpicker {
+/* Classic form controls, painted inside the outer dimensions established by base.css. */
+[data-theme='win95'] input[type='checkbox'] {
   -webkit-appearance: none;
   appearance: none;
-  padding-right: 24px;
-  background-color: var(--input-bg);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='17' height='17' viewBox='0 0 17 17'><rect width='17' height='17' fill='%23c0c0c0'/><path d='M0 0h16v1H0zM0 0h1v16H0z' fill='%23fff'/><path d='M1 15h15V1h1v16H1z' fill='%23000'/><path d='M2 14h13V2h1v13H2z' fill='%23808080'/><path d='M5 7h7l-3.5 4z' fill='%23000'/></svg>");
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  background: #ffffff;
+  border: 1px solid #c0c0c0;
+  border-radius: 0;
+  box-shadow: var(--win95-sunken);
+}
+[data-theme='win95'] input[type='checkbox']:checked {
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11'><path d='M2 5l2 2 5-5v3L4 10 1 7z' fill='%23000'/></svg>");
+  background-position: center;
   background-repeat: no-repeat;
-  background-position: right 2px center;
-  background-size: 17px 17px;
+}
+[data-theme='win95'] input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+[data-theme='win95'] input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #ffffff;
+  border: 1px solid #c0c0c0;
+  box-shadow: var(--win95-sunken);
+}
+[data-theme='win95'] input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 16px;
+  margin-top: -7px;
+  background: #c0c0c0;
+  border: 1px solid #c0c0c0;
+  border-radius: 0;
+  box-shadow: var(--win95-raised);
+}
+[data-theme='win95'] input[type='range']::-moz-range-track {
+  height: 2px;
+  background: #ffffff;
+  border: 1px solid #c0c0c0;
+  box-shadow: var(--win95-sunken);
+}
+[data-theme='win95'] input[type='range']::-moz-range-progress {
+  height: 2px;
+  background: #000080;
+}
+[data-theme='win95'] input[type='range']::-moz-range-thumb {
+  width: 10px;
+  height: 14px;
+  background: #c0c0c0;
+  border: 1px solid #c0c0c0;
+  border-radius: 0;
+  box-shadow: var(--win95-raised);
 }
 
-/* theme dropdown exactly as tall as the header icon buttons (18 px icon + 3 px + 5 px padding) */
-[data-theme='win95'] .top .themepick {
-  height: 26px;
-  padding-top: 0;
-  padding-bottom: 0;
-  box-sizing: border-box;
-  line-height: normal;
+/* Windows focus is an inner dotted rectangle; selected clients reverse it to white. */
+[data-theme='win95'] .btn:focus-visible,
+[data-theme='win95'] .opt:focus-visible,
+[data-theme='win95'] input:focus-visible,
+[data-theme='win95'] select:focus-visible,
+[data-theme='win95'] .row:focus-visible,
+[data-theme='win95'] .track:focus-visible {
+  outline: 1px dotted #000000;
+  outline-offset: -4px;
+}
+[data-theme='win95'] .row.sel:focus-visible,
+[data-theme='win95'] .track.current:focus-visible {
+  outline-color: #ffffff;
 }
 
-[data-theme='win95'] .btn.danger {
-  color: #800000;
+/* Fixedsys is reserved for actual data/code; ordinary controls and metadata use System. */
+[data-theme='win95'] .transport .clock {
+  font: 11px/1.35 'Pixelated MS Sans Serif', Arial, sans-serif;
+  font-feature-settings: normal;
 }
-[data-theme='win95'] .btn.danger:hover {
-  background: var(--btn-bg);
+[data-theme='win95'] pre,
+[data-theme='win95'] .dbg-body {
+  font: 16px/1 'Fixedsys Excelsior', monospace;
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0, 'clig' 0;
 }
-
-/* facet option buttons: 4 px taller, text kept centred, same gaps */
-[data-theme='win95'] .opt {
-  padding-top: 3px;
-  padding-bottom: 3px;
+[data-theme='win95'] kbd,
+[data-theme='win95'] .row .idx,
+[data-theme='win95'] .row .num,
+[data-theme='win95'] .row .badge,
+[data-theme='win95'] .tier {
+  font: 11px/1.35 'Pixelated MS Sans Serif', Arial, sans-serif;
+}
+[data-theme='win95'] .np-label,
+[data-theme='win95'] .credits h1,
+[data-theme='win95'] .credits h2,
+[data-theme='win95'] .fatal h1,
+[data-theme='win95'] .fatal h2 {
+  font-size: 11px;
   line-height: 1.35;
-  display: inline-flex;
-  align-items: center;
+}
+
+[data-theme='win95'] .transport {
+  gap: 4px;
+  padding: 3px 4px;
+}
+[data-theme='win95'] .transport > .btn,
+[data-theme='win95'] .transport .toggle {
+  width: 52px;
+  height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+[data-theme='win95'] ::selection {
+  background: #000080;
+  color: #ffffff;
+}
+[data-theme='win95'] * {
+  scrollbar-color: #c0c0c0 #ffffff;
+}
+[data-theme='win95'] *::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+[data-theme='win95'] *::-webkit-scrollbar-track,
+[data-theme='win95'] *::-webkit-scrollbar-corner {
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2'><path d='M0 0h1v1H0zM1 1h1v1H1z' fill='%23c0c0c0'/></svg>");
+}
+[data-theme='win95'] *::-webkit-scrollbar-thumb,
+[data-theme='win95'] *::-webkit-scrollbar-button {
+  background: #c0c0c0;
+  border: 1px solid #c0c0c0;
+  border-radius: 0;
+  box-shadow: var(--win95-raised);
+}
+[data-theme='win95'] *::-webkit-scrollbar-button:single-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-color: #c0c0c0;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+[data-theme='win95'] *::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M0 6h8L4 2z' fill='%23000'/></svg>");
+}
+[data-theme='win95'] *::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M0 2h8L4 6z' fill='%23000'/></svg>");
+}
+[data-theme='win95'] *::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M6 0v8L2 4z' fill='%23000'/></svg>");
+}
+[data-theme='win95'] *::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M2 0v8l4-4z' fill='%23000'/></svg>");
+}
+
+/* About remains a document with the browser scrollbar at the viewport edge. */
+[data-theme='win95'] .page {
+  background: #008080;
+}
+[data-theme='win95'] .credits,
+[data-theme='win95'] .fatal {
+  background: #c0c0c0;
+  color: #000000;
+  box-shadow: var(--win95-raised);
+}
+[data-theme='win95'] .credits a:not(.btn),
+[data-theme='win95'] .fatal a:not(.btn) {
+  color: #000080;
+}
+
+/* Touch layouts keep usable targets while retaining the same Win95 paint. */
+@media (max-width: 720px) {
+  [data-theme='win95'] .transport {
+    gap: 6px;
+    padding: 5px 6px max(5px, env(safe-area-inset-bottom));
+  }
+  [data-theme='win95'] .transport .steps .btn {
+    width: 44px;
+    height: 40px;
+    padding: 4px 10px;
+  }
+  [data-theme='win95'] .transport > .btn,
+  [data-theme='win95'] .transport .toggle {
+    width: 42px;
+    height: 40px;
+  }
 }
