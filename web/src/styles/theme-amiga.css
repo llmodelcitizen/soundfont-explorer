@@ -257,6 +257,15 @@
   color: #000000;
   border-color: #000000;
 }
+/* Give the debug caption enough chrome around its full-size title-bar gadgets. */
+[data-theme='amiga'] .dbg-head {
+  box-sizing: border-box;
+  height: 36px;
+  padding-left: 8px;
+}
+[data-theme='amiga'] .dbg-actions {
+  align-items: center;
+}
 /* Remove the base theme's bottom-only padding so Workbench captions and their adjacent text
    sit halfway up the strip. The side padding remains equal without changing horizontal flow. */
 [data-theme='amiga'] .np-head {

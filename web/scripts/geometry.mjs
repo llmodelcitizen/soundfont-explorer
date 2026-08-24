@@ -89,6 +89,26 @@ async function measure(theme, viewport, label) {
       if (!cell || !label || !outer || !glyph) return null;
       return { offset: glyph.cy - outer.cy, fontSize: getComputedStyle(cell).fontSize, transform: getComputedStyle(label).transform };
     };
+    const debugTitleBar = (() => {
+      const debug = document.querySelector('.debug');
+      const header = debug?.querySelector('.dbg-head');
+      const caption = header?.querySelector('strong');
+      if (!debug || !header || !caption) return null;
+      const wasHidden = debug.classList.contains('hidden');
+      debug.classList.remove('hidden');
+      const outer = rect(header);
+      const title = rect(caption);
+      const buttons = allRects('.dbg-actions .btn');
+      const style = getComputedStyle(header);
+      const result = outer && title ? {
+        height: outer.h,
+        paddingLeft: style.paddingLeft,
+        captionOffset: title.cy - outer.cy,
+        buttonOffsets: buttons.map((button) => button.cy - outer.cy),
+      } : null;
+      if (wasHidden) debug.classList.add('hidden');
+      return result;
+    })();
     const namedRects = {};
     for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) namedRects[selector] = rect(document.querySelector(selector));
     const headerControls = allRects('.top > .themepick, .top > .btn, .top > .vol-top');
@@ -176,6 +196,7 @@ async function measure(theme, viewport, label) {
       highlight,
       states,
       titleTypography,
+      debugTitleBar,
       amigaVerticalAlignment: {
         tracks: verticallyCenteredHeader('.tracks .np-head'),
         nowPlaying: verticallyCenteredHeader('.nowplaying .np-head'),
@@ -294,6 +315,12 @@ for (const [label, viewport] of Object.entries(viewports)) {
   assert(win95.states.disabledColor === 'rgb(128, 128, 128)', `${label}/win95: disabled button text is ${win95.states.disabledColor}`);
   assert(win95.states.linkColor === 'rgb(0, 0, 255)', `${label}/win95: link color is ${win95.states.linkColor}`);
   assert(win95.focusOutline === 'dotted', `${label}/win95: keyboard focus outline is ${win95.focusOutline}, not dotted`);
+  for (const themed of [win95, amiga]) {
+    const titleBar = themed.debugTitleBar;
+    assert(titleBar?.height === 36 && titleBar.paddingLeft === '8px', `${label}/${themed.theme}: debug title bar does not have the themed dimensions: ${JSON.stringify(titleBar)}`);
+    assert(titleBar && close(titleBar.captionOffset, 0, 0.5), `${label}/${themed.theme}: debug caption is not vertically centered: ${JSON.stringify(titleBar)}`);
+    assert(titleBar?.buttonOffsets.every((offset) => close(offset, 0, 0.5)), `${label}/${themed.theme}: debug title-bar buttons are not vertically centered: ${JSON.stringify(titleBar)}`);
+  }
   for (const [name, alignment] of Object.entries(amiga.amigaVerticalAlignment)) {
     if (name === 'favoriteContent' || name === 'listenedContentSize') continue;
     if (name === 'tracks' && label === 'phone') continue; // the phone layout replaces Tracks with the song dropdown
