@@ -391,6 +391,17 @@
 [data-theme='win95'] .tracks {
   box-shadow: var(--w95-well);
 }
+/* Sticky folder headers paint above the Tracks well and would otherwise cover its left edge.
+   Repeat the well's two dark pixels on each header so the border stays continuous. */
+[data-theme='win95'] .track-folder::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 1px;
+  background: #808080;
+  box-shadow: 1px 0 #000000;
+  pointer-events: none;
+}
 [data-theme='win95'] .nowplaying {
   background: #c0c0c0;
 }

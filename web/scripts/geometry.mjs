@@ -139,6 +139,17 @@ async function measure(theme, viewport, label) {
       stepButtons,
       highlight,
       states,
+      folderEdge: (() => {
+        const folder = document.createElement('div');
+        folder.className = 'track-folder';
+        folder.style.position = 'fixed';
+        folder.style.visibility = 'hidden';
+        document.body.append(folder);
+        const edge = getComputedStyle(folder, '::before');
+        const result = { content: edge.content, width: edge.width, background: edge.backgroundColor, shadow: edge.boxShadow };
+        folder.remove();
+        return result;
+      })(),
       fonts: {
         msSans: document.fonts.check('11px "Pixelated MS Sans Serif"'),
         fixedsys: document.fonts.check('16px "Fixedsys Excelsior"'),
@@ -207,6 +218,7 @@ for (const [label, viewport] of Object.entries(viewports)) {
   }
 
   assert(win95.fonts.msSans && win95.fonts.fixedsys, `${label}/win95: bundled fonts did not load`);
+  assert(win95.folderEdge?.content === '\"\"' && win95.folderEdge.width === '1px' && win95.folderEdge.background === 'rgb(128, 128, 128)' && win95.folderEdge.shadow.includes('rgb(0, 0, 0)'), `${label}/win95: folder header does not preserve the Tracks well edge: ${JSON.stringify(win95.folderEdge)}`);
   assert(new Set(win95.clockPositions.map((position) => JSON.stringify(position.chars))).size === 1, `${label}/win95: clock character slots shift as the current time changes: ${JSON.stringify(win95.clockPositions)}`);
   assert(new Set(win95.clockPositions.map((position) => position.separator)).size === 1, `${label}/win95: clock separator shifts as the current time changes: ${JSON.stringify(win95.clockPositions)}`);
   assert(new Set(win95.clockPositions.map((position) => position.seek)).size === 1, `${label}/win95: seek bar shifts as the current time changes: ${JSON.stringify(win95.clockPositions)}`);
