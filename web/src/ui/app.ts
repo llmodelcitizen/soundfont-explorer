@@ -1,7 +1,7 @@
 /**
  * App: loads songs.json, then catalog + decoder probe + set concurrently; creates the AudioContext
  * at boot (suspended, unlocked by the first gesture) and wires engine ⇄ UI ⇄ URL.
- * Song switches keep variant id (or nearest index), position and filters (plan §10).
+ * Song switches keep variant id (or nearest index), per-track position and filters (plan §10).
  */
 import { Engine, type Status } from '../audio/engine';
 import { NativeDecoder, WasmDecoder, probeNative, type Decoder } from '../audio/decode';
@@ -28,7 +28,7 @@ import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { adjacentTrackId, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
-import { Favorites, ListenedLedger, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
+import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { audioSession, createContext, installResumeOnGesture, unlock } from '../audio/unlock';
 import { Transport } from './transport';
@@ -75,9 +75,11 @@ export class App {
   private debug = new DebugPanel();
   private keymap = new KeymapOverlay();
   private prefs: Prefs = loadPrefs();
+  private trackPositions = new TrackPositions();
   private ledger = new ListenedLedger();
   private settings = new SettingsModal(this.prefs, {
     onChange: (p) => {
+      if (this.prefs.preserveTrackPosition && !p.preserveTrackPosition) this.trackPositions.clear();
       this.prefs = p;
       savePrefs(p);
       this.refreshListened();
@@ -241,7 +243,10 @@ export class App {
     if (id !== this.song.id && stopped) this.playOnRenderClick = true;
     this.trackScrollTop = this.tracks?.scrollTop ?? this.trackScrollTop;
     this.ledger.flush();
-    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined });
+    const preserve = this.prefs.preserveTrackPosition;
+    if (preserve) this.trackPositions.remember(this.song.id, this.engine.position());
+    const position = preserve ? this.trackPositions.recall(id) : 0;
+    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined, t: position });
   }
 
   /** `setDoc`: the set boot() already fetched; later switches fetch their own */
@@ -259,8 +264,8 @@ export class App {
         return;
       }
     }
-    // stepping to another track: keep the playhead or restart, per the "Preserve track position" preference
-    const prevPos = this.engine ? (this.prefs.preserveTrackPosition ? this.engine.position() : 0) : (opts.t ?? 0);
+    // Boot honors the URL position; later switches pass this track's own saved position (or zero).
+    const targetPos = opts.t ?? 0;
     const wasPlaying = this.engine ? this.engine.playing : false;
     const prevFilters = this.filters ? this.filters.sel : (this.url.filters ?? { completeness: new Set(['full_gm']) });
     const prevQuery = this.filters ? this.filters.query : (this.url.q ?? '');
@@ -291,7 +296,7 @@ export class App {
     this.engine.setOrder(this.visible, this.cursor);
     this.engine.start();
     if (target) this.engine.select(target);
-    const pos = Math.min(prevPos, set.duration_s);
+    const pos = Math.min(Math.max(targetPos, 0), set.duration_s);
     this.engine.seek(pos);
     if (wasPlaying) this.engine.play();
     this.transport.setMuted(muted);
@@ -418,6 +423,7 @@ export class App {
     this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => this.switchSong(id), {
       value: this.prefs.preserveTrackPosition,
       onChange: (v) => {
+        if (!v) this.trackPositions.clear();
         this.prefs = { ...this.prefs, preserveTrackPosition: v };
         savePrefs(this.prefs);
         this.settings.setPrefs(this.prefs);

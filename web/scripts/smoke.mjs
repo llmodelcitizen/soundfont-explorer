@@ -67,6 +67,28 @@ try {
   results.steps.playing = { pos1, pos2, advancing: pos1 !== pos2 };
   if (pos1 === pos2) results.ok = false;
 
+  // Preserve position is per track: an unseen track starts at zero, then returning restores
+  // the first track's own playhead instead of inheriting the second track's position.
+  const readPosition = () => page.$eval('.clock-current', (e) => {
+    const [minutes, seconds] = (e.textContent ?? '0:0').split(':').map(Number);
+    return minutes * 60 + seconds;
+  });
+  const firstTrack = await page.$eval('.track.current', (e) => e.dataset.id);
+  const firstPosition = await readPosition();
+  const secondTrack = await page.$eval('.track:not(.current)', (e) => e.dataset.id);
+  await page.$eval('.track:not(.current)', (e) => e.click());
+  await page.waitForFunction((id) => document.querySelector('.track.current')?.dataset.id === id, secondTrack);
+  const unseenPosition = await readPosition();
+  await page.evaluate((id) => document.querySelector(`.track[data-id="${id}"]`)?.click(), firstTrack);
+  await page.waitForFunction(({ id, minimum }) => {
+    if (document.querySelector('.track.current')?.dataset.id !== id) return false;
+    const [minutes, seconds] = (document.querySelector('.clock-current')?.textContent ?? '0:0').split(':').map(Number);
+    return minutes * 60 + seconds >= minimum;
+  }, { id: firstTrack, minimum: Math.max(0, firstPosition - 0.5) });
+  const restoredPosition = await readPosition();
+  results.steps.trackPositions = { firstTrack, secondTrack, firstPosition, unseenPosition, restoredPosition };
+  if (unseenPosition >= 1 || restoredPosition < firstPosition - 0.5) results.ok = false;
+
   // complete keyboard cycle, including dropdown + URL synchronization at every stop
   const cycle = [];
   for (const expected of ['win95', 'amiga', 'modern']) {

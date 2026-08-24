@@ -61,7 +61,7 @@ export class TrackList {
       preserve.onChange(this.preserveBox.checked);
       this.preserveBox.blur();
     });
-    const tip = 'When unchecked, always start from the beginning after stepping to a new track.';
+    const tip = 'When checked, each track resumes from its own previous position. When unchecked, tracks start from the beginning.';
     const label = h('label', { class: 'preserve', for: 'preserve-pos', title: tip }, this.preserveBox, ' Preserve track position');
     this.el = h(
       'section',

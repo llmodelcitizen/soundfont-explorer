@@ -6,7 +6,7 @@
 export interface Prefs {
   /** seconds of audible playback before a variant's dot lights up */
   listenedAfterS: number;
-  /** keep the playhead position when stepping to another track (false = start from the beginning) */
+  /** remember a separate playhead position for each track (false = start from the beginning) */
   preserveTrackPosition: boolean;
   /** visible list columns (keys from ui/columns.ts); always-on columns are implied */
   columns: string[];
@@ -53,6 +53,23 @@ export function loadPrefs(): Prefs {
 
 export function savePrefs(p: Prefs): void {
   write(PREFS_KEY, p);
+}
+
+/** Page-session playhead memory. A track with no entry has never been visited and starts at zero. */
+export class TrackPositions {
+  private positions = new Map<string, number>();
+
+  remember(track: string, position: number): void {
+    if (Number.isFinite(position)) this.positions.set(track, Math.max(0, position));
+  }
+
+  recall(track: string): number {
+    return this.positions.get(track) ?? 0;
+  }
+
+  clear(): void {
+    this.positions.clear();
+  }
 }
 
 type Ledger = Record<string, Record<string, number>>;

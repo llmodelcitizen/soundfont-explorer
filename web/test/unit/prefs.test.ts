@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFS, Favorites, ListenedLedger, loadPrefs } from '../../src/state/prefs';
+import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, loadPrefs } from '../../src/state/prefs';
 
 describe('prefs + listened ledger', () => {
   it('defaults without localStorage', () => {
@@ -23,6 +23,25 @@ describe('prefs + listened ledger', () => {
     expect(l.seconds('s2', 'a')).toBe(9);
     l.resetAll();
     expect(l.seconds('s2', 'a')).toBe(0);
+  });
+});
+
+describe('per-track positions', () => {
+  it('starts unseen tracks at zero and recalls each visited track independently', () => {
+    const positions = new TrackPositions();
+    expect(positions.recall('unplayed')).toBe(0);
+    positions.remember('one', 12.5);
+    positions.remember('two', 47);
+    expect(positions.recall('one')).toBe(12.5);
+    expect(positions.recall('two')).toBe(47);
+    expect(positions.recall('unplayed')).toBe(0);
+  });
+
+  it('clears remembered positions when preservation is disabled', () => {
+    const positions = new TrackPositions();
+    positions.remember('one', 12.5);
+    positions.clear();
+    expect(positions.recall('one')).toBe(0);
   });
 });
 
