@@ -19,7 +19,7 @@ export class Transport {
   readonly el: HTMLElement;
   private playBtn: HTMLButtonElement;
   private clock: HTMLElement;
-  private clockCurrent: HTMLElement;
+  private clockCurrentChars: HTMLElement[];
   private seek: HTMLInputElement;
   private loopBtn: HTMLButtonElement;
   private muteBtn: HTMLButtonElement;
@@ -55,17 +55,24 @@ export class Transport {
       returnFocus();
     });
     const durationText = fmtTime(duration);
-    this.clockCurrent = h('span', { class: 'clock-time clock-current' }, fmtTime(0));
+    const clockChars = Math.max(fmtTime(0).length, durationText.length);
+    const makeClockTime = (text: string, className: string) => {
+      const padded = text.padStart(clockChars);
+      const chars = Array.from(padded, (char) => h('span', { class: 'clock-char' }, char === ' ' ? '' : char));
+      return { el: h('span', { class: `clock-time ${className}` }, chars), chars };
+    };
+    const current = makeClockTime(fmtTime(0), 'clock-current');
+    const total = makeClockTime(durationText, 'clock-duration');
+    this.clockCurrentChars = current.chars;
     this.clock = h(
       'span',
       { class: 'clock' },
-      this.clockCurrent,
+      current.el,
       h('span', { class: 'clock-separator' }, ' / '),
-      h('span', { class: 'clock-time clock-duration' }, durationText),
+      total.el,
     );
-    // Only the Win95 stylesheet consumes this. Its bitmap face has proportional digits,
-    // so reserve enough character cells for either time field before playback starts.
-    const clockChars = Math.max(fmtTime(0).length, durationText.length);
+    // Only the Win95 stylesheet consumes this. Reserve enough character cells for either
+    // time field before playback starts; its bitmap face has proportional digits.
     this.clock.style.setProperty('--clock-field-width', `${clockChars}ch`);
     this.seek = h('input', { type: 'range', class: 'seek', min: '0', max: String(duration), step: '0.01', value: '0', 'aria-label': 'position' });
     this.seek.addEventListener('pointerdown', () => (this.seeking = true));
@@ -143,7 +150,11 @@ export class Transport {
   }
 
   update(pos: number, playing: boolean): void {
-    this.clockCurrent.textContent = fmtTime(pos);
+    const currentText = fmtTime(pos).padStart(this.clockCurrentChars.length);
+    this.clockCurrentChars.forEach((char, index) => {
+      const value = currentText[index];
+      char.textContent = value === ' ' ? '' : (value ?? '');
+    });
     if (!this.seeking) this.seek.value = String(pos);
     const want = playing ? 'pause' : 'play';
     if (this.playBtn.dataset.icon !== want) {

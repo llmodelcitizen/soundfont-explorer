@@ -148,9 +148,11 @@ async function measure(theme, viewport, label) {
         const separator = document.querySelector('.clock-separator');
         const seek = document.querySelector('.transport .seek');
         if (!current || !separator || !seek) return [];
+        const chars = Array.from(current.querySelectorAll('.clock-char'));
         return ['0:00.000', '0:11.111', '0:28.888', '0:59.999'].map((value) => {
-          current.textContent = value;
-          return { separator: rect(separator)?.x, seek: rect(seek)?.x };
+          const padded = value.padStart(chars.length);
+          chars.forEach((char, index) => (char.textContent = padded[index] === ' ' ? '' : padded[index]));
+          return { separator: rect(separator)?.x, seek: rect(seek)?.x, chars: chars.map((char) => rect(char)?.x) };
         });
       })(),
       theme: document.documentElement.dataset.theme,
@@ -205,6 +207,7 @@ for (const [label, viewport] of Object.entries(viewports)) {
   }
 
   assert(win95.fonts.msSans && win95.fonts.fixedsys, `${label}/win95: bundled fonts did not load`);
+  assert(new Set(win95.clockPositions.map((position) => JSON.stringify(position.chars))).size === 1, `${label}/win95: clock character slots shift as the current time changes: ${JSON.stringify(win95.clockPositions)}`);
   assert(new Set(win95.clockPositions.map((position) => position.separator)).size === 1, `${label}/win95: clock separator shifts as the current time changes: ${JSON.stringify(win95.clockPositions)}`);
   assert(new Set(win95.clockPositions.map((position) => position.seek)).size === 1, `${label}/win95: seek bar shifts as the current time changes: ${JSON.stringify(win95.clockPositions)}`);
   assert(win95.highlight.rowBackground === 'rgb(0, 0, 128)', `${label}/win95: selected row background is ${win95.highlight.rowBackground}`);

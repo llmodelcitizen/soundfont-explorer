@@ -112,17 +112,15 @@
   font-weight: 700;
 }
 
-/* MS Sans Serif's numerals are proportional. Keep both clock fields in fixed columns so
-   the changing playback position cannot move the slash, seek bar, or later controls. */
+/* MS Sans Serif's numerals are proportional. Give every character its own fixed cell so
+   changing digits cannot move one another, the slash, the seek bar, or later controls. */
 [data-theme='win95'] .transport .clock-time {
-  display: inline-block;
+  display: inline-flex;
   width: var(--clock-field-width);
 }
-[data-theme='win95'] .transport .clock-current {
-  text-align: right;
-}
-[data-theme='win95'] .transport .clock-duration {
-  text-align: left;
+[data-theme='win95'] .transport .clock-char {
+  flex: 0 0 1ch;
+  text-align: center;
 }
 
 /* Geometry pins: 19.6px is the modern theme's 14px × 1.4 line box, so buttons and inputs
