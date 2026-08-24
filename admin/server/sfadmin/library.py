@@ -52,6 +52,15 @@ def clean_rel_path(path: str) -> str:
     return "/".join(segs)
 
 
+def clean_dir(path: str) -> str:
+    """Normalize a client-supplied directory path ('' = the library root)."""
+    path = path.strip().strip("/").replace("\\", "/")
+    segs = [s for s in path.split("/") if s not in ("", ".")]
+    if any(s == ".." or not _SAFE_SEG.match(s) for s in segs):
+        raise ValueError(f"bad directory {path!r}")
+    return "/".join(segs)
+
+
 class ConflictError(RuntimeError):
     """library.json changed underneath us — a second writer exists."""
 
@@ -242,6 +251,101 @@ class Library:
                              re.sub(r"\.midi?$", "", old_rel, flags=re.I) + ".mid")
         if os.path.exists(stale):
             os.remove(stale)
+
+    # ------------------------------------------------------------ bulk mutations
+    # One library.json save per operation (2,800 conditional PUTs for a folder-wide edit
+    # would be absurd). All ids are validated up front so a typo fails before any change;
+    # per-file S3 work still happens per object, then the doc saves once.
+
+    BULK_EDITABLE = ("composer", "sequencer", "source_url", "notes", "hidden")
+
+    def _require_all(self, ids: list[str]) -> list[dict]:
+        missing = [i for i in ids if i not in self.doc["entries"]]
+        if missing:
+            raise KeyError(f"unknown ids: {missing[:5]}" + ("…" if len(missing) > 5 else ""))
+        return [self.doc["entries"][i] for i in ids]
+
+    def bulk_edit(self, ids: list[str], fields: dict) -> dict:
+        bad = set(fields) - set(self.BULK_EDITABLE)
+        if bad:
+            raise ValueError(f"not bulk-editable: {sorted(bad)}")
+        with self.lock:
+            entries = self._require_all(ids)
+            before = [{k: e[k] for k in fields} for e in entries]
+            ts = now_iso()
+            for e in entries:
+                e.update(fields)
+                e["modified_at"] = ts
+            self.doc["updated_at"] = ts
+            try:
+                self._save()
+            except Exception:
+                for e, b in zip(entries, before):
+                    e.update(b)
+                raise
+            return {"edited": len(entries)}
+
+    def bulk_move(self, ids: list[str], dest_dir: str) -> dict:
+        """Move the files into dest_dir, keeping their filenames. Ids stay pinned."""
+        dest = clean_dir(dest_dir)
+        s3, bucket = self.cfg.s3, self.cfg.bucket
+        with self.lock:
+            entries = self._require_all(ids)
+            moves = []
+            taken = {e["path"] for e in self.doc["entries"].values()}
+            for e in entries:
+                new_path = (dest + "/" if dest else "") + e["path"].rpartition("/")[2]
+                if new_path == e["path"]:
+                    continue
+                if new_path in taken:
+                    raise FileExistsError(f"a library file already exists at {new_path}")
+                taken.add(new_path)
+                moves.append((e, e["path"], new_path))
+            for e, old, new in moves:
+                s3.copy_object(Bucket=bucket, Key="library/FILES/" + new,
+                               CopySource={"Bucket": bucket, "Key": "library/FILES/" + old})
+            ts = now_iso()
+            for e, old, new in moves:
+                e["path"] = new
+                e["modified_at"] = ts
+            self.doc["updated_at"] = ts
+            try:
+                self._save()
+            except Exception:
+                for e, old, new in moves:
+                    e["path"] = old
+                    s3.delete_object(Bucket=bucket, Key="library/FILES/" + new)
+                raise
+            for e, old, new in moves:
+                s3.delete_object(Bucket=bucket, Key="library/FILES/" + old)
+                src = os.path.join(self.cfg.library_dir, old)
+                dst = os.path.join(self.cfg.library_dir, new)
+                if os.path.exists(src):
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    shutil.move(src, dst)
+                self._forget_stale_canonical(old)
+            return {"moved": len(moves), "dest": dest}
+
+    def bulk_delete(self, ids: list[str]) -> dict:
+        with self.lock:
+            entries = self._require_all(ids)
+            removed = {e["id"]: e for e in entries}
+            for sid in removed:
+                self.doc["entries"].pop(sid)
+            self.doc["updated_at"] = now_iso()
+            try:
+                self._save()
+            except Exception:
+                self.doc["entries"].update(removed)
+                raise
+            for e in removed.values():
+                self.cfg.s3.delete_object(Bucket=self.cfg.bucket,
+                                          Key="library/FILES/" + e["path"])
+                local = os.path.join(self.cfg.library_dir, e["path"])
+                if os.path.exists(local):
+                    os.remove(local)
+                self._forget_stale_canonical(e["path"])
+            return {"deleted": len(removed)}
 
     def channels(self, sid: str) -> list[dict]:
         """Per-channel info for the inject quick-fix. Channels are 1-based (the inject-rule

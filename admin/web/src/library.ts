@@ -1,5 +1,11 @@
-// Library view: folder tree + details panel (preview, metadata, move, inject quick-fix).
-import { del, get, patch, post } from './api';
+// Library view: folder tree + details panel (preview, metadata, move, inject quick-fix),
+// keyboard-driven. Selection supports shift (range) and cmd/ctrl (toggle) multi-select;
+// every single-track action is available as a bulk action (one server call, one
+// library.json save). Keys: ↑/↓ move, ←/→ fold/unfold, space play/pause, c canon,
+// h hide/unhide, d delete. "Play on click" auto-previews the selected track, debounced
+// 350 ms so arrowing through the list doesn't stack renders on the 2-vCPU box (the
+// server additionally caps concurrent preview renders at 2).
+import { get, patch, post } from './api';
 
 export interface CanonInfo {
   status: 'ok' | 'pending' | 'refused' | 'unparsed';
@@ -38,7 +44,10 @@ interface ChannelInfo {
   missing_program: boolean;
 }
 
+type Row = { kind: 'folder'; path: string } | { kind: 'track'; e: Entry };
+
 const OPEN_KEY = 'sfadmin.folders.v1';
+const AUTOPLAY_KEY = 'sfadmin.autoplay.v1';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]
@@ -64,19 +73,30 @@ function fmtDur(s: number | null): string {
 export class LibraryView {
   root = el('div', { class: 'library' });
   private doc: LibraryDoc | null = null;
-  private selected: string | null = null;
+  private rows: Row[] = [];
+  private selected = new Set<string>();
+  private anchor: string | null = null;
+  private cursor = -1;
   private filter = '';
   private open = new Set<string>();
+  private autoplay = false;
+  private autoplayTimer: number | null = null;
   private status = el('span', { class: 'statusline' });
+  private audio = el('audio', { controls: '', preload: 'none' });
+  private audioFor: string | null = null;
 
   constructor() {
     try {
       this.open = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]'));
+      this.autoplay = localStorage.getItem(AUTOPLAY_KEY) === '1';
     } catch { /* fresh */ }
+    document.addEventListener('keydown', (ev) => this.onKey(ev));
   }
 
   async load(): Promise<void> {
     this.doc = await get<LibraryDoc>('/api/library');
+    const ids = new Set(this.doc.entries.map((e) => e.id));
+    this.selected = new Set([...this.selected].filter((i) => ids.has(i)));
     this.render();
   }
 
@@ -104,6 +124,166 @@ export class LibraryView {
     }
   }
 
+  // ---------------------------------------------------------------- selection + keys
+
+  private selectOnly(id: string, rowIndex: number, play = true): void {
+    this.selected = new Set([id]);
+    this.anchor = id;
+    this.cursor = rowIndex;
+    this.render();
+    if (play) this.maybeAutoplay();
+  }
+
+  private trackRowIndexes(): number[] {
+    return this.rows.flatMap((r, i) => (r.kind === 'track' ? [i] : []));
+  }
+
+  private onTrackClick(ev: MouseEvent, e: Entry, rowIndex: number): void {
+    if (ev.shiftKey && this.anchor) {
+      const tracks = this.trackRowIndexes();
+      const ai = tracks.findIndex((i) => (this.rows[i] as { e: Entry }).e.id === this.anchor);
+      const bi = tracks.indexOf(rowIndex);
+      if (ai >= 0 && bi >= 0) {
+        const [lo, hi] = ai < bi ? [ai, bi] : [bi, ai];
+        this.selected = new Set(tracks.slice(lo, hi + 1)
+          .map((i) => (this.rows[i] as { e: Entry }).e.id));
+        this.cursor = rowIndex;
+        this.render();
+        return;
+      }
+    }
+    if (ev.metaKey || ev.ctrlKey) {
+      if (this.selected.has(e.id)) this.selected.delete(e.id);
+      else this.selected.add(e.id);
+      this.anchor = e.id;
+      this.cursor = rowIndex;
+      this.render();
+      return;
+    }
+    this.selectOnly(e.id, rowIndex);
+  }
+
+  private onKey(ev: KeyboardEvent): void {
+    if (!this.root.isConnected) return; // another tab is showing
+    const t = ev.target as HTMLElement;
+    if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    switch (ev.key) {
+      case 'ArrowDown':
+      case 'ArrowUp': {
+        ev.preventDefault();
+        const dir = ev.key === 'ArrowDown' ? 1 : -1;
+        const next = Math.min(this.rows.length - 1, Math.max(0, this.cursor + dir));
+        if (next === this.cursor) return;
+        const row = this.rows[next]!;
+        if (row.kind === 'track') this.selectOnly(row.e.id, next);
+        else {
+          this.cursor = next;
+          this.render();
+        }
+        break;
+      }
+      case 'ArrowRight': {
+        const row = this.rows[this.cursor];
+        if (row?.kind === 'folder') {
+          ev.preventDefault();
+          if (!this.open.has(row.path)) {
+            this.open.add(row.path);
+            this.saveOpen();
+            this.render();
+          } else if (this.rows[this.cursor + 1]?.kind === 'track') {
+            const nr = this.rows[this.cursor + 1] as { kind: 'track'; e: Entry };
+            this.selectOnly(nr.e.id, this.cursor + 1);
+          }
+        }
+        break;
+      }
+      case 'ArrowLeft': {
+        const row = this.rows[this.cursor];
+        ev.preventDefault();
+        if (row?.kind === 'folder' && this.open.has(row.path)) {
+          this.open.delete(row.path);
+          this.saveOpen();
+          this.render();
+        } else {
+          // jump to (or collapse toward) the containing folder header
+          for (let i = this.cursor - 1; i >= 0; i--) {
+            if (this.rows[i]!.kind === 'folder') {
+              this.cursor = i;
+              this.render();
+              break;
+            }
+          }
+        }
+        break;
+      }
+      case ' ': {
+        ev.preventDefault();
+        this.togglePlay();
+        break;
+      }
+      case 'c': {
+        if (this.selected.size) this.canonRun([...this.selected]);
+        break;
+      }
+      case 'h': {
+        if (this.selected.size) this.hideSelected();
+        break;
+      }
+      case 'd': {
+        if (this.selected.size) this.deleteSelected();
+        break;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- audio
+
+  private setAudio(id: string): void {
+    if (this.audioFor !== id) {
+      this.audio.src = `/api/preview/${id}.mp3`;
+      this.audioFor = id;
+    }
+  }
+
+  private maybeAutoplay(): void {
+    if (this.autoplayTimer !== null) clearTimeout(this.autoplayTimer);
+    if (!this.autoplay || this.selected.size !== 1) return;
+    const id = [...this.selected][0]!;
+    // debounce: arrowing through tracks must not stack fluidsynth renders on the tiny box
+    this.autoplayTimer = window.setTimeout(() => {
+      this.setAudio(id);
+      this.audio.play().catch(() => { /* autoplay policy or abort */ });
+    }, 350);
+  }
+
+  private togglePlay(): void {
+    if (this.selected.size === 1) this.setAudio([...this.selected][0]!);
+    if (!this.audio.src) return;
+    if (this.audio.paused) this.audio.play().catch(() => { /* not allowed */ });
+    else this.audio.pause();
+  }
+
+  // ---------------------------------------------------------------- bulk ops
+
+  private hideSelected(): void {
+    const ids = [...this.selected];
+    const entries = ids.map((i) => this.doc!.entries.find((e) => e.id === i)!);
+    const hide = !entries.every((e) => e.hidden); // mixed or visible → hide; all hidden → unhide
+    if (!confirm(`${hide ? 'Hide' : 'Unhide'} ${ids.length} track(s)?`)) return;
+    void this.act(hide ? 'hide' : 'unhide',
+      () => post('/api/library/bulk', { op: 'edit', ids, fields: { hidden: hide } }));
+  }
+
+  private deleteSelected(): void {
+    const ids = [...this.selected];
+    if (!confirm(`Delete ${ids.length} track(s) from the library (S3 + mirror)? `
+      + 'Published renders are cleaned up separately on the Published tab.')) return;
+    this.selected.clear();
+    void this.act(`delete ${ids.length}`,
+      () => post('/api/library/bulk', { op: 'delete', ids }));
+  }
+
   // ---------------------------------------------------------------- tree
 
   private render(): void {
@@ -120,19 +300,20 @@ export class LibraryView {
       const dir = e.path.includes('/') ? e.path.slice(0, e.path.lastIndexOf('/')) : '';
       (byDir.get(dir) ?? byDir.set(dir, []).get(dir)!).push(e);
     }
-    const dirs = [...byDir.keys()].sort();
 
-    const refused = this.doc.entries.filter((e) => e.canon.status === 'refused' || e.canon.status === 'unparsed');
-    const tree = el('div', { class: 'tree' });
-    for (const dir of dirs) {
-      const label = dir === '' ? '(top level)' : dir;
+    this.rows = [];
+    const tree = el('div', { class: 'tree', tabindex: '0' });
+    for (const dir of [...byDir.keys()].sort()) {
       const files = byDir.get(dir)!;
       const isOpen = this.filter !== '' || this.open.has(dir);
-      const head = el('div', { class: 'folder' },
+      const folderIndex = this.rows.length;
+      this.rows.push({ kind: 'folder', path: dir });
+      const head = el('div', { class: `folder${this.cursor === folderIndex ? ' cur' : ''}` },
         el('span', { class: 'twist' }, isOpen ? '▾' : '▸'),
-        el('span', { class: 'fname' }, label),
+        el('span', { class: 'fname' }, dir === '' ? '(top level)' : dir),
         el('span', { class: 'count' }, String(files.length)));
       head.onclick = () => {
+        this.cursor = folderIndex;
         if (this.open.has(dir)) this.open.delete(dir);
         else this.open.add(dir);
         this.saveOpen();
@@ -141,23 +322,28 @@ export class LibraryView {
       tree.append(head);
       if (!isOpen) continue;
       for (const e of files) {
-        const row = el('div', { class: `row st-${e.canon.status}${e.hidden ? ' hid' : ''}${e.id === this.selected ? ' sel' : ''}` },
+        const rowIndex = this.rows.length;
+        this.rows.push({ kind: 'track', e });
+        const cls = `row st-${e.canon.status}${e.hidden ? ' hid' : ''}`
+          + `${this.selected.has(e.id) ? ' sel' : ''}${this.cursor === rowIndex ? ' cur' : ''}`;
+        const row = el('div', { class: cls },
           el('span', { class: 'nm', title: e.path }, e.name),
           el('span', { class: 'meta' },
             `${fmtDur(e.canon.duration_s)} ${fmtSize(e.size)} ${e.composer ?? ''}`),
           el('span', { class: `badge b-${e.canon.status}` }, e.hidden ? 'hidden' : e.canon.status));
-        row.onclick = () => {
-          this.selected = e.id;
-          this.render();
-        };
+        row.onclick = (ev) => this.onTrackClick(ev, e, rowIndex);
         tree.append(row);
       }
     }
 
-    const toolbar = this.toolbar(refused.length);
-    const details = this.selected ? this.details(this.doc.entries.find((e) => e.id === this.selected)) : null;
-    this.root.replaceChildren(toolbar,
-      el('div', { class: 'cols' }, tree, details ?? el('div', { class: 'detail empty' }, 'select a track')));
+    const refused = this.doc.entries.filter((e) => e.canon.status === 'refused' || e.canon.status === 'unparsed');
+    const one = this.selected.size === 1
+      ? this.doc.entries.find((e) => e.id === [...this.selected][0]) : undefined;
+    const panel = this.selected.size > 1 ? this.bulkPanel()
+      : one ? this.details(one)
+        : el('div', { class: 'detail empty' }, 'select a track · ↑↓ move · ←→ fold · space play · c canon · h hide · d delete');
+    this.root.replaceChildren(this.toolbar(refused.length), el('div', { class: 'cols' }, tree, panel));
+    this.root.querySelector('.row.cur, .folder.cur')?.scrollIntoView({ block: 'nearest' });
   }
 
   private toolbar(refusedCount: number): HTMLElement {
@@ -165,6 +351,15 @@ export class LibraryView {
     search.oninput = () => {
       this.filter = search.value;
       this.render();
+    };
+    const auto = el('input', { type: 'checkbox', id: 'autoplay' });
+    auto.checked = this.autoplay;
+    auto.onchange = () => {
+      this.autoplay = auto.checked;
+      try {
+        localStorage.setItem(AUTOPLAY_KEY, this.autoplay ? '1' : '0');
+      } catch { /* private mode */ }
+      this.maybeAutoplay();
     };
     const upload = el('button', {}, 'Upload…');
     upload.onclick = () => this.uploadDialog();
@@ -176,21 +371,62 @@ export class LibraryView {
     const pvWarn = pv.gm_sf2 ? '' : ' — no gm.sf2, previews off';
     return el('div', { class: 'toolbar' },
       search, upload, canon, zip,
+      el('label', { class: 'autoplay', for: 'autoplay', title: 'preview the selected track automatically' },
+        auto, ' play on click'),
       el('span', { class: 'count' }, `${n} tracks${pvWarn}`),
       this.status);
   }
 
-  // ---------------------------------------------------------------- details
+  // ---------------------------------------------------------------- panels
 
-  private details(e: Entry | undefined): HTMLElement {
-    if (!e) return el('div', { class: 'detail empty' }, 'gone');
+  private bulkPanel(): HTMLElement {
+    const ids = [...this.selected];
+    const d = el('div', { class: 'detail' });
+    d.append(el('h2', {}, `${ids.length} tracks selected`));
+
+    const dir = el('input', { placeholder: 'target folder ("" = top level)', value: this.selectedDir() });
+    const move = el('button', {}, 'Move all here');
+    move.onclick = () => void this.act(`move ${ids.length}`,
+      () => post('/api/library/bulk', { op: 'move', ids, dir: dir.value.trim() }));
+    d.append(el('div', { class: 'form' }, el('label', {}, 'folder', dir), move));
+
+    const fields: [string, string][] = [['composer', 'composer'], ['sequencer', 'sequencer'],
+      ['source_url', 'source url'], ['notes', 'notes']];
+    const inputs = new Map<string, HTMLInputElement>();
+    const form = el('div', { class: 'form' });
+    for (const [key, label] of fields) {
+      const inp = el('input', { placeholder: '(leave blank to keep)' });
+      inputs.set(key, inp);
+      form.append(el('label', {}, label, inp));
+    }
+    const apply = el('button', {}, 'Set on all');
+    apply.onclick = () => {
+      const body: Record<string, string> = {};
+      for (const [k, inp] of inputs) if (inp.value.trim()) body[k] = inp.value.trim();
+      if (!Object.keys(body).length) return this.note('nothing to set', true);
+      void this.act(`edit ${ids.length}`,
+        () => post('/api/library/bulk', { op: 'edit', ids, fields: body }));
+    };
+    form.append(apply);
+    d.append(form);
+
+    const hide = el('button', {}, 'Hide (h)');
+    hide.onclick = () => this.hideSelected();
+    const canon = el('button', {}, 'Re-canon (c)');
+    canon.onclick = () => this.canonRun(ids);
+    const rm = el('button', { class: 'danger' }, 'Delete (d)');
+    rm.onclick = () => this.deleteSelected();
+    d.append(el('div', { class: 'btnrow' }, hide, canon, rm));
+    return d;
+  }
+
+  private details(e: Entry): HTMLElement {
     const d = el('div', { class: 'detail' });
     d.append(el('h2', {}, e.name), el('div', { class: 'path' }, e.path));
 
-    const audio = el('audio', { controls: '', preload: 'none', src: `/api/preview/${e.id}.mp3` });
-    d.append(audio);
+    this.setAudio(e.id);
+    d.append(this.audio);
 
-    // metadata form
     const fields: [keyof Entry, string][] = [
       ['name', 'display name'], ['composer', 'composer'], ['sequencer', 'sequencer'],
       ['source_url', 'source url'], ['notes', 'notes'],
@@ -212,25 +448,17 @@ export class LibraryView {
     form.append(save);
     d.append(form);
 
-    // move / rename (path)
     const pathInp = el('input', { value: e.path });
     const move = el('button', {}, 'Move / rename file');
     move.onclick = () => this.act('move', () => post(`/api/library/${e.id}/move`, { path: pathInp.value.trim() }));
     d.append(el('div', { class: 'form' }, el('label', {}, 'file path', pathInp), move));
 
-    // hide / delete
-    const hide = el('button', {}, e.hidden ? 'Unhide (show on site)' : 'Hide from site');
-    hide.onclick = () => this.act(e.hidden ? 'unhide' : 'hide',
-      () => patch(`/api/library/${e.id}`, { hidden: !e.hidden }));
-    const rm = el('button', { class: 'danger' }, 'Delete from library');
-    rm.onclick = async () => {
-      if (!confirm(`Delete ${e.path} from the library (S3 + mirror)? Published renders are cleaned up separately.`)) return;
-      this.selected = null;
-      await this.act('delete', () => del(`/api/library/${e.id}`));
-    };
+    const hide = el('button', {}, e.hidden ? 'Unhide (h)' : 'Hide from site (h)');
+    hide.onclick = () => this.hideSelected();
+    const rm = el('button', { class: 'danger' }, 'Delete (d)');
+    rm.onclick = () => this.deleteSelected();
     d.append(el('div', { class: 'btnrow' }, hide, rm));
 
-    // canon status + quick fix
     const c = e.canon;
     const canonBox = el('div', { class: `canonbox b-${c.status}` },
       el('strong', {}, `canon: ${c.status}`),
@@ -240,7 +468,7 @@ export class LibraryView {
       fix.onclick = () => this.injectFix(e);
       canonBox.append(fix);
     }
-    const recheck = el('button', {}, 'Re-run canon for this track');
+    const recheck = el('button', {}, 'Re-run canon (c)');
     recheck.onclick = () => this.canonRun([e.id]);
     canonBox.append(recheck);
     d.append(canonBox);
@@ -271,8 +499,8 @@ export class LibraryView {
   }
 
   private selectedDir(): string {
-    if (!this.selected || !this.doc) return '';
-    const e = this.doc.entries.find((x) => x.id === this.selected);
+    const first = [...this.selected][0];
+    const e = first ? this.doc?.entries.find((x) => x.id === first) : undefined;
     return e && e.path.includes('/') ? e.path.slice(0, e.path.lastIndexOf('/')) : '';
   }
 

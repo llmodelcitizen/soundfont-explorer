@@ -94,6 +94,23 @@ def upload(files: list[UploadFile], dir: str = Form("")) -> dict:
     return {"results": results}
 
 
+@router.post("/api/library/bulk")
+def bulk(body: dict) -> dict:
+    """One call, one library.json save: {op: edit|move|delete, ids: [...], fields?|dir?}."""
+    lib = _lib()
+    ids = list(body.get("ids") or [])
+    if not ids:
+        raise HTTPException(400, "no ids")
+    op = body.get("op")
+    if op == "edit":
+        return _wrap(lib.bulk_edit, ids, dict(body.get("fields") or {}))
+    if op == "move":
+        return _wrap(lib.bulk_move, ids, str(body.get("dir", "")))
+    if op == "delete":
+        return _wrap(lib.bulk_delete, ids)
+    raise HTTPException(400, f"unknown op {op!r}")
+
+
 @router.get("/api/library/{sid}/channels")
 def channels(sid: str) -> list[dict]:
     return _wrap(_lib().channels, sid)

@@ -430,7 +430,14 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
     if len(set(ids)) != len(ids):
         raise SystemExit("duplicate song ids")
     if corpus.get("default") not in ids:
-        raise SystemExit("default song %r not in corpus" % corpus.get("default"))
+        msg = "default song %r not in corpus" % corpus.get("default")
+        why = next((r for r in refused if r.get("id") == corpus.get("default")), None)
+        if why:  # a lenient run swallowed the real error; surface it (e.g. missing songs/src)
+            msg += " — it was refused: %s" % why["reason"]
+        elif refused:
+            msg += " — %d songs were refused (first: %s: %s)" % (
+                len(refused), refused[0]["id"] or refused[0]["src"], refused[0]["reason"])
+        raise SystemExit(msg)
     data = stable_header(corpus)
     data["default"] = corpus["default"]
     data["songs"] = entries

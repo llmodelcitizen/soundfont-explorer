@@ -77,6 +77,8 @@ a.btnish:hover { border-color: var(--accent); }
 }
 .row:hover { background: var(--bg); }
 .row.sel { background: #26405c; }
+.row.cur, .folder.cur { outline: 1px solid var(--accent); outline-offset: -1px; border-radius: 4px; }
+.toolbar .autoplay { display: flex; gap: 5px; align-items: center; color: var(--dim); font-size: 13px; cursor: pointer; }
 .row.hid .nm { text-decoration: line-through; color: var(--dim); }
 .row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .meta { color: var(--dim); font-size: 12px; white-space: nowrap; }
