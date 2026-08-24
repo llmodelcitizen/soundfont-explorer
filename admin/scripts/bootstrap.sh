@@ -110,6 +110,14 @@ aws s3 cp "s3://$SFADMIN_BUCKET/library/library.json" "$DATA/library/library.jso
   || echo "WARN: no library.json in the bucket yet (run admin/scripts/ingest.py)"
 aws s3 cp "s3://$SFADMIN_BUCKET/assets/gm.sf2" "$DATA/gm.sf2" \
   || echo "WARN: no assets/gm.sf2 in the bucket (previews disabled) — see docs/ADMIN.md"
-chown -R sfadmin:sfadmin "$DATA" /var/cache/sfadmin
+# canon products (songs.json, canonical MIDIs, fragment, report) are derived state the
+# app persists to canon/ after each run; without this restore the render list resets to
+# the bundle's committed 25-song stub on every boot
+aws s3 sync "s3://$SFADMIN_BUCKET/canon/rendered/" "$APP/songs/rendered/" --size-only || true
+for f in songs.json corpus-imports.json canon-report.json; do
+  aws s3 cp "s3://$SFADMIN_BUCKET/canon/$f" "$APP/songs/$f" 2>/dev/null \
+    || echo "note: no canon/$f in the bucket yet (run a Canon check)"
+done
+chown -R sfadmin:sfadmin "$APP/songs" "$DATA" /var/cache/sfadmin
 
 status ready 100 "ready"

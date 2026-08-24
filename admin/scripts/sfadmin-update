@@ -13,10 +13,15 @@ aws s3 cp "s3://$SFADMIN_BUCKET/$KEY" - | tar -xz -C /opt/sfadmin/app.new
 rm -rf /opt/sfadmin/app.old
 mv /opt/sfadmin/app /opt/sfadmin/app.old
 mv /opt/sfadmin/app.new /opt/sfadmin/app
-chown -R sfadmin:sfadmin /opt/sfadmin/app
 rm -rf /opt/sfadmin/app/songs/import/FILES
 mkdir -p /opt/sfadmin/app/songs/import
 ln -sfn "$SFADMIN_DATA/library/FILES" /opt/sfadmin/app/songs/import/FILES
+# restore the canon products the fresh snapshot just clobbered (see bootstrap.sh)
+aws s3 sync "s3://$SFADMIN_BUCKET/canon/rendered/" /opt/sfadmin/app/songs/rendered/ --size-only || true
+for f in songs.json corpus-imports.json canon-report.json; do
+  aws s3 cp "s3://$SFADMIN_BUCKET/canon/$f" "/opt/sfadmin/app/songs/$f" 2>/dev/null || true
+done
+chown -R sfadmin:sfadmin /opt/sfadmin/app
 /opt/sfadmin/venv/bin/pip install -q --no-index \
   --find-links /opt/sfadmin/app/admin/wheels -r /opt/sfadmin/app/admin/server/requirements.txt
 systemctl restart sfadmin.service

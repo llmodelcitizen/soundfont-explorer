@@ -145,3 +145,7 @@ a.btnish:hover { border-color: var(--accent); }
 .pubtable th { color: var(--dim); font-weight: 500; }
 .pubtable tr.bad td { background: #3a2226; }
 .published h2 { font-size: 16px; margin: 0; }
+.notice.stale {
+  color: var(--danger); background: #3a2226; border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; text-align: left;
+}

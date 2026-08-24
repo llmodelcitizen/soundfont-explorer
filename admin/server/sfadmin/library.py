@@ -423,7 +423,30 @@ class Library:
                 # a targeted run should report the tracks it ran, not the library totals
                 result["ran"] = {sid: dict(self.doc["entries"][sid]["canon"])
                                  for sid in only if sid in self.doc["entries"]}
+        result["persisted"] = self._persist_canon_products()
         return result
+
+    def _persist_canon_products(self) -> bool:
+        """Canon outputs are derived state inside the disposable app dir: an app update or
+        a relaunch replaces it wholesale, which reset the render list to the bundle's
+        25-song stub (2026-08-24). Persist them to the bucket; bootstrap.sh and
+        sfadmin-update restore them."""
+        repo, bucket = self.cfg.repo, self.cfg.bucket
+        songs = os.path.join(repo, "songs")
+        cmds = [["aws", "s3", "sync", os.path.join(songs, "rendered") + "/",
+                 f"s3://{bucket}/canon/rendered/", "--size-only", "--delete",
+                 "--only-show-errors"]]
+        for f in ("songs.json", "corpus-imports.json", "canon-report.json"):
+            if os.path.exists(os.path.join(songs, f)):
+                cmds.append(["aws", "s3", "cp", os.path.join(songs, f),
+                             f"s3://{bucket}/canon/{f}", "--only-show-errors"])
+        try:
+            for c in cmds:
+                subprocess.run(c, check=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"WARN: canon products not persisted to S3: {e}", flush=True)
+            return False
 
 
 _library: Library | None = None

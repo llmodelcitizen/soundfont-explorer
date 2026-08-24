@@ -28,7 +28,14 @@ def render_songs() -> dict:
             doc = json.load(fh)
     except FileNotFoundError:
         raise HTTPException(503, "no songs.json in the snapshot — run a canon check first") from None
-    return {"render_enabled": cfg.render_enabled,
+    ids = {s["id"] for s in doc["songs"]}
+    try:  # canon-ok library tracks missing here = the render list predates the last canon run
+        from .library import get_library
+        missing = sum(1 for e in get_library().entries()
+                      if e["canon"]["status"] == "ok" and not e["hidden"] and e["id"] not in ids)
+    except Exception:
+        missing = 0
+    return {"render_enabled": cfg.render_enabled, "missing_canon": missing,
             "songs": [{"id": s["id"], "title": s["title"], "path": s.get("path"),
                        "duration_s": s["duration_s"]} for s in doc["songs"]]}
 

@@ -43,15 +43,17 @@ export class RunsView {
   root = el('div', { class: 'runs' });
   private songs: RenderSong[] = [];
   private renderEnabled = false;
+  private missingCanon = 0;
   private picked = new Set<string>();
   private status = el('span', { class: 'statusline' });
   private timer: number | null = null;
 
   async load(): Promise<void> {
     try {
-      const doc = await get<{ render_enabled: boolean; songs: RenderSong[] }>('/api/render/songs');
+      const doc = await get<{ render_enabled: boolean; missing_canon?: number; songs: RenderSong[] }>('/api/render/songs');
       this.songs = doc.songs;
       this.renderEnabled = doc.render_enabled;
+      this.missingCanon = doc.missing_canon ?? 0;
     } catch (e) {
       this.root.replaceChildren(el('div', { class: 'notice' },
         `render songs unavailable: ${(e as Error).message}`));
@@ -86,6 +88,11 @@ export class RunsView {
     await this.renderRuns(runlist);
     this.root.replaceChildren(
       el('div', { class: 'toolbar' }, el('h2', {}, 'Render runs'), this.status),
+      this.missingCanon > 0
+        ? el('div', { class: 'notice stale' },
+          `${this.missingCanon} canon-ok tracks are missing from this list — it predates `
+          + 'the last canon run. Run a Canon check on the Library tab, then reload.')
+        : el('span', {}),
       this.renderEnabled ? form : el('div', { class: 'notice' },
         'Render fleet is not deployed (enable_render_fleet) — submission unavailable.'),
       runlist);
