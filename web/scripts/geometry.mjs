@@ -72,23 +72,23 @@ async function measure(theme, viewport, label) {
       const style = getComputedStyle(element);
       return { column: style.columnGap, row: style.rowGap };
     };
-    const centeredHeader = (selector) => {
+    const verticallyCenteredHeader = (selector) => {
       const header = document.querySelector(selector);
       const title = header?.querySelector('.np-title');
       const outer = rect(header);
       const inner = rect(title);
       if (!header || !outer || !inner) return null;
       const style = getComputedStyle(header);
-      return { offset: inner.cx - outer.cx, paddingLeft: style.paddingLeft, paddingRight: style.paddingRight };
+      return { offset: inner.cy - outer.cy, paddingLeft: style.paddingLeft, paddingRight: style.paddingRight };
     };
-    const centeredGlyph = (selector) => {
+    const verticallyCenteredGlyph = (selector) => {
       const cell = document.querySelector(selector);
       const outer = rect(cell);
       if (!cell || !outer) return null;
       const range = document.createRange();
       range.selectNodeContents(cell);
       const glyph = range.getBoundingClientRect();
-      return { offset: glyph.x + glyph.width / 2 - outer.cx };
+      return { offset: glyph.y + glyph.height / 2 - outer.cy, fontSize: getComputedStyle(cell).fontSize };
     };
     const namedRects = {};
     for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) namedRects[selector] = rect(document.querySelector(selector));
@@ -177,11 +177,16 @@ async function measure(theme, viewport, label) {
       highlight,
       states,
       titleTypography,
-      amigaAlignment: {
-        tracks: centeredHeader('.tracks .np-head'),
-        nowPlaying: centeredHeader('.nowplaying .np-head'),
-        favorite: centeredGlyph('.row.head .hcell.col-fav'),
-        listened: centeredGlyph('.row.head .hcell.col-dot'),
+      amigaVerticalAlignment: {
+        tracks: verticallyCenteredHeader('.tracks .np-head'),
+        nowPlaying: verticallyCenteredHeader('.nowplaying .np-head'),
+        favoriteHeader: verticallyCenteredGlyph('.row.head .hcell.col-fav'),
+        listenedHeader: verticallyCenteredGlyph('.row.head .hcell.col-dot'),
+        favoriteContentSize: getComputedStyle(document.querySelector('.row:not(.head) .cell.fav')).fontSize,
+        listenedContentSize: (() => {
+          const dot = rect(document.querySelector('.row:not(.head) .cell.dot'));
+          return dot ? `${dot.w}x${dot.h}` : null;
+        })(),
       },
       folderEdge: (() => {
         const folder = document.createElement('div');
@@ -280,11 +285,15 @@ for (const [label, viewport] of Object.entries(viewports)) {
   assert(win95.states.disabledColor === 'rgb(128, 128, 128)', `${label}/win95: disabled button text is ${win95.states.disabledColor}`);
   assert(win95.states.linkColor === 'rgb(0, 0, 255)', `${label}/win95: link color is ${win95.states.linkColor}`);
   assert(win95.focusOutline === 'dotted', `${label}/win95: keyboard focus outline is ${win95.focusOutline}, not dotted`);
-  for (const [name, alignment] of Object.entries(amiga.amigaAlignment)) {
+  for (const [name, alignment] of Object.entries(amiga.amigaVerticalAlignment)) {
+    if (name === 'favoriteContentSize' || name === 'listenedContentSize') continue;
     if (name === 'tracks' && label === 'phone') continue; // the phone layout replaces Tracks with the song dropdown
-    assert(alignment && close(alignment.offset, 0, 0.5), `${label}/amiga: ${name} is not horizontally centered: ${JSON.stringify(alignment)}`);
+    assert(alignment && close(alignment.offset, 0, 0.75), `${label}/amiga: ${name} is not vertically centered: ${JSON.stringify(alignment)}`);
     if (name === 'tracks' || name === 'nowPlaying') assert(alignment?.paddingLeft === '12px' && alignment?.paddingRight === '12px', `${label}/amiga: ${name} title padding is not 12px: ${JSON.stringify(alignment)}`);
+    else assert(alignment?.fontSize === '16px', `${label}/amiga: ${name} is not 16px: ${JSON.stringify(alignment)}`);
   }
+  assert(amiga.amigaVerticalAlignment.favoriteContentSize === '13px', `${label}/amiga: row heart size changed: ${amiga.amigaVerticalAlignment.favoriteContentSize}`);
+  assert(amiga.amigaVerticalAlignment.listenedContentSize === '10x10', `${label}/amiga: row listened dot size changed: ${amiga.amigaVerticalAlignment.listenedContentSize}`);
 
   // Both replacement themes are paint-only: geometry must match modern exactly.
   for (const themed of [win95, amiga]) {

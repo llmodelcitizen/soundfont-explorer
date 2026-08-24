@@ -198,12 +198,12 @@
   background: #f08000;
   color: #000000;
 }
-[data-theme='amiga'] .row.head .hcell.col-fav,
-[data-theme='amiga'] .row.head .hcell.col-dot {
+[data-theme='amiga'] .row.head > button.hcell.col-fav,
+[data-theme='amiga'] .row.head > button.hcell.col-dot {
   display: grid;
-  place-items: center;
-  letter-spacing: 0;
-  text-align: center;
+  align-content: center;
+  font-size: 16px;
+  line-height: 1;
 }
 [data-theme='amiga'] .row.sticky {
   background: #0050a0;
@@ -242,21 +242,10 @@
   color: #000000;
   border-color: #000000;
 }
-/* Workbench pane captions sit in the middle of their title strips. Keep the surrounding
-   metadata/status in normal flow at the edges, with equal breathing room on both sides. */
+/* Remove the base theme's bottom-only padding so Workbench captions and their adjacent text
+   sit halfway up the strip. The side padding remains equal without changing horizontal flow. */
 [data-theme='amiga'] .np-head {
-  position: relative;
-  padding-left: 12px;
-  padding-right: 12px;
-}
-[data-theme='amiga'] .np-head .np-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-}
-[data-theme='amiga'] .nowplaying .np-head .tier {
-  margin-left: auto;
+  padding: 0 12px;
 }
 [data-theme='amiga'] .np-head .np-title,
 [data-theme='amiga'] .np-head .preserve,
