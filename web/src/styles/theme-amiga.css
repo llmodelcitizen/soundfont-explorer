@@ -293,6 +293,12 @@
 [data-theme='amiga'] input[type='range'] {
   accent-color: #f08000;
 }
+/* The ♥ / ● column toggles come from fallback glyphs: full-size, centred on their checkbox. */
+[data-theme='amiga'] .settings .col-fav,
+[data-theme='amiga'] .settings .col-dot {
+  font-size: 16px;
+  line-height: 13px;
+}
 [data-theme='amiga'] .btn:focus-visible,
 [data-theme='amiga'] .opt:focus-visible,
 [data-theme='amiga'] input:focus-visible,

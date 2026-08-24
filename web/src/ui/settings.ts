@@ -110,7 +110,7 @@ export class SettingsModal {
               this.prefs = { ...this.prefs, [field]: COLUMNS.filter((x) => cols.has(x.key)).map((x) => x.key) };
               this.cb.onChange(this.prefs);
             });
-            return h('label', { class: 'preserve', title: columnTitle(c) }, box, ` ${c.label}`);
+            return h('label', { class: `preserve col-${c.key}`, title: columnTitle(c) }, box, ` ${c.label}`);
           }),
         ),
         h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order.')),

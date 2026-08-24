@@ -446,6 +446,12 @@
 [data-theme='win95'] .settings .setting-title {
   color: #000000;
 }
+/* The ♥ / ● column toggles come from fallback glyphs: full-size, centred on their checkbox. */
+[data-theme='win95'] .settings .col-fav,
+[data-theme='win95'] .settings .col-dot {
+  font-size: 16px;
+  line-height: 13px;
+}
 [data-theme='win95'] .dbg-body {
   background: #ffffff;
   box-shadow: var(--w95-well);
@@ -502,9 +508,11 @@
   flex: none;
 }
 [data-theme='win95'] input[type='checkbox']:checked {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M1 3l2 2 4-4-1-1-3 3-1-1z' fill='%23000000'/%3E%3C/svg%3E");
+  /* the classic 7x7 check: 3px column runs stepping down to the valley and up to the tail */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7'%3E%3Cpath d='M0 2h1v3H0zM1 3h1v3H1zM2 4h1v3H2zM3 3h1v3H3zM4 2h1v3H4zM5 1h1v3H5zM6 0h1v3H6z' fill='%23000000'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: center;
+  background-size: 7px 7px;
 }
 
 /* Windows 95 trackbar: a thin sunken channel and a raised face thumb. */

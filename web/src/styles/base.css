@@ -679,7 +679,7 @@ select:focus-visible {
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
 }
 .preserve input {
   accent-color: var(--accent);
