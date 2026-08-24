@@ -43,3 +43,17 @@ provider "aws" {
     }
   }
 }
+
+# The admin box gets the same treatment for the same reasons: its own cost tag (own $5
+# budget, out of the site's $10) and, critically, NOT the render tag — the fleet watchdog
+# unconditionally terminates project=soundfont-explorer-render instances older than 4 h.
+provider "aws" {
+  alias  = "admin"
+  region = "us-east-1"
+  default_tags {
+    tags = {
+      project = "soundfont-explorer-admin"
+      managed = "terraform"
+    }
+  }
+}

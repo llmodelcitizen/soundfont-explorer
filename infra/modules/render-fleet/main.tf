@@ -532,6 +532,7 @@ resource "aws_budgets_budget" "render" {
 }
 
 output "fonts_bucket" { value = aws_s3_bucket.fonts.id }
+output "log_group" { value = aws_cloudwatch_log_group.jobs.name }
 output "ecr_repository_url" { value = aws_ecr_repository.sfr.repository_url }
 output "job_queue" { value = aws_batch_job_queue.fleet.name }
 output "job_definition" { value = aws_batch_job_definition.shard.name }

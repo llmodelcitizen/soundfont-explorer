@@ -56,3 +56,15 @@ variable "render_budget_limit_usd" {
   default     = 100
   description = "Monthly budget for project=soundfont-explorer-render, separate from the site budget."
 }
+
+variable "enable_admin" {
+  type        = bool
+  default     = false
+  description = "Create the admin-box durables (bucket, IAM, launch template). The instance itself is launched by admin/scripts/up.sh; idle cost is the bucket alone."
+}
+
+variable "admin_budget_limit_usd" {
+  type        = number
+  default     = 5
+  description = "Monthly budget for project=soundfont-explorer-admin, separate from site and render."
+}

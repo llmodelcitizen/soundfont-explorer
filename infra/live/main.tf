@@ -70,3 +70,28 @@ module "phase2" {
   count  = var.enable_phase2 ? 1 : 0
   domain = var.domain
 }
+
+# Admin web UI durables. The EC2 instance is NOT a Terraform resource — it is launched
+# from the launch template by admin/scripts/up.sh and terminated by down.sh, and registers
+# its own A record (admin.<domain>) at boot. Without the render fleet the admin box still
+# works (library management, previews) but cannot submit render batches.
+module "admin" {
+  source          = "../modules/admin"
+  count           = var.enable_admin ? 1 : 0
+  providers       = { aws = aws.admin }
+  alert_email     = var.alert_email
+  site_bucket     = module.site.bucket_name
+  distribution_id = module.site.distribution_id
+  zone_id         = module.dns_cert.zone_id
+  hostname        = "admin.${var.domain}"
+
+  budget_limit_usd = var.admin_budget_limit_usd
+
+  render = var.enable_render_fleet ? {
+    fonts_bucket        = module.render_fleet[0].fonts_bucket
+    job_queue           = module.render_fleet[0].job_queue
+    job_definition      = module.render_fleet[0].job_definition
+    compute_environment = module.render_fleet[0].compute_environment
+    log_group           = module.render_fleet[0].log_group
+  } : null
+}

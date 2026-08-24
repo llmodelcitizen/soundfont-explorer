@@ -1,0 +1,37 @@
+#!/bin/bash
+# Soundfont Explorer admin seed. Deliberately minimal: cloud-init only writes a systemd unit that
+# fetches the versioned app/bootstrap.sh from the admin bucket and execs it, so all real
+# provisioning is deployable (admin/scripts/deploy.sh) without touching Terraform.
+# Progress and errors: journalctl -u sfadmin-seed
+set -euo pipefail
+
+cat >/usr/local/sbin/sfadmin-seed <<'SEED'
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq awscli
+aws s3 cp "s3://$SFADMIN_BUCKET/app/bootstrap.sh" /run/sfadmin-bootstrap.sh
+exec bash /run/sfadmin-bootstrap.sh
+SEED
+chmod 0755 /usr/local/sbin/sfadmin-seed
+
+cat >/etc/systemd/system/sfadmin-seed.service <<UNIT
+[Unit]
+Description=Soundfont Explorer admin seed: fetch and run bootstrap.sh from S3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=SFADMIN_BUCKET=${bucket}
+Environment=AWS_DEFAULT_REGION=${region}
+ExecStart=/usr/local/sbin/sfadmin-seed
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now --no-block sfadmin-seed.service

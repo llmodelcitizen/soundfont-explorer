@@ -27,5 +27,16 @@ output "render_fleet" {
     job_definition      = module.render_fleet[0].job_definition
     compute_environment = module.render_fleet[0].compute_environment
     alerts_topic_arn    = module.render_fleet[0].alerts_topic_arn
+    log_group           = module.render_fleet[0].log_group
+  } : null
+}
+
+output "admin" {
+  description = "Empty unless enable_admin; read by admin/scripts/{up,down,deploy}.sh."
+  value = var.enable_admin ? {
+    bucket          = module.admin[0].bucket
+    launch_template = module.admin[0].launch_template
+    hostname        = module.admin[0].hostname
+    url             = "https://${module.admin[0].hostname}/"
   } : null
 }
