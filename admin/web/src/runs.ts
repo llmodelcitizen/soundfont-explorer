@@ -47,6 +47,16 @@ export class RunsView {
   private picked = new Set<string>();
   private status = el('span', { class: 'statusline' });
   private timer: number | null = null;
+  private openLogs = new Set<string>();
+
+  constructor() {
+    const resize = () => {
+      this.root.querySelectorAll<HTMLElement>('.runlog:not([hidden])')
+        .forEach((box) => this.fitLogBox(box));
+    };
+    window.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+  }
 
   async load(): Promise<void> {
     try {
@@ -195,6 +205,28 @@ export class RunsView {
 
   // ---------------------------------------------------------------- run list
 
+  private fitLogBox(box: HTMLElement, bringIntoView = false): void {
+    const viewport = window.visualViewport;
+    const viewportHeight = viewport?.height ?? window.innerHeight;
+    const headerHeight = document.querySelector<HTMLElement>('header.topbar')
+      ?.getBoundingClientRect().height ?? 0;
+    box.style.height = `${Math.max(120, viewportHeight - headerHeight)}px`;
+    box.style.scrollMarginTop = `${headerHeight}px`;
+    if (bringIntoView) box.scrollIntoView({ block: 'start' });
+    box.scrollTop = box.scrollHeight;
+  }
+
+  private async refreshLogs(box: HTMLElement, rid: string, bringIntoView = false): Promise<void> {
+    const text = box.querySelector<HTMLElement>('.runlog-text')!;
+    try {
+      const ev = await get<{ events: { t: number; msg: string }[] }>(`/api/runs/${rid}/logs`);
+      text.textContent = ev.events.map((x) => x.msg).join('\n') || '(no log events yet)';
+    } catch (e) {
+      text.textContent = `logs unavailable: ${(e as Error).message}`;
+    }
+    if (box.isConnected && !box.hidden) this.fitLogBox(box, bringIntoView);
+  }
+
   private async renderRuns(host: HTMLElement): Promise<void> {
     let runs: Run[];
     try {
@@ -207,6 +239,9 @@ export class RunsView {
       host.replaceChildren(el('div', { class: 'notice' }, 'no runs yet'));
       return;
     }
+    const anchor = host.querySelector<HTMLElement>('.runlog:not([hidden])');
+    const anchorId = anchor?.dataset.runId;
+    const anchorTop = anchor?.getBoundingClientRect().top;
     const rows = runs.slice(0, 20).map((r) => {
       const chips = Object.entries(r.status_summary)
         .filter(([, n]) => n > 0)
@@ -238,12 +273,24 @@ export class RunsView {
         actions.append(f);
       }
       const logs = el('button', {}, 'Logs');
-      const logBox = el('pre', { class: 'logbox', hidden: '' });
+      const logIsOpen = this.openLogs.has(r.run_id);
+      const logBox = el('div', {
+        class: 'logbox runlog',
+        'data-run-id': r.run_id,
+        ...(logIsOpen ? {} : { hidden: '' }),
+      }, el('pre', { class: 'runlog-text' }, logIsOpen ? 'loading logs…' : ''));
+      if (logIsOpen) logs.textContent = 'Hide logs';
       logs.onclick = async () => {
         logBox.hidden = !logBox.hidden;
-        if (!logBox.hidden) {
-          const ev = await get<{ events: { t: number; msg: string }[] }>(`/api/runs/${r.run_id}/logs`);
-          logBox.textContent = ev.events.map((x) => x.msg).join('\n') || '(no log events yet)';
+        if (logBox.hidden) {
+          this.openLogs.delete(r.run_id);
+          logs.textContent = 'Logs';
+        } else {
+          this.openLogs.add(r.run_id);
+          logs.textContent = 'Hide logs';
+          logBox.querySelector<HTMLElement>('.runlog-text')!.textContent = 'loading logs…';
+          this.fitLogBox(logBox, true);
+          await this.refreshLogs(logBox, r.run_id);
         }
       };
       actions.append(logs);
@@ -257,5 +304,12 @@ export class RunsView {
         logBox);
     });
     host.replaceChildren(...rows);
+    if (anchorId !== undefined && anchorTop !== undefined) {
+      const replacement = [...host.querySelectorAll<HTMLElement>('.runlog:not([hidden])')]
+        .find((box) => box.dataset.runId === anchorId);
+      if (replacement) window.scrollBy(0, replacement.getBoundingClientRect().top - anchorTop);
+    }
+    await Promise.all([...host.querySelectorAll<HTMLElement>('.runlog:not([hidden])')]
+      .map((box) => this.refreshLogs(box, box.dataset.runId!)));
   }
 }

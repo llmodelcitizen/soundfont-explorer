@@ -138,6 +138,12 @@ a.btnish:hover { border-color: var(--accent); }
   margin: 8px 0 0; padding: 8px; background: var(--bg); border-radius: 6px;
   font-size: 11px; max-height: 300px; overflow: auto; white-space: pre-wrap;
 }
+.runlog {
+  max-height: none; display: flex; flex-direction: column;
+}
+.runlog-text {
+  flex: none; margin: auto 0 0; font: inherit; white-space: pre-wrap;
+}
 
 /* ---- published ---- */
 .pubtable { border-collapse: collapse; width: 100%; font-size: 13px; }

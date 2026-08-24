@@ -177,6 +177,13 @@ resource "aws_iam_role_policy_attachment" "instance_ecs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 }
 
+# Break-glass access to a live Batch host. ECS-optimized AL2023 AMIs include the SSM agent;
+# this policy lets it register with Systems Manager. No inbound security-group rule is needed.
+resource "aws_iam_role_policy_attachment" "instance_ssm" {
+  role       = aws_iam_role.instance.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 resource "aws_iam_instance_profile" "instance" {
   name = "${local.name}-instance"
   role = aws_iam_role.instance.name
