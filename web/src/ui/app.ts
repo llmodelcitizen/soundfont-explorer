@@ -26,7 +26,7 @@ import { VariantList } from './list';
 import { sortIds, visibleColumns, type CellContext, type ColKey } from './columns';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
-import { TrackList } from './tracklist';
+import { adjacentTrackId, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { Favorites, ListenedLedger, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
@@ -779,9 +779,8 @@ export class App {
   }
 
   private stepSong(d: number): void {
-    const ids = this.songs.songs.map((s) => s.id);
-    const i = ids.indexOf(this.song.id);
-    this.switchSong(ids[(i + d + ids.length) % ids.length]!);
+    const id = adjacentTrackId(this.songs.songs, this.song.id, d);
+    if (id) this.switchSong(id);
   }
 
   private setTheme(t: ThemeName): void {

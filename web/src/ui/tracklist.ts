@@ -2,13 +2,35 @@
  *
  * Tracks are folded into one collapsible folder per directory `path` (top-level tracks
  * first, unfoldered — every pre-`path` songs.json renders exactly as before). Folder
- * open/closed state persists in localStorage; stepping with [ ] stays flat songs.json
- * order (app.ts), and selecting a track inside a closed folder opens it.
+ * open/closed state persists in localStorage; stepping with [ ] follows this displayed
+ * logical order, and selecting a track inside a closed folder opens it.
  */
 import { songTitle, type SongEntry } from '../contracts/songs';
 import { clear, h } from './dom';
 
 const OPEN_KEY = 'sfp.folders.v1';
+
+function groupedTracks(songs: SongEntry[]): { root: SongEntry[]; folders: [string, SongEntry[]][] } {
+  const root = songs.filter((s) => !s.path);
+  const byPath = new Map<string, SongEntry[]>();
+  for (const s of songs) {
+    if (s.path) (byPath.get(s.path) ?? byPath.set(s.path, []).get(s.path)!).push(s);
+  }
+  return { root, folders: [...byPath.entries()].sort(([a], [b]) => a.localeCompare(b)) };
+}
+
+/** The logical order shown by the Tracks pane, independent of which folders are collapsed. */
+export function trackOrder(songs: SongEntry[]): SongEntry[] {
+  const { root, folders } = groupedTracks(songs);
+  return [...root, ...folders.flatMap(([, tracks]) => tracks)];
+}
+
+export function adjacentTrackId(songs: SongEntry[], current: string, delta: number): string | undefined {
+  const ids = trackOrder(songs).map((s) => s.id);
+  if (!ids.length) return undefined;
+  const i = Math.max(0, ids.indexOf(current));
+  return ids[(i + delta + ids.length) % ids.length];
+}
 
 export class TrackList {
   readonly el: HTMLElement;
@@ -98,14 +120,9 @@ export class TrackList {
     clear(this.body);
     this.rows.clear();
     this.rowOrder = [];
-    const root = this.songs.filter((s) => !s.path);
-    const byPath = new Map<string, SongEntry[]>();
-    for (const s of this.songs) {
-      if (s.path) (byPath.get(s.path) ?? byPath.set(s.path, []).get(s.path)!).push(s);
-    }
+    const { root, folders } = groupedTracks(this.songs);
     for (const s of root) this.body.appendChild(this.row(s));
-    for (const path of [...byPath.keys()].sort()) {
-      const files = byPath.get(path)!;
+    for (const [path, files] of folders) {
       const isOpen = this.open.has(path);
       const head = h(
         'div',
