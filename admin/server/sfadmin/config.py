@@ -19,8 +19,6 @@ import os
 import threading
 from functools import lru_cache
 
-import boto3
-
 SSM_PREFIX = "/soundfont-explorer/admin/"
 
 
@@ -81,6 +79,7 @@ class Config:
 
 @lru_cache(maxsize=None)
 def _client(service: str):
+    import boto3  # deferred so stdlib-only unit tests can import sfadmin modules
     return boto3.client(service)
 
 

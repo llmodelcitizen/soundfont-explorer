@@ -1,5 +1,6 @@
 import './style.css';
 import { get, post, type BootstrapStatus, type Me } from './api';
+import { LibraryView } from './library';
 
 const app = document.getElementById('app')!;
 
@@ -41,8 +42,11 @@ async function waitUntilReady(): Promise<void> {
 // ---------------------------------------------------------------- shell
 
 function shell(me: Me): void {
-  const main = el('main', {},
-    el('div', { class: 'notice' }, 'Library UI lands in the next milestone.'));
+  const lib = new LibraryView();
+  const main = el('main', {}, lib.root);
+  lib.load().catch((e) => {
+    main.replaceChildren(el('div', { class: 'notice' }, `library failed to load: ${e.message}`));
+  });
   const update = el('button', {}, 'Update & restart');
   update.onclick = async () => {
     update.disabled = true;

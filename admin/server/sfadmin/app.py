@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, bootstrapstate
+from . import auth, bootstrapstate, routes_library
 from .config import get_config
 
 OPEN_PATHS = ("/auth/", "/healthz")
@@ -44,6 +44,7 @@ async def require_auth(request: Request, call_next):
 
 
 app.include_router(auth.router)
+app.include_router(routes_library.router)
 
 
 @app.get("/healthz")

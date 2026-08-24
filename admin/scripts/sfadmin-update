@@ -13,6 +13,10 @@ aws s3 cp "s3://$SFADMIN_BUCKET/$KEY" - | tar -xz -C /opt/sfadmin/app.new
 rm -rf /opt/sfadmin/app.old
 mv /opt/sfadmin/app /opt/sfadmin/app.old
 mv /opt/sfadmin/app.new /opt/sfadmin/app
+chown -R sfadmin:sfadmin /opt/sfadmin/app
+rm -rf /opt/sfadmin/app/songs/import/FILES
+mkdir -p /opt/sfadmin/app/songs/import
+ln -sfn "$SFADMIN_DATA/library/FILES" /opt/sfadmin/app/songs/import/FILES
 /opt/sfadmin/venv/bin/pip install -q --no-index \
   --find-links /opt/sfadmin/app/admin/wheels -r /opt/sfadmin/app/admin/server/requirements.txt
 systemctl restart sfadmin.service

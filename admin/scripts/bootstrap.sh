@@ -66,6 +66,12 @@ status services 60 "starting caddy + app"
 id -u sfadmin >/dev/null 2>&1 || useradd -r -m -d /var/lib/sfadmin -s /usr/sbin/nologin sfadmin
 mkdir -p "$DATA" /var/cache/sfadmin
 chgrp sfadmin "$STATUS_DIR" && chmod 775 "$STATUS_DIR"   # app touches update-requested here
+# canon.py runs as sfadmin inside the snapshot (writes songs/songs.json, songs/rendered/,
+# corpus-imports.json) and reads sources at songs/import/FILES — point that at the library
+chown -R sfadmin:sfadmin "$APP"
+rm -rf "$APP/songs/import/FILES"
+mkdir -p "$APP/songs/import"
+ln -sfn "$DATA/library/FILES" "$APP/songs/import/FILES"
 
 cat > /etc/sfadmin.env <<ENV
 SFADMIN_BUCKET=$SFADMIN_BUCKET
