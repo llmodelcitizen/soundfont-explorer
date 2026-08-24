@@ -1,6 +1,7 @@
 import './style.css';
 import { get, post, type BootstrapStatus, type Me } from './api';
 import { LibraryView } from './library';
+import { PublishedView } from './published';
 import { RunsView } from './runs';
 
 const app = document.getElementById('app')!;
@@ -58,7 +59,13 @@ function shell(me: Me): void {
       main.replaceChildren(runs.root);
       runs.load();
     }],
+    ['Published', () => {
+      runs.stop();
+      main.replaceChildren(pub.root);
+      pub.load();
+    }],
   ];
+  const pub = new PublishedView();
   for (const [name, show] of views) {
     const b = el('button', { class: 'tab' }, name);
     b.onclick = () => {

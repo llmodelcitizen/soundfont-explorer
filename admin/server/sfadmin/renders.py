@@ -307,36 +307,11 @@ class RunManager:
 
     def finish(self, rid: str) -> dict:
         """Index what the shards published: rebuild + publish songs.json. Idempotent."""
+        from . import publishops
         rec = self.get(rid)
-        cfg = self.cfg
         try:
-            out_public = os.path.join(cfg.repo, "out", "public")
-            os.makedirs(out_public, exist_ok=True)
-            for pre in ("s", "c"):
-                subprocess.run(["aws", "s3", "sync", f"s3://{cfg.site_bucket}/{pre}/",
-                                os.path.join(out_public, pre) + "/", "--only-show-errors"],
-                               check=True)
-            p = subprocess.run([sys.executable, "-m", "sfr", "manifest", "--songs-json-only",
-                                "--default-song", "freedoom-e1m1", "--default-variant", "adl-b58"],
-                               cwd=os.path.join(cfg.repo, "render"),
-                               capture_output=True, text=True)
-            if p.returncode != 0:
-                raise RuntimeError(f"manifest --songs-json-only failed: {p.stderr[-1500:]}")
-            subprocess.run(["aws", "s3", "sync", os.path.join(out_public, "c") + "/",
-                            f"s3://{cfg.site_bucket}/c/", "--only-show-errors",
-                            "--exclude", "*", "--include", "*.json",
-                            "--content-type", "application/json",
-                            "--cache-control", "public,max-age=31536000,immutable",
-                            "--size-only"], check=True)
-            subprocess.run(["aws", "s3", "cp", os.path.join(out_public, "songs.json"),
-                            f"s3://{cfg.site_bucket}/songs.json", "--only-show-errors",
-                            "--content-type", "application/json",
-                            "--cache-control", "public,max-age=60,stale-while-revalidate=600"],
-                           check=True)
-            if cfg.distribution:
-                subprocess.run(["aws", "cloudfront", "create-invalidation", "--distribution-id",
-                                cfg.distribution, "--paths", "/songs.json"],
-                               check=True, capture_output=True)
+            publishops.sync_down()
+            publishops.rebuild_and_publish()
             rec["finisher"] = {"ran_at": _now(), "songs_json_published": True, "error": None}
         except Exception as e:
             rec["finisher"] = {"ran_at": _now(), "songs_json_published": False, "error": str(e)}
