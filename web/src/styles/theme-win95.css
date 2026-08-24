@@ -112,6 +112,19 @@
   font-weight: 700;
 }
 
+/* MS Sans Serif's numerals are proportional. Keep both clock fields in fixed columns so
+   the changing playback position cannot move the slash, seek bar, or later controls. */
+[data-theme='win95'] .transport .clock-time {
+  display: inline-block;
+  width: var(--clock-field-width);
+}
+[data-theme='win95'] .transport .clock-current {
+  text-align: right;
+}
+[data-theme='win95'] .transport .clock-duration {
+  text-align: left;
+}
+
 /* Geometry pins: 19.6px is the modern theme's 14px × 1.4 line box, so buttons and inputs
    keep their exact modern heights around the smaller bitmap type. */
 [data-theme='win95'] .btn {

@@ -19,6 +19,7 @@ export class Transport {
   readonly el: HTMLElement;
   private playBtn: HTMLButtonElement;
   private clock: HTMLElement;
+  private clockCurrent: HTMLElement;
   private seek: HTMLInputElement;
   private loopBtn: HTMLButtonElement;
   private muteBtn: HTMLButtonElement;
@@ -53,7 +54,19 @@ export class Transport {
       cb.onSkip(5);
       returnFocus();
     });
-    this.clock = h('span', { class: 'clock' }, `${fmtTime(0)} / ${fmtTime(duration)}`);
+    const durationText = fmtTime(duration);
+    this.clockCurrent = h('span', { class: 'clock-time clock-current' }, fmtTime(0));
+    this.clock = h(
+      'span',
+      { class: 'clock' },
+      this.clockCurrent,
+      h('span', { class: 'clock-separator' }, ' / '),
+      h('span', { class: 'clock-time clock-duration' }, durationText),
+    );
+    // Only the Win95 stylesheet consumes this. Its bitmap face has proportional digits,
+    // so reserve enough character cells for either time field before playback starts.
+    const clockChars = Math.max(fmtTime(0).length, durationText.length);
+    this.clock.style.setProperty('--clock-field-width', `${clockChars}ch`);
     this.seek = h('input', { type: 'range', class: 'seek', min: '0', max: String(duration), step: '0.01', value: '0', 'aria-label': 'position' });
     this.seek.addEventListener('pointerdown', () => (this.seeking = true));
     this.seek.addEventListener('input', () => {
@@ -130,7 +143,7 @@ export class Transport {
   }
 
   update(pos: number, playing: boolean): void {
-    this.clock.textContent = `${fmtTime(pos)} / ${fmtTime(this.duration)}`;
+    this.clockCurrent.textContent = fmtTime(pos);
     if (!this.seeking) this.seek.value = String(pos);
     const want = playing ? 'pause' : 'play';
     if (this.playBtn.dataset.icon !== want) {
