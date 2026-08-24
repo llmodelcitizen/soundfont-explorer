@@ -1,1 +1,7 @@
 alert_email = "you@example.com"
+
+# Module gates. Persist them HERE once enabled — never pass them as one-off `-var`
+# flags. An apply that omits a -var sees the default (false) and plans to DESTROY that
+# module's resources (Batch CE, ECR repo with its images, watchdog, budgets, ...).
+# enable_render_fleet = true
+# enable_admin        = true
