@@ -376,15 +376,18 @@ class Library:
         with self.lock:
             lib_json = cfg.library_json
         # niced: a full canon run pegs the CPU for minutes and interactive previews
-        # (fluidsynth) should win that contest
+        # (fluidsynth) should win that contest. stdout is inherited on purpose — the
+        # per-song progress lines land in the sfadmin journal live (journalctl -f),
+        # instead of sitting invisible in a capture buffer for the whole run; stderr
+        # stays piped for error reporting.
         cmd = ["nice", "-n", "10", sys.executable,
                os.path.join(repo, "songs", "tools", "fragment.py"), "--library", lib_json]
-        subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=repo)
+        subprocess.run(cmd, check=True, stderr=subprocess.PIPE, text=True, cwd=repo)
         cmd = ["nice", "-n", "10", sys.executable,
                os.path.join(repo, "songs", "tools", "canon.py"), "--lenient"]
         for sid in only or []:
             cmd += ["--only", sid]
-        p = subprocess.run(cmd, capture_output=True, text=True, cwd=repo)
+        p = subprocess.run(cmd, stderr=subprocess.PIPE, text=True, cwd=repo)
         if p.returncode != 0:
             raise RuntimeError(f"canon.py failed: {p.stderr[-2000:]}")
         with open(os.path.join(repo, "songs", "canon-report.json")) as fh:
