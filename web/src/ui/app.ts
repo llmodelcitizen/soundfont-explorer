@@ -67,6 +67,8 @@ export class App {
   private everPlayed = false;
   /** Stop → another track arms its first explicit render click as a request to play. */
   private playOnRenderClick = false;
+  /** Survives the engine/UI rebuild caused by changing tracks after an explicit Stop. */
+  private stoppedByUser = false;
   private tracks!: TrackList;
   private rightPane!: HTMLElement;
   private debug = new DebugPanel();
@@ -234,7 +236,7 @@ export class App {
 
   /** switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor */
   private switchSong(id: string): void {
-    if (id !== this.song.id && this.engine.status.kind === 'stopped') this.playOnRenderClick = true;
+    if (id !== this.song.id && this.stoppedByUser) this.playOnRenderClick = true;
     this.ledger.flush();
     void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined });
   }
@@ -299,22 +301,23 @@ export class App {
     if (this.uninstallKeys) this.uninstallKeys();
     clear(this.root);
     this.canonicalIndex = new Map(this.set.order.map((id, i) => [id, i]));
+    const clickRender = (i: number) => {
+      const shouldPlay = !this.everPlayed || this.playOnRenderClick;
+      this.policy.jump(i, performance.now());
+      if (shouldPlay) {
+        this.playOnRenderClick = false;
+        this.engine.play(); // first-ever tap, or Stop → track → render, asks to hear it
+      }
+    };
     this.list = new VariantList(
       this.catalog,
       this.set,
       {
-        onClick: (i) => {
-          const shouldPlay = !this.everPlayed || this.playOnRenderClick;
-          this.policy.jump(i, performance.now());
-          if (shouldPlay) {
-            this.playOnRenderClick = false;
-            this.engine.play(); // first-ever tap, or Stop → track → render, asks to hear it
-          }
-        },
+        onClick: clickRender,
         onStickyClick: (id) => {
           this.filters.clearAll();
           const i = this.visible.indexOf(id);
-          if (i >= 0) this.policy.jump(i, performance.now());
+          if (i >= 0) clickRender(i);
         },
         onSort: (key) => this.toggleSort(key),
       },
@@ -347,11 +350,8 @@ export class App {
     this.transport = new Transport(
       this.set.duration_s,
       {
-        onToggle: () => this.engine.toggle(),
-        onStop: () => {
-          this.playOnRenderClick = false;
-          this.engine.stop();
-        },
+        onToggle: () => this.togglePlayback(),
+        onStop: () => this.stopPlayback(),
         onSeek: (p) => this.engine.seek(p),
         onSkip: (d) => this.engine.seek(this.engine.position() + d),
         onLoop: (on) => this.setLoop(on),
@@ -440,7 +440,7 @@ export class App {
       page: (d, at) => this.policy.jumpBy(d * POLICY.pageStep, at),
       home: (at) => this.policy.jump(0, at),
       end: (at) => this.policy.jump(this.visible.length - 1, at),
-      toggle: () => this.engine.toggle(),
+      toggle: () => this.togglePlayback(),
       skip: (s) => this.engine.seek(this.engine.position() + s),
       loop: () => this.setLoop(!this.engine.timeline.loop),
       mute: () => this.toggleMute(),
@@ -481,6 +481,7 @@ export class App {
       if (s.kind === 'playing') {
         this.everPlayed = true;
         this.playOnRenderClick = false;
+        this.stoppedByUser = false;
       }
       this.onStatus(s);
     });
@@ -710,6 +711,18 @@ export class App {
     this.list.select(this.cursor);
     this.engine.cursor(this.cursor);
     return this.cursor;
+  }
+
+  private togglePlayback(): void {
+    this.stoppedByUser = false;
+    this.playOnRenderClick = false;
+    this.engine.toggle();
+  }
+
+  private stopPlayback(): void {
+    this.stoppedByUser = true;
+    this.playOnRenderClick = false;
+    this.engine.stop();
   }
 
   private effectiveColumns(): ColKey[] {

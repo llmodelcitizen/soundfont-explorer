@@ -133,6 +133,7 @@ export class VariantList {
   }
 
   select(index: number, scroll = true): void {
+    const previousIndex = this.selIndex;
     const prev = this.rows[this.selIndex];
     this.selIndex = index;
     const next = this.rows[index];
@@ -140,10 +141,10 @@ export class VariantList {
     prev?.removeAttribute('aria-selected');
     next?.setAttribute('aria-selected', 'true');
     if (scroll) {
-      // Reveal the selection first (including its sticky-header margin), then its successor.
-      // The second nearest-scroll is a no-op unless the selected row is the last visible row.
+      // Reveal the selection first (including its sticky-header margin), then one row in the
+      // direction of travel so keyboard/touch scrolling previews what will play next.
       next?.scrollIntoView({ block: 'nearest' });
-      this.rows[index + 1]?.scrollIntoView({ block: 'nearest' });
+      this.rows[index + (index < previousIndex ? -1 : 1)]?.scrollIntoView({ block: 'nearest' });
     }
   }
 
