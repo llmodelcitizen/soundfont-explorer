@@ -1,0 +1,10 @@
+# The unprivileged app requests an update by touching this file (POST /api/update);
+# the root-run service re-pulls the bundle and restarts sfadmin. Installed by bootstrap.sh.
+[Unit]
+Description=watch for sfadmin update requests
+
+[Path]
+PathExists=/run/sfadmin/update-requested
+
+[Install]
+WantedBy=multi-user.target

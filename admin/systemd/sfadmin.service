@@ -1,0 +1,18 @@
+# Soundfont Explorer admin server (FastAPI behind Caddy). Installed by bootstrap.sh.
+[Unit]
+Description=Soundfont Explorer admin server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=sfadmin
+Group=sfadmin
+EnvironmentFile=/etc/sfadmin.env
+WorkingDirectory=/opt/sfadmin/app/admin/server
+ExecStart=/opt/sfadmin/venv/bin/uvicorn sfadmin.app:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

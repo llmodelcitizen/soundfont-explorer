@@ -38,5 +38,6 @@ output "admin" {
     launch_template = module.admin[0].launch_template
     hostname        = module.admin[0].hostname
     url             = "https://${module.admin[0].hostname}/"
+    zone_id         = module.dns_cert.zone_id
   } : null
 }

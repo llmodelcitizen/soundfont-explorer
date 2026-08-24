@@ -1,0 +1,7 @@
+# Exactly four direct dependencies, pinned; wheels are vendored into the app bundle by
+# admin/scripts/deploy.sh so the box installs offline (pip install --no-index).
+# GitHub OAuth uses stdlib urllib; session signing uses stdlib hmac.
+fastapi==0.116.1
+uvicorn==0.35.0
+python-multipart==0.0.20
+boto3==1.40.11

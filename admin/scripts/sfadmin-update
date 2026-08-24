@@ -1,0 +1,19 @@
+#!/bin/bash
+# Re-pull the current app bundle from the admin bucket and restart sfadmin.
+# Run by sfadmin-update.service (root) when the app touches /run/sfadmin/update-requested.
+set -euo pipefail
+rm -f /run/sfadmin/update-requested
+# shellcheck source=/dev/null
+. /etc/sfadmin.env
+
+KEY=$(aws s3 cp "s3://$SFADMIN_BUCKET/app/current" -)
+rm -rf /opt/sfadmin/app.new
+mkdir -p /opt/sfadmin/app.new
+aws s3 cp "s3://$SFADMIN_BUCKET/$KEY" - | tar -xz -C /opt/sfadmin/app.new
+rm -rf /opt/sfadmin/app.old
+mv /opt/sfadmin/app /opt/sfadmin/app.old
+mv /opt/sfadmin/app.new /opt/sfadmin/app
+/opt/sfadmin/venv/bin/pip install -q --no-index \
+  --find-links /opt/sfadmin/app/admin/wheels -r /opt/sfadmin/app/admin/server/requirements.txt
+systemctl restart sfadmin.service
+echo "sfadmin updated to $KEY"

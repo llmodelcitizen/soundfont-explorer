@@ -1,0 +1,9 @@
+[Unit]
+Description=periodic Caddy state sync to S3
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

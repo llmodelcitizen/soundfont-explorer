@@ -1,0 +1,6 @@
+[Unit]
+Description=re-pull the sfadmin app bundle and restart the service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/sfadmin-update

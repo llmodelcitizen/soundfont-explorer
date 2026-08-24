@@ -1,0 +1,89 @@
+"""Configuration: environment (written by bootstrap.sh to /etc/sfadmin.env) + SSM secrets.
+
+Environment contract:
+  SFADMIN_BUCKET    admin bucket name (library, runs, caddy state, app bundle)
+  SFADMIN_HOSTNAME  public FQDN (admin.soundfonts.ericq.com)
+  SFADMIN_REPO      repo snapshot root (/opt/sfadmin/app)
+  SFADMIN_DATA      mutable data root (/opt/sfadmin/data: library/FILES, gm.sf2)
+  SFADMIN_CACHE     preview cache dir (/var/cache/sfadmin)
+  SFADMIN_STATUS    bootstrap status file (/run/sfadmin/bootstrap.json)
+  AWS_DEFAULT_REGION
+
+Secrets live in SSM SecureStrings under /soundfont-explorer/admin/ (github_client_id,
+github_client_secret, session_key, allowed_emails), fetched once and cached — created by
+hand, never in Terraform state (docs/ADMIN.md).
+"""
+from __future__ import annotations
+
+import os
+import threading
+from functools import lru_cache
+
+import boto3
+
+SSM_PREFIX = "/soundfont-explorer/admin/"
+
+
+def env(name: str, default: str | None = None) -> str:
+    v = os.environ.get(name, default)
+    if v is None:
+        raise RuntimeError(f"missing required environment variable {name}")
+    return v
+
+
+class Config:
+    def __init__(self) -> None:
+        self.bucket = env("SFADMIN_BUCKET")
+        self.hostname = env("SFADMIN_HOSTNAME")
+        self.repo = env("SFADMIN_REPO", "/opt/sfadmin/app")
+        self.data = env("SFADMIN_DATA", "/opt/sfadmin/data")
+        self.cache = env("SFADMIN_CACHE", "/var/cache/sfadmin")
+        self.status_file = env("SFADMIN_STATUS", "/run/sfadmin/bootstrap.json")
+        self._ssm_lock = threading.Lock()
+        self._ssm: dict[str, str] = {}
+
+    # boto3 clients are cheap to hold and thread-safe to use
+    @property
+    def s3(self):
+        return _client("s3")
+
+    @property
+    def ssm(self):
+        return _client("ssm")
+
+    def secret(self, name: str) -> str:
+        with self._ssm_lock:
+            if name not in self._ssm:
+                p = self.ssm.get_parameter(Name=SSM_PREFIX + name, WithDecryption=True)
+                self._ssm[name] = p["Parameter"]["Value"]
+            return self._ssm[name]
+
+    @property
+    def session_key(self) -> bytes:
+        return self.secret("session_key").encode()
+
+    @property
+    def allowed_emails(self) -> set[str]:
+        return {e.strip().lower() for e in self.secret("allowed_emails").split(",") if e.strip()}
+
+    @property
+    def library_dir(self) -> str:
+        return os.path.join(self.data, "library", "FILES")
+
+    @property
+    def library_json(self) -> str:
+        return os.path.join(self.data, "library", "library.json")
+
+    @property
+    def gm_sf2(self) -> str:
+        return os.path.join(self.data, "gm.sf2")
+
+
+@lru_cache(maxsize=None)
+def _client(service: str):
+    return boto3.client(service)
+
+
+@lru_cache(maxsize=1)
+def get_config() -> Config:
+    return Config()

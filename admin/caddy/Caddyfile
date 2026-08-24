@@ -1,0 +1,11 @@
+# Template: bootstrap.sh substitutes __HOSTNAME__ and installs to /etc/caddy/Caddyfile.
+# Caddy owns TLS (Let's Encrypt via HTTP-01/TLS-ALPN); its data dir is persisted to S3 by
+# sfadmin-caddy-sync.timer so certificates survive terminate/relaunch.
+__HOSTNAME__ {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8000
+
+	request_body {
+		max_size 200MB
+	}
+}
