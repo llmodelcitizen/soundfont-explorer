@@ -548,6 +548,8 @@ select:focus-visible {
 }
 .tracks .np-head {
   margin-bottom: 0;
+  /* fixed-height caption: flex-shrink must not crush it when the track list overflows */
+  flex: none;
 }
 .track-rows {
   overflow: auto;

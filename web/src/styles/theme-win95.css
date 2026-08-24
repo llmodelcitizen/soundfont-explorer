@@ -299,10 +299,16 @@
   background: #c0c0c0;
   border-bottom-color: #808080;
 }
+/* Explorer-style headers: Mixed Case with no tracking, and button segments pulled into the grid
+   gutters (negative margins) so they butt together and the caption fits — the column template,
+   grid gap, and data-cell alignment are untouched. */
 [data-theme='win95'] .hcell {
   background: #c0c0c0;
   color: #000000;
-  padding: 0 4px;
+  text-transform: capitalize;
+  letter-spacing: normal;
+  margin: 0 -4px;
+  padding: 0 6px;
   box-shadow: var(--w95-thumb);
 }
 [data-theme='win95'] .hcell:hover {
@@ -382,6 +388,16 @@
   background: #000080;
   color: #ffffff;
   border-bottom-color: #808080;
+}
+/* Pane captions run edge to edge over their pane (and its scrollbar column), with the text and
+   checkbox centred in the bar: base reserves 6px bottom padding that would ride them high on a
+   painted strip, and the side padding keeps the caption ends clear of visible scrollbars. */
+[data-theme='win95'] .np-head {
+  margin: -8px -12px 0;
+  padding: 0 12px;
+}
+[data-theme='win95'] .nowplaying .np-head {
+  margin-bottom: 6px;
 }
 [data-theme='win95'] .np-head .np-title,
 [data-theme='win95'] .np-head .preserve,
