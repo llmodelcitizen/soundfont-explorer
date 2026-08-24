@@ -578,6 +578,39 @@ select:focus-visible {
   color: inherit;
   opacity: 0.8;
 }
+.track.in-folder {
+  padding-left: 26px;
+}
+.track-folder {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 5px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-faint);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+  z-index: 1;
+}
+.track-folder:hover {
+  background: var(--row-hover);
+}
+.folder-twist {
+  color: var(--fg-dim);
+  width: 1em;
+  flex: none;
+}
+.folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.folder-count {
+  color: var(--fg-dim);
+  font-size: 0.82em;
+}
 /* desktop: the header dropdown is replaced by the list */
 @media (min-width: 721px) {
   .top .songpicker {

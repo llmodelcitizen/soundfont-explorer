@@ -15,6 +15,8 @@ export interface SongEntry {
   duration_s: number;
   variant_count: number;
   set: string;
+  /** directory path ("videogame-music/crystalis"); null = top level (pre-path docs too) */
+  path: string | null;
 }
 
 export interface SongsDoc {
@@ -63,6 +65,7 @@ export function parseSongs(raw: unknown): SongsDoc {
       duration_s: req<number>(o.duration_s, isNum, 'song.duration_s'),
       variant_count: isNum(o.variant_count) ? o.variant_count : 0,
       set: req<string>(o.set, isStr, 'song.set'),
+      path: isStr(o.path) && o.path !== '' ? o.path : null,
     } satisfies SongEntry;
   });
   const defaults = isObj(d.defaults) ? d.defaults : {};

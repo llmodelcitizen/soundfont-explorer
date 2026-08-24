@@ -63,6 +63,9 @@ def _song_entry(song: dict, duration_s: int, variant_count: int, set_path: str) 
         "sequencer": song.get("sequencer"), "source_url": song.get("source_url"),
         "license": song.get("license"), "modifications": song.get("modifications") or "none",
         "duration_s": int(duration_s), "variant_count": variant_count, "set": set_path,
+        # directory of an imported song ("videogame-music/crystalis"); null/absent = root.
+        # The client folds the track list into folders on it.
+        "path": song.get("path"),
     }
 
 

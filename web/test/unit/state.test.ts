@@ -21,8 +21,12 @@ describe('contracts', () => {
   it('parses songs.json and rejects bad shapes', () => {
     const d = parseSongs({ schema: 1, catalog: '/c/x.json', defaults: { song: 's', variant: 'v' }, songs: [{ id: 's', title: 'T', license: { id: 'CC0' }, duration_s: 10, set: '/s/s/h.json' }] });
     expect(d.songs[0]!.license.id).toBe('CC0');
+    expect(d.songs[0]!.path).toBeNull(); // pre-path docs: top level
     expect(songTitle(d.songs[0]!)).toBe('T');
     expect(songTitle({ title: 'T', composer: 'C' })).toBe('T — C');
+    const withPath = parseSongs({ schema: 1, catalog: '/c/x.json', songs: [{ id: 'p', title: 'L', license: {}, duration_s: 5, set: '/s/p/h.json', path: 'games/doom' }, { id: 'r', title: 'R', license: {}, duration_s: 5, set: '/s/r/h.json', path: '' }] });
+    expect(withPath.songs[0]!.path).toBe('games/doom');
+    expect(withPath.songs[1]!.path).toBeNull(); // empty string normalises to root
     expect(parseSongs({ schema: 1, catalog: '/c/x.json', songs: [] }).songs).toEqual([]); // empty boots gracefully
     expect(() => parseSongs({ schema: 2, catalog: '', songs: [] })).toThrow(ContractError);
     expect(() => parseSongs({ schema: 1, catalog: '/c', songs: [{ id: 's' }] })).toThrow(ContractError);
