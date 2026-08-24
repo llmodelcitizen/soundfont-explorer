@@ -1,15 +1,4 @@
-/* 'modern' — the dark Matrix-inspired look, the default theme. */
-@font-face {
-  font-family: 'Matrix Hyperpix';
-  src: url('../assets/fonts/matrix.ttf') format('truetype');
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  /* The source font contains blank numeral glyphs; use it for its letterforms and let the
-     system fallback render digits and punctuation so durations, years, and IDs remain visible. */
-  unicode-range: U+0041-005A, U+0061-007A;
-}
-
+/* 'modern' — the dark 90s look (MVP palette), the default theme. */
 :root,
 [data-theme='modern'] {
   --bg: #0b0d10;
@@ -36,7 +25,7 @@
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   --radius: 3px;
   --row-h: 24px;
-  --font: 14px/1.4 'Matrix Hyperpix', 'Segoe UI', system-ui, sans-serif;
+  --font: 14px/1.4 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
   --mono: 12px/1.4 ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace;
   --c-sf2: #2b4b7a;
   --c-opl: #7a3a2b;
