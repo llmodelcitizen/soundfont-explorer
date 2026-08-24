@@ -38,6 +38,11 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 echo "== bundle (repo @ $GITSHA + dist + wheels)"
 git archive HEAD | tar -x -C "$STAGE"
+# songs/private is gitignored but part of the corpus: without it the box's songs.json
+# rebuild drops private songs from the live site (it did, 2026-08-24 — private-starwars).
+if [[ -d songs/private ]]; then
+  cp -r songs/private "$STAGE/songs/private"
+fi
 mkdir -p "$STAGE/admin/web/dist" "$STAGE/admin/wheels"
 cp -r admin/web/dist/. "$STAGE/admin/web/dist/"
 # wheels for the box: Debian 13 arm64 = CPython 3.13 on aarch64. Pure wheels always match;

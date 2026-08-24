@@ -56,16 +56,44 @@ def sync_down() -> None:
                        check=True)
 
 
-def rebuild_and_publish() -> dict:
+def _expected_absent() -> set[str]:
+    """Ids whose absence from a rebuilt songs.json is an editorial choice: library entries
+    hidden by the admin (the fragment omits them)."""
+    try:
+        from .library import get_library  # noqa: PLC0415  (no import cycle: library never imports us)
+        return {e["id"] for e in get_library().entries() if e.get("hidden")}
+    except Exception:
+        return set()
+
+
+def rebuild_and_publish(expect_dropped: frozenset[str] = frozenset()) -> dict:
     """sfr manifest --songs-json-only from the synced sets, then publish songs.json +
     catalog docs and invalidate. The caller must sync_down() first."""
     cfg = get_config()
     out_public = os.path.join(cfg.repo, "out", "public")
+    try:
+        live_ids = {s["id"] for s in live_songs_json().get("songs", [])}
+    except Exception:
+        live_ids = set()
     p = subprocess.run([sys.executable, "-m", "sfr", "manifest", "--songs-json-only",
                         "--default-song", "freedoom-e1m1", "--default-variant", "adl-b58"],
                        cwd=os.path.join(cfg.repo, "render"), capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(f"manifest --songs-json-only failed: {p.stderr[-1500:]}")
+    # A rebuild can only list songs the snapshot's corpus knows. If the live songs.json has
+    # ids this one would lose — beyond an explicit remove (expect_dropped) or a hidden
+    # library entry — that is a corpus gap on the box (the 2026-08-24 private-starwars
+    # incident: songs/private was missing from the bundle), not an editorial choice:
+    # publishing would silently drop live tracks and prime prune to delete their audio.
+    with open(os.path.join(out_public, "songs.json")) as fh:
+        new_ids = {s["id"] for s in json.load(fh)["songs"]}
+    dropped = sorted(live_ids - new_ids - set(expect_dropped) - _expected_absent())
+    if dropped:
+        raise RuntimeError(
+            f"refusing to publish: rebuild would drop live tracks {dropped[:8]}"
+            + ("…" if len(dropped) > 8 else "")
+            + " — remove them deliberately (Published tab), hide them in the Library, "
+              "or fix the box's corpus first")
     subprocess.run(["aws", "s3", "sync", os.path.join(out_public, "c") + "/",
                     f"s3://{cfg.site_bucket}/c/", "--only-show-errors",
                     "--exclude", "*", "--include", "*.json",
@@ -135,7 +163,7 @@ def remove_track(sid: str) -> dict:
     keys = [o["Key"] for o in _list(f"a/{sid}/")] + [o["Key"] for o in _list(f"s/{sid}/")]
     n = _delete_keys(keys)
     sync_down()
-    report = rebuild_and_publish()
+    report = rebuild_and_publish(expect_dropped=frozenset({sid}))
     return {"id": sid, "deleted_objects": n, "songs_json": report.get("songs_json")}
 
 
