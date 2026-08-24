@@ -953,6 +953,9 @@ kbd {
 .settings .colfoot .btn {
   flex: 0 0 auto;
 }
+.settings .colfoot .colaction {
+  width: 8.5em;
+}
 .settings .colfoot span {
   line-height: 1.3;
 }

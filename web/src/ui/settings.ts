@@ -9,6 +9,7 @@ export interface SettingsCallbacks {
   onChange(p: Prefs): void;
   onResetTrack(): void;
   onResetAll(): void;
+  onResetFont(): void;
   trackTitle(): string;
 }
 
@@ -68,13 +69,15 @@ export class SettingsModal {
     resetAll.addEventListener('click', () => {
       if (confirm('Forget which variants you have listened to, for every track?')) this.cb.onResetAll();
     });
-    const defaultsBtn = h('button', { class: 'btn', type: 'button', title: 'restore the default columns for this layout' }, 'defaults');
+    const defaultsBtn = h('button', { class: 'btn colaction', type: 'button', title: 'restore the default columns for this layout' }, 'defaults');
     defaultsBtn.addEventListener('click', () => {
       const field = compact ? 'mobileColumns' : 'columns';
       this.prefs = { ...this.prefs, [field]: [...DEFAULT_PREFS[field]] };
       this.cb.onChange(this.prefs);
       this.render();
     });
+    const resetFont = h('button', { class: 'btn colaction', type: 'button', title: 'restore the default Modern font' }, 'reset font');
+    resetFont.addEventListener('click', () => this.cb.onResetFont());
     const close = h('button', { class: 'btn close-settings', type: 'button' }, 'close');
     close.addEventListener('click', () => this.toggle(false));
     const wipe = h('button', { class: 'btn danger', type: 'button', title: 'Forget everything this site stored in this browser (settings, favorites, listened marks, pane sizes) and reload' }, 'clear all site data');
@@ -114,6 +117,7 @@ export class SettingsModal {
           }),
         ),
         h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order.')),
+        h('div', { class: 'btnrow colfoot fontfoot' }, resetFont, h('span', { class: 'muted small' }, 'Click or tap the title bar to cycle font selection (modern theme only)')),
       ),
       h('div', { class: 'btnrow' }, close, wipe),
     );

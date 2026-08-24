@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_MODERN_FONT, MODERN_FONTS, MODERN_FONT_KEY, nextModernFont, readModernFont, saveModernFont } from '../../src/ui/modernFont';
+import { clearModernFontPreference, DEFAULT_MODERN_FONT, MODERN_FONTS, MODERN_FONT_KEY, nextModernFont, readModernFont, saveModernFont } from '../../src/ui/modernFont';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -16,11 +16,15 @@ describe('modern font preference', () => {
     vi.stubGlobal('localStorage', {
       getItem: vi.fn((key: string) => values.get(key) ?? null),
       setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+      removeItem: vi.fn((key: string) => values.delete(key)),
     });
     saveModernFont('space-grotesk');
     expect(values.get(MODERN_FONT_KEY)).toBe('space-grotesk');
     expect(readModernFont()).toBe('space-grotesk');
     values.set(MODERN_FONT_KEY, 'removed-font');
     expect(readModernFont()).toBe(DEFAULT_MODERN_FONT);
+    values.set(MODERN_FONT_KEY, 'orbitron');
+    expect(clearModernFontPreference()).toBe(DEFAULT_MODERN_FONT);
+    expect(values.has(MODERN_FONT_KEY)).toBe(false);
   });
 });

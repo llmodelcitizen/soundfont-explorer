@@ -30,7 +30,7 @@ import { adjacentTrackId, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
-import { applyModernFont, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
+import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
 import { audioSession, createContext, installResumeOnGesture, unlock } from '../audio/unlock';
 import { Transport } from './transport';
 
@@ -99,6 +99,11 @@ export class App {
     onResetAll: () => {
       this.ledger.resetAll();
       this.refreshListened();
+    },
+    onResetFont: () => {
+      this.modernFontId = clearModernFontPreference();
+      applyModernFont(this.modernFontId);
+      this.syncFontCycler();
     },
     trackTitle: () => this.song?.title ?? '',
   });

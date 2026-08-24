@@ -312,6 +312,26 @@ async function measure(theme, viewport, label) {
       tabIndex: title instanceof HTMLElement ? title.tabIndex : null,
     };
   });
+  result.settingsFontReset = await page.evaluate(() => {
+    const root = document.documentElement;
+    if (root.dataset.theme === 'modern') document.querySelector('.top .title')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    document.querySelector('.top [aria-label="settings"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const buttons = Array.from(document.querySelectorAll('.settings .colaction'));
+    const defaults = buttons.find((button) => button.textContent?.trim() === 'defaults');
+    const reset = buttons.find((button) => button.textContent?.trim() === 'reset font');
+    const guidance = document.querySelector('.settings .fontfoot span')?.textContent?.trim() ?? null;
+    const box = document.querySelector('.settings')?.getBoundingClientRect();
+    const defaultsBox = defaults?.getBoundingClientRect();
+    const resetBox = reset?.getBoundingClientRect();
+    reset?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return {
+      guidance,
+      equalButtons: !!defaultsBox && !!resetBox && Math.abs(defaultsBox.width - resetBox.width) <= 0.5 && Math.abs(defaultsBox.height - resetBox.height) <= 0.5,
+      resetBelow: !!defaultsBox && !!resetBox && resetBox.top >= defaultsBox.bottom,
+      fitsViewport: !!box && box.top >= 0 && box.bottom <= innerHeight,
+      font: { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') },
+    };
+  });
   await page.close();
   return result;
 }
@@ -337,6 +357,8 @@ for (const [label, viewport] of Object.entries(viewports)) {
       }
     }
     if (snapshot.headerCenters.length > 1) assert(Math.max(...snapshot.headerCenters) - Math.min(...snapshot.headerCenters) <= 1, `${label}/${snapshot.theme}: header controls are not vertically centered`);
+    assert(snapshot.settingsFontReset.guidance === 'Click or tap the title bar to cycle font selection (modern theme only)', `${label}/${snapshot.theme}: font guidance is missing: ${JSON.stringify(snapshot.settingsFontReset)}`);
+    assert(snapshot.settingsFontReset.equalButtons && snapshot.settingsFontReset.resetBelow && snapshot.settingsFontReset.fitsViewport, `${label}/${snapshot.theme}: font reset row geometry is wrong: ${JSON.stringify(snapshot.settingsFontReset)}`);
   }
 
   assert(win95.fonts.msSans && win95.fonts.fixedsys, `${label}/win95: bundled fonts did not load`);
@@ -376,6 +398,7 @@ for (const [label, viewport] of Object.entries(viewports)) {
   });
   assert(modern.fontCycle?.wrapped.id === 'ibm-plex-sans' && modern.fontCycle.wrapped.stored === 'ibm-plex-sans', `${label}/modern: font cycle did not wrap: ${JSON.stringify(modern.fontCycle)}`);
   assert(modern.fontCycle?.role === 'button' && modern.fontCycle.tabIndex === 0, `${label}/modern: font title is not keyboard-accessible: ${JSON.stringify(modern.fontCycle)}`);
+  assert(modern.settingsFontReset.font.id === 'ibm-plex-sans' && modern.settingsFontReset.font.stored === null, `${label}/modern: reset font did not restore the unstored default: ${JSON.stringify(modern.settingsFontReset)}`);
   for (const themed of [win95, amiga]) {
     assert(themed.fontCycle.after.id === themed.fontCycle.before.id && themed.fontCycle.after.stored === null, `${label}/${themed.theme}: title click changed the Modern font preference: ${JSON.stringify(themed.fontCycle)}`);
     assert(themed.fontCycle.role === null && themed.fontCycle.tabIndex === -1, `${label}/${themed.theme}: title incorrectly exposes the Modern font control: ${JSON.stringify(themed.fontCycle)}`);

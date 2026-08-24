@@ -41,6 +41,16 @@ export function saveModernFont(id: ModernFontId): void {
   }
 }
 
+/** Restore the default without leaving a redundant preference behind. */
+export function clearModernFontPreference(): ModernFontId {
+  try {
+    localStorage.removeItem(MODERN_FONT_KEY);
+  } catch {
+    /* private mode */
+  }
+  return DEFAULT_MODERN_FONT;
+}
+
 export function applyModernFont(id: ModernFontId): void {
   const font = modernFont(id);
   document.documentElement.style.setProperty('--modern-font', font.family);
