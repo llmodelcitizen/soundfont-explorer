@@ -1,10 +1,15 @@
 """On-demand audio previews: fluidsynth fast-render piped through ffmpeg to MP3.
 
 MP3 (CBR 128k) because it progressive-streams in every browser <audio> — Safari cannot
-play ogg/opus. Cache hits serve a plain file (instant, seekable); misses stream chunks as
-they are encoded while tee-ing to the cache, so playback starts ~1 s after the click even
-for a long song. Two concurrent renders max (the box has 2 vCPUs); cached serves are
-unbounded. The cache is an mtime-LRU capped at 500 MB.
+play ogg/opus.
+
+Rendering is decoupled from delivery: a background job renders at full speed into a temp
+file (ffmpeg writes it directly — never paced by the client), and the HTTP response tails
+that growing file. The 2-slot render semaphore is therefore held for seconds per track,
+not for as long as a browser keeps a stream open — the first design held a slot at the
+client's pace, so two paused <audio> downloads starved every later preview (2026-08-24).
+Concurrent requests for the same track join the same job. The cache is an mtime-LRU
+capped at 500 MB.
 """
 from __future__ import annotations
 
@@ -12,12 +17,16 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 
 from .config import get_config
 
 CACHE_MAX_BYTES = 500 * 1024 * 1024
+RENDER_TIMEOUT_S = 600
 _render_slots = threading.Semaphore(2)
 _sweep_lock = threading.Lock()
+_active: dict[str, "Job"] = {}
+_active_lock = threading.Lock()
 
 
 def cache_dir() -> str:
@@ -51,44 +60,93 @@ def _sweep() -> None:
             os.remove(p)
 
 
-def stream(midi_path: str, sha256: str):
-    """Generator of MP3 chunks; writes the cache file atomically on clean completion."""
+class Job:
+    def __init__(self, sha256: str) -> None:
+        self.sha256 = sha256
+        self.tmp = cache_path(sha256) + ".tmp"
+        self.done = threading.Event()
+        self.error: str | None = None
+
+
+def ensure(midi_path: str, sha256: str) -> Job | None:
+    """Start (or join) the background render for this track; None if already cached."""
+    if cached(sha256):
+        return None
     if not os.path.exists(get_config().gm_sf2):
         raise FileNotFoundError("no GM soundfont — upload assets/gm.sf2 (docs/ADMIN.md)")
-    with _render_slots:
-        tmp = cache_path(sha256) + ".tmp"
-        synth = ffmpeg = None
+    with _active_lock:
+        job = _active.get(sha256)
+        if job is None:
+            job = Job(sha256)
+            _active[sha256] = job
+            threading.Thread(target=_render, args=(job, midi_path),
+                             name=f"preview-{sha256[:8]}", daemon=True).start()
+        return job
+
+
+def _render(job: Job, midi_path: str) -> None:
+    synth = ffmpeg = None
+    try:
+        with _render_slots:
+            with open(job.tmp, "wb") as out:
+                synth = subprocess.Popen(
+                    ["fluidsynth", "-nli", "-r", "44100", "-O", "s16", "-T", "raw",
+                     "-F", "/dev/stdout", get_config().gm_sf2, midi_path],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                ffmpeg = subprocess.Popen(
+                    ["ffmpeg", "-hide_banner", "-loglevel", "error",
+                     "-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
+                     "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "pipe:1"],
+                    stdin=synth.stdout, stdout=out, stderr=subprocess.DEVNULL)
+                synth.stdout.close()  # ffmpeg owns the pipe; fluidsynth gets SIGPIPE if it dies
+                ff_rc = ffmpeg.wait(timeout=RENDER_TIMEOUT_S)
+                synth_rc = synth.wait(timeout=15)
+        if ff_rc != 0 or synth_rc != 0 or os.path.getsize(job.tmp) == 0:
+            raise RuntimeError(f"render failed (fluidsynth={synth_rc}, ffmpeg={ff_rc})")
+        os.replace(job.tmp, cache_path(job.sha256))
+        _sweep()
+    except Exception as e:
+        job.error = str(e)
         try:
-            synth = subprocess.Popen(
-                ["fluidsynth", "-nli", "-r", "44100", "-O", "s16", "-T", "raw",
-                 "-F", "/dev/stdout", get_config().gm_sf2, midi_path],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            ffmpeg = subprocess.Popen(
-                ["ffmpeg", "-hide_banner", "-loglevel", "error",
-                 "-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
-                 "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "pipe:1"],
-                stdin=synth.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            synth.stdout.close()  # let ffmpeg own the pipe; fluidsynth gets SIGPIPE on abort
-            with open(tmp, "wb") as cache_fh:
-                while True:
-                    chunk = ffmpeg.stdout.read(64 * 1024)
-                    if not chunk:
+            os.remove(job.tmp)
+        except FileNotFoundError:
+            pass
+    finally:
+        for p in (synth, ffmpeg):
+            if p is not None and p.poll() is None:
+                p.kill()
+        job.done.set()
+        with _active_lock:
+            _active.pop(job.sha256, None)
+
+
+def follow(job: Job):
+    """Generator: tail the render's output file as it grows. Never holds a render slot,
+    so a paused or abandoned download costs nothing but this one connection."""
+    fh = None
+    try:
+        while fh is None:  # the job may still be queued for a slot
+            try:
+                fh = open(job.tmp, "rb")
+            except FileNotFoundError:
+                if job.done.is_set():
+                    final = cached(job.sha256)
+                    if final:  # finished + renamed before we ever opened it
+                        fh = open(final, "rb")
                         break
-                    cache_fh.write(chunk)
-                    yield chunk
-            if ffmpeg.wait() == 0 and synth.wait() == 0 and os.path.getsize(tmp) > 0:
-                os.replace(tmp, cache_path(sha256))
-                _sweep()
+                    return  # failed before producing anything; job.error has why
+                time.sleep(0.2)
+        while True:
+            chunk = fh.read(64 * 1024)
+            if chunk:
+                yield chunk
+            elif job.done.is_set():
+                break  # EOF and the writer is gone (rename keeps our inode valid)
             else:
-                os.remove(tmp)
-        except GeneratorExit:  # client went away mid-stream
-            if os.path.exists(tmp):
-                os.remove(tmp)
-            raise
-        finally:
-            for p in (synth, ffmpeg):
-                if p is not None and p.poll() is None:
-                    p.kill()
+                time.sleep(0.1)
+    finally:
+        if fh is not None:
+            fh.close()
 
 
 def doctor() -> dict:

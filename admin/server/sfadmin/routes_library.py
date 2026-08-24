@@ -146,9 +146,12 @@ def preview_mp3(sid: str):
     if not os.path.exists(path):
         raise HTTPException(404, f"{entry['path']} missing from the local mirror")
     try:
-        return StreamingResponse(preview.stream(path, entry["sha256"]), media_type="audio/mpeg")
+        job = preview.ensure(path, entry["sha256"])
     except FileNotFoundError as e:
         raise HTTPException(503, str(e)) from e
+    if job is None:  # cached between the check and ensure()
+        return FileResponse(preview.cached(entry["sha256"]), media_type="audio/mpeg")
+    return StreamingResponse(preview.follow(job), media_type="audio/mpeg")
 
 
 @router.get("/api/library.zip")

@@ -77,6 +77,7 @@ export class LibraryView {
   private selected = new Set<string>();
   private anchor: string | null = null;
   private cursor = -1;
+  private keyboardNav = false;
   private filter = '';
   private open = new Set<string>();
   private autoplay = false;
@@ -172,6 +173,7 @@ export class LibraryView {
       case 'ArrowDown':
       case 'ArrowUp': {
         ev.preventDefault();
+        this.keyboardNav = true;
         const dir = ev.key === 'ArrowDown' ? 1 : -1;
         const next = Math.min(this.rows.length - 1, Math.max(0, this.cursor + dir));
         if (next === this.cursor) return;
@@ -187,6 +189,7 @@ export class LibraryView {
         const row = this.rows[this.cursor];
         if (row?.kind === 'folder') {
           ev.preventDefault();
+          this.keyboardNav = true;
           if (!this.open.has(row.path)) {
             this.open.add(row.path);
             this.saveOpen();
@@ -201,6 +204,7 @@ export class LibraryView {
       case 'ArrowLeft': {
         const row = this.rows[this.cursor];
         ev.preventDefault();
+        this.keyboardNav = true;
         if (row?.kind === 'folder' && this.open.has(row.path)) {
           this.open.delete(row.path);
           this.saveOpen();
@@ -342,8 +346,15 @@ export class LibraryView {
     const panel = this.selected.size > 1 ? this.bulkPanel()
       : one ? this.details(one)
         : el('div', { class: 'detail empty' }, 'select a track · ↑↓ move · ←→ fold · space play · c canon · h hide · d delete');
+    // re-rendering must not move the list under the mouse: restore the tree's scroll
+    // position, and only chase the cursor when navigation came from the keyboard
+    const prevScroll = (this.root.querySelector('.tree') as HTMLElement | null)?.scrollTop ?? 0;
     this.root.replaceChildren(this.toolbar(refused.length), el('div', { class: 'cols' }, tree, panel));
-    this.root.querySelector('.row.cur, .folder.cur')?.scrollIntoView({ block: 'nearest' });
+    tree.scrollTop = prevScroll;
+    if (this.keyboardNav) {
+      this.keyboardNav = false;
+      this.root.querySelector('.row.cur, .folder.cur')?.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   private toolbar(refusedCount: number): HTMLElement {

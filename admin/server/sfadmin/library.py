@@ -375,10 +375,13 @@ class Library:
         # canon reads songs/import/FILES/<path>; bootstrap symlinks that to the library dir
         with self.lock:
             lib_json = cfg.library_json
-        cmd = [sys.executable, os.path.join(repo, "songs", "tools", "fragment.py"),
-               "--library", lib_json]
+        # niced: a full canon run pegs the CPU for minutes and interactive previews
+        # (fluidsynth) should win that contest
+        cmd = ["nice", "-n", "10", sys.executable,
+               os.path.join(repo, "songs", "tools", "fragment.py"), "--library", lib_json]
         subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=repo)
-        cmd = [sys.executable, os.path.join(repo, "songs", "tools", "canon.py"), "--lenient"]
+        cmd = ["nice", "-n", "10", sys.executable,
+               os.path.join(repo, "songs", "tools", "canon.py"), "--lenient"]
         for sid in only or []:
             cmd += ["--only", sid]
         p = subprocess.run(cmd, capture_output=True, text=True, cwd=repo)
