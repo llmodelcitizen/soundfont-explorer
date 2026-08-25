@@ -880,9 +880,26 @@ select:focus-visible {
 .keymap td {
   padding: 2px 10px 2px 0;
 }
+/* A dialog with a close button at the foot scrolls its middle, never the button: the Amiga's
+   full-size key gadgets make the keys list taller than a phone (and than 800 px), and a close
+   button scrolled out of the box is a dialog with no visible way out (#33). */
+.overlay-box.keys,
+.overlay-box.share {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.keys .keymap-scroll,
+.share .share-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 .keymap-foot,
 .share-foot {
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
   margin-top: 14px;
 }

@@ -76,7 +76,9 @@ export class App {
   private trackScrollTop = 0;
   private rightPane!: HTMLElement;
   private debug = new DebugPanel();
-  private keymap = new KeymapOverlay();
+  // it closes with a button of its own: focus has to come back to the list, or the browser
+  // drops it on <body> when the button it is on becomes display:none
+  private keymap = new KeymapOverlay({ onClose: () => this.focusList() });
   private share = new ShareDialog({ links: () => shareLinks(this.urlState()) });
   private prefs: Prefs = loadPrefs();
   private trackPositions = new TrackPositions();

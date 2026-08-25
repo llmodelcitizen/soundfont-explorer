@@ -357,6 +357,38 @@ async function measure(theme, viewport, label) {
       font: { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') },
     };
   });
+  // issue #33: the dialog opens for real (the button, not a class flip), so what is
+  // asserted is what someone actually sees — the close button inside the box and on screen.
+  result.dialogs = await page.evaluate(() => {
+    const box = (element) => {
+      if (!element) return null;
+      const r = element.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+    };
+    // an element is only usable if it is inside its dialog's visible box *and* inside the viewport
+    const reachable = (outer, inner) => !!outer && !!inner && inner.top >= outer.top - 0.5 && inner.bottom <= outer.bottom + 0.5 && inner.top >= -0.5 && inner.bottom <= innerHeight + 0.5;
+    const click = (selector) => document.querySelector(selector)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    click('.settings .close-settings');
+    const probe = (openSelector, boxSelector, closeSelector) => {
+      click(openSelector);
+      const dialog = document.querySelector(boxSelector);
+      if (!dialog) return null;
+      const outer = box(dialog);
+      const inner = box(dialog.querySelector(closeSelector));
+      const state = {
+        // a box that has to scroll to reach its own close button has hidden the way out
+        scrolls: dialog.scrollHeight > dialog.clientHeight + 0.5,
+        scrollTop: dialog.scrollTop,
+        closeReachable: reachable(outer, inner),
+        closeFocused: document.activeElement === dialog.querySelector(closeSelector),
+        fitsViewport: !!outer && outer.top >= -0.5 && outer.bottom <= innerHeight + 0.5,
+      };
+      return { dialog, state };
+    };
+    const keys = probe('.top [title="keys (?)"]', '.overlay-box.keys', '.close-keymap');
+    click('.close-keymap');
+    return { keys: keys?.state ?? null };
+  });
   await page.close();
   return result;
 }
@@ -531,9 +563,16 @@ for (const [label, viewport] of Object.entries(viewports)) {
     assert(titleBar && new Set(titleBar.buttonHeights.map((h) => Math.round(h))).size === 1, `${label}/${themed.theme}: debug title-bar buttons are not the same height: ${JSON.stringify(titleBar)}`);
     assert(titleBar && new Set(titleBar.buttonFontSizes).size === 1, `${label}/${themed.theme}: debug title-bar buttons do not share one font size: ${JSON.stringify(titleBar)}`);
   }
-  // issue #33: the keys screen closes with a real button in every theme, not a line of prose
+  // issue #33: the keys screen closes with a real button in every theme, not a line of prose —
+  // and the button is where the eye is, not scrolled out of the box (an element far below the
+  // dialog's visible area still measures non-null, which is what let the Amiga overflow ship).
   for (const themed of [modern, win95, amiga]) {
     assert(themed.keymapKeys?.hasCloseButton && !themed.keymapKeys.legacyHint, `${label}/${themed.theme}: the keys screen has no close button: ${JSON.stringify(themed.keymapKeys)}`);
+    const keys = themed.dialogs?.keys;
+    assert(keys?.closeReachable, `${label}/${themed.theme}: the keys screen's close button is not inside the visible box: ${JSON.stringify(keys)}`);
+    assert(keys?.closeFocused, `${label}/${themed.theme}: the keys screen does not open with its close button focused: ${JSON.stringify(keys)}`);
+    assert(keys && !keys.scrolls, `${label}/${themed.theme}: the keys box scrolls itself instead of scrolling its list: ${JSON.stringify(keys)}`);
+    assert(keys?.fitsViewport, `${label}/${themed.theme}: the keys screen does not fit the viewport: ${JSON.stringify(keys)}`);
   }
   // issue #38: amiga only — one roomy, uniform gadget per shortcut, the key centred inside it,
   // at the same type size as everywhere else, and none of it leaking into the other two themes.
