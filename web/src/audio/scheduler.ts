@@ -81,13 +81,15 @@ export class Chain {
   /** Decoded buffer for the segment covering u, best tier first. */
   pick(u: number): { seg: Segment; key: SegKey; buf: BufferLike } | null {
     const tiers: Tier[] = this.preferTier === 'l' ? ['l', 's'] : ['s', 'l'];
-    for (const tier of tiers) {
+    const cands = tiers.map((tier) => {
       const seg = segmentAt(this.set, tier, u);
-      const key = { v: this.variant, tier, i: seg.i };
-      const buf = this.store.peek(key);
-      if (buf) return { seg, key, buf };
-    }
-    return null;
+      return { seg, key: { v: this.variant, tier, i: seg.i } };
+    });
+    // one counted lookup per pick: probing the preferred tier with has() keeps a scrub-tier hit
+    // from also counting as a listen-tier miss (which pinned the debug panel's hit rate near 50 %)
+    const c = cands.find((x) => this.store.has(x.key)) ?? cands[0]!;
+    const buf = this.store.peek(c.key);
+    return buf ? { seg: c.seg, key: c.key, buf } : null;
   }
 
   /**
@@ -142,6 +144,10 @@ export class Chain {
         this.waitingFor = { v: this.variant, tier: 's', i: want.i };
         return this.waitingFor;
       }
+      // a set whose slices do not cover its duration (or a zero slice length) yields a last
+      // segment ending at or before the tail: scheduling it could never advance, so stop here
+      // instead of spinning forever (the `!(a > b)` form also catches NaN)
+      if (!(p.seg.uEnd > this.tail)) break;
       const tSeam = this.timeline.timeAt(this.tail);
       this.scheduleSegment(p.seg, p.key, p.buf, this.tail, tSeam, /*rampIn*/ true);
     }

@@ -80,6 +80,11 @@ export class SegmentStore {
     return this.decoded.peek(keyStr(key));
   }
 
+  /** decoded and cached, without touching the hit/miss counters */
+  has(key: SegKey): boolean {
+    return this.decoded.has(keyStr(key));
+  }
+
   pin(key: SegKey): void {
     this.decoded.pin(keyStr(key));
   }
