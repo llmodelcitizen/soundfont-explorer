@@ -3,7 +3,7 @@
 # from s3://<admin-bucket>/app/bootstrap.sh — deploy.sh keeps that copy current), with
 # SFADMIN_BUCKET and AWS_DEFAULT_REGION in the environment. Re-runnable; every phase
 # writes progress to /run/sfadmin/bootstrap.json, which the app's wait screen polls.
-set -euo pipefail
+set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 : "${SFADMIN_BUCKET:?set by the seed unit}"
@@ -19,7 +19,14 @@ status() {
   printf '{"phase":"%s","pct":%d,"msg":"%s"}\n' "$1" "$2" "$3" > "$STATUS.tmp"
   mv "$STATUS.tmp" "$STATUS"
   echo "bootstrap: $1 ($2%) $3"
+  PHASE=$1
 }
+# A phase that dies must say so on the wait screen, not sit at its last percentage forever.
+# The status file doubles as the app's gate: routes that touch the library (canon runs
+# included) 503 until it says ready, so a box whose restore failed can never persist a
+# stale songs/ tree over the bucket copy (#16).
+PHASE=start
+trap 'status failed 0 "bootstrap died during $PHASE (journalctl -u sfadmin-seed)"' ERR
 
 status packages 5 "installing packages"
 apt-get update -qq
@@ -115,11 +122,17 @@ aws s3 cp "s3://$SFADMIN_BUCKET/assets/gm.sf2" "$DATA/gm.sf2" \
   || echo "WARN: no assets/gm.sf2 in the bucket (previews disabled) — see docs/ADMIN.md"
 # canon products (songs.json, canonical MIDIs, fragment, report) are derived state the
 # app persists to canon/ after each run; without this restore the render list resets to
-# the bundle's committed 25-song stub on every boot
-aws s3 sync "s3://$SFADMIN_BUCKET/canon/rendered/" "$APP/songs/rendered/" --size-only || true
+# the bundle's committed 25-song stub on every boot. A restore that fails must fail the
+# boot (#16): the app would otherwise run canon over the stub and persist that. Only a
+# key that does not exist yet (fresh bucket, no Canon check so far) is tolerated.
+aws s3 sync "s3://$SFADMIN_BUCKET/canon/rendered/" "$APP/songs/rendered/" --size-only
 for f in songs.json corpus-imports.json canon-report.json; do
-  aws s3 cp "s3://$SFADMIN_BUCKET/canon/$f" "$APP/songs/$f" 2>/dev/null \
-    || echo "note: no canon/$f in the bucket yet (run a Canon check)"
+  if ! err=$(aws s3 cp "s3://$SFADMIN_BUCKET/canon/$f" "$APP/songs/$f" --only-show-errors 2>&1); then
+    case $err in
+      *"(404)"*|*NoSuchKey*) echo "note: no canon/$f in the bucket yet (run a Canon check)" ;;
+      *) echo "$err" >&2; false ;;
+    esac
+  fi
 done
 chown -R sfadmin:sfadmin "$APP/songs" "$DATA" /var/cache/sfadmin
 
