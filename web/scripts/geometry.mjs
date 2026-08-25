@@ -899,6 +899,50 @@ async function steppingKeepsPlayingAndKeepsTheKeyboard() {
 
 await steppingKeepsPlayingAndKeepsTheKeyboard();
 
+/**
+ * The newest switch wins. Two song loads can be in flight at once now that one of them starts by
+ * itself — the automatic step's fetch, and a track the user picks while it is still loading — and
+ * whichever set document arrived last used to rebuild the UI over the other. Here the first pick
+ * is served slowly and the second quickly, so without the guard the app ends up on the track the
+ * user moved away from.
+ */
+async function theNewestSwitchWins() {
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`desktop/switching: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const songs = await page.$eval('.songpicker', (select) => Array.from(select.options).map((option) => option.value));
+  if (songs.length < 3) {
+    process.stderr.write('desktop/modern: fewer than three songs served — skipping the concurrent-switch check\n');
+    await page.close();
+    return;
+  }
+  const [, slow, quick] = songs;
+  await page.route('**/s/**/*.json', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, route.request().url().includes(`/s/${slow}/`) ? 2500 : 100));
+    await route.continue();
+  });
+  const pick = (id) => page.evaluate((value) => {
+    const picker = document.querySelector('.songpicker');
+    picker.value = value;
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  }, id);
+  await pick(slow);
+  await page.waitForTimeout(150);
+  await pick(quick);
+  await page.waitForTimeout(3500);
+  const landed = await page.evaluate(() => ({
+    picker: document.querySelector('.songpicker').value,
+    song: new URLSearchParams(location.search).get('song'),
+  }));
+  assert(landed.picker === quick && (landed.song === null || landed.song === quick), `desktop/switching: a slower earlier switch rebuilt over the track the user picked: ${JSON.stringify({ ...landed, slow, quick })}`);
+  await page.close();
+}
+
+await theNewestSwitchWins();
+
 
 for (const [label, viewport] of Object.entries(viewports)) {
   const modern = await measure('modern', viewport, label);

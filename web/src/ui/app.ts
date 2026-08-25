@@ -141,6 +141,8 @@ export class App {
   private header!: HTMLElement;
   private title!: HTMLElement;
   private uninstallKeys: (() => void) | null = null;
+  /** ticket of the newest song switch: an older one that finishes later must not rebuild over it */
+  private loadSeq = 0;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -279,17 +281,23 @@ export class App {
   private async loadSong(id: string, opts: { setDoc?: SetDoc; variant?: string; t?: number; keepIndex?: number; play?: boolean; auto?: boolean }): Promise<void> {
     const entry = this.songs.songs.find((s) => s.id === id);
     if (!entry) return;
+    // Two switches can be in flight at once now that one of them starts by itself: the automatic
+    // step's fetch, and a track the user picks while it is still loading. The newest one asked
+    // for wins, whichever set document arrives first.
+    const seq = ++this.loadSeq;
     let set = opts.setDoc;
     if (!set) {
       try {
         set = parseSet(await getJson(entry.set));
       } catch (e) {
+        if (seq !== this.loadSeq) return;
         // keep playing the current song; tell the user
         this.transport.setStatus(`could not load ${entry.title}: ${(e as Error).message}`, 'wontload');
         this.picker.set(this.song.id);
         return;
       }
     }
+    if (seq !== this.loadSeq) return;
     // Boot honors the URL position; later switches pass this track's own saved position (or zero).
     const targetPos = opts.t ?? 0;
     // `play` forces playback on the new song: the auto-step happens after the old one has ended (not playing)
