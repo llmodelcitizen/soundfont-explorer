@@ -81,6 +81,12 @@ export function libraryDoc(entries: Entry[]): LibraryDoc {
   return { updated_at: null, entries, preview: { fluidsynth: true, ffmpeg: true, gm_sf2: true } };
 }
 
+/** Let already-scheduled microtasks settle, e.g. before asserting that a rejection was
+ *  deliberately ignored (there is no state change to wait for in that case). */
+export async function drain(turns = 20): Promise<void> {
+  for (let i = 0; i < turns; i++) await Promise.resolve();
+}
+
 /** Resolve once `pred` holds (polling microtasks), or fail after `tries` turns. */
 export async function until(pred: () => boolean, tries = 50): Promise<void> {
   for (let i = 0; i < tries; i++) {

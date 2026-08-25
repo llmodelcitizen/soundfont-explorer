@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryView } from '../../src/library';
-import { Fail, FakeFetch, entry, libraryDoc, until } from './fakes';
+import { Fail, FakeFetch, drain, entry, libraryDoc, until } from './fakes';
 
 const doc = () => libraryDoc([
   entry('a1', 'alpha/one.mid'),
@@ -222,5 +222,42 @@ describe('LibraryView canon poll', () => {
     expect(status(view).textContent).toMatch(/lost track of the run after 10 failed/);
     expect(status(view).classList.contains('error')).toBe(true);
     expect(ff.count('GET', '/api/library')).toBe(1); // no reload without a result
+  });
+});
+
+describe('LibraryView session expiry', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('sfadmin.folders.v1', JSON.stringify(['alpha', 'beta']));
+  });
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves a 401 to the login redirect instead of painting it as a failure', async () => {
+    // api.ts has already set location.href by the time the 401 is thrown, so painting it
+    // only flashes an error up while the browser is on its way out. boot(), the shell's
+    // tab-failure notice and the canon status poll all skip it; the POST/PATCH paths that
+    // start an action have to as well.
+    const ff = new FakeFetch().on('GET', '/api/library', doc)
+      .on('POST', '/api/library/canon', () => { throw new Fail(401, 'session expired'); })
+      .on('PATCH', '/api/library/a1', () => { throw new Fail(401, 'session expired'); });
+    const view = mount(ff);
+    await view.load();
+    vi.stubGlobal('location', { href: '' });
+
+    button(view, 'Canon check').click();
+    await until(() => location.href === '/auth/login');
+    await drain();
+    expect(status(view).textContent).toBe('canon: starting…');
+    expect(status(view).classList.contains('error')).toBe(false);
+
+    view.root.querySelector<HTMLElement>('.row')!.click(); // select alpha/one.mid
+    button(view, 'Save metadata').click();
+    await until(() => ff.count('PATCH', '/api/library/a1') === 1);
+    await drain();
+    expect(status(view).textContent).toBe('save…');
+    expect(status(view).classList.contains('error')).toBe(false);
   });
 });

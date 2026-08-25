@@ -131,7 +131,9 @@ export class LibraryView {
       this.note(`${label}: done`);
       return true;
     } catch (e) {
-      this.note(`${label}: ${(e as Error).message}`, true);
+      // an expired session is not this action's failure: api.ts has already sent the
+      // browser to /auth/login, so the message would only flash up on the way out
+      if (!isSessionExpired(e)) this.note(`${label}: ${(e as Error).message}`, true);
       return false;
     }
   }
@@ -534,7 +536,7 @@ export class LibraryView {
       this.note('canon: starting…');
       await post('/api/library/canon', ids ? { ids } : {});
     } catch (e) {
-      this.note(`canon: ${(e as Error).message}`, true);
+      if (!isSessionExpired(e)) this.note(`canon: ${(e as Error).message}`, true);
       return;
     }
     // Claim the generation only once the POST has actually started a run. The server runs
