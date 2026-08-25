@@ -417,6 +417,37 @@ resource "aws_sns_topic_subscription" "email" {
   endpoint  = var.alert_email
 }
 
+# Budgets publishes as a service principal, which the topic's default policy (this account's own
+# AWS principals, via AWS:SourceOwner) does not cover: the Budgets API accepts the SNS subscriber
+# and the notification then silently never reaches the topic. Replacing the default policy is
+# harmless, the watchdog publishes through its own IAM role and Terraform subscribes as the owner.
+data "aws_iam_policy_document" "alerts" {
+  statement {
+    sid       = "AWSBudgetsSNSPublishingPermissions"
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.alerts.arn]
+    principals {
+      type        = "Service"
+      identifiers = ["budgets.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:budgets::${data.aws_caller_identity.current.account_id}:budget/${local.name}-monthly"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "alerts" {
+  arn    = aws_sns_topic.alerts.arn
+  policy = data.aws_iam_policy_document.alerts.json
+}
+
 data "archive_file" "watchdog" {
   type        = "zip"
   source_file = "${path.module}/lambda/handler.py"
@@ -556,6 +587,9 @@ resource "aws_budgets_budget" "render" {
       subscriber_sns_topic_arns  = [aws_sns_topic.alerts.arn]
     }
   }
+
+  # the topic must be publishable by Budgets before the budget starts pointing at it
+  depends_on = [aws_sns_topic_policy.alerts]
 }
 
 output "fonts_bucket" { value = aws_s3_bucket.fonts.id }
