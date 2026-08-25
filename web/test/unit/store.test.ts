@@ -29,6 +29,29 @@ describe('SegmentStore', () => {
     expect(h.store.lastError).toMatch(/a\/s\/0/);
   });
 
+  it('a fetch-only success clears the key\u2019s failure count instead of ratcheting the backoff', async () => {
+    // a key that only ever travels the fetch-only prefetch path must reset like request() does,
+    // or unrelated transient errors walk the backoff towards the 30 s cap over a session
+    const h = storeFor(['a', 'b']);
+    const url = packUrl(h.set, 'g0', 0);
+    const key = { v: 'a', tier: 's' as const, i: 0 };
+    const want = async () => {
+      h.store.want([{ key, priority: 5, fetchOnly: true }]);
+      await flush(20);
+    };
+    h.ff.failUrls.add(url);
+    await want();
+    expect(h.store.backoffMs(key)).toBe(1000); // first failure: base backoff
+    h.tick(1000);
+    h.ff.failUrls.delete(url);
+    await want();
+    expect(h.store.backoffMs(key)).toBe(0); // fetched fine: the key is clean again
+    h.store.compressed.clear();
+    h.ff.failUrls.add(url);
+    await want();
+    expect(h.store.backoffMs(key)).toBe(1000); // a later failure starts over, not at 2000
+  });
+
   it('splits a whole pack once, however many members were waiting on the same fetch', async () => {
     const ids = Array.from({ length: 24 }, (_, i) => `v${i}`);
     const h = storeFor(ids);
