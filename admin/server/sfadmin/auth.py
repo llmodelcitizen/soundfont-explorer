@@ -2,8 +2,9 @@
 
 Deliberately stdlib for the protocol pieces: two urllib calls to GitHub, hmac/base64 for
 the cookies. Only a GitHub account with a *verified* email on the SSM allowlist gets a
-session. Sessions are stateless signed cookies — nothing to persist, nothing to leak on
-the ephemeral box.
+session, and the allowlist is re-checked on every request (config re-reads SSM every
+SSM_TTL_S), so removing an address revokes access within a minute. Sessions are stateless
+signed cookies — nothing to persist, nothing to leak on the ephemeral box.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from .config import get_config
-from .tokens import sign as _sign, verify as _verify
+from .tokens import allowed_session_email, sign as _sign, verify as _verify
 
 SESSION_COOKIE = "sfadmin_s"
 STATE_COOKIE = "sfadmin_o"
@@ -31,11 +32,8 @@ router = APIRouter()
 # ---------------------------------------------------------------- sessions
 
 def session_email(request: Request) -> str | None:
-    token = request.cookies.get(SESSION_COOKIE)
-    if not token:
-        return None
-    payload = _verify(token, get_config().session_key)
-    return payload.get("email") if payload else None
+    cfg = get_config()
+    return allowed_session_email(request.cookies.get(SESSION_COOKIE), cfg.session_key, cfg.allowed_emails)
 
 
 def _set_cookie(resp: Response, name: str, value: str, max_age: int) -> None:

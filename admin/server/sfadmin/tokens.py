@@ -28,3 +28,16 @@ def verify(token: str, key: bytes) -> dict | None:
         return payload
     except Exception:
         return None
+
+
+def allowed_session_email(token: str | None, key: bytes, allowed: set[str]) -> str | None:
+    """The session's email when the cookie verifies AND the address is still on the
+    allow-list. Checked on every request, not only at login: a valid MAC + exp alone would
+    keep a removed address in for the cookie's whole lifetime (7 days)."""
+    if not token:
+        return None
+    payload = verify(token, key)
+    email = (payload or {}).get("email")
+    if not isinstance(email, str) or email.lower() not in allowed:
+        return None
+    return email

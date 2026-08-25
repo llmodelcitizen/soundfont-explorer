@@ -10,16 +10,23 @@ Environment contract:
   AWS_DEFAULT_REGION
 
 Secrets live in SSM SecureStrings under /soundfont-explorer/admin/ (github_client_id,
-github_client_secret, session_key, allowed_emails), fetched once and cached — created by
-hand, never in Terraform state (docs/ADMIN.md).
+github_client_secret, session_key, allowed_emails) — created by hand, never in Terraform
+state (docs/ADMIN.md). They are cached for SSM_TTL_S, not for the process lifetime: an
+address removed from allowed_emails or a rotated session_key must take effect on the
+running box without a restart (docs/ADMIN.md "Revoking access").
 """
 from __future__ import annotations
 
+import logging
 import os
 import threading
+import time
 from functools import lru_cache
 
 SSM_PREFIX = "/soundfont-explorer/admin/"
+SSM_TTL_S = float(os.environ.get("SFADMIN_SSM_TTL_S", "60"))
+
+log = logging.getLogger("sfadmin.config")
 
 
 def env(name: str, default: str | None = None) -> str:
@@ -48,7 +55,7 @@ class Config:
         self.compute_env = os.environ.get("SFADMIN_COMPUTE_ENV", "")
         self.log_group = os.environ.get("SFADMIN_LOG_GROUP", "")
         self._ssm_lock = threading.Lock()
-        self._ssm: dict[str, str] = {}
+        self._ssm: dict[str, tuple[float, str]] = {}   # name -> (fetched at, value)
 
     @property
     def render_enabled(self) -> bool:
@@ -64,12 +71,30 @@ class Config:
     def ssm(self):
         return _client("ssm")
 
+    _now = staticmethod(time.monotonic)   # tests substitute a fake clock
+
+    def _fetch_secret(self, name: str) -> str:
+        p = self.ssm.get_parameter(Name=SSM_PREFIX + name, WithDecryption=True)
+        return p["Parameter"]["Value"]
+
     def secret(self, name: str) -> str:
+        """An SSM SecureString, re-read every SSM_TTL_S. A refresh that fails keeps serving
+        the last good value (an SSM blip must not lock everyone out); only a first read
+        with nothing cached raises."""
         with self._ssm_lock:
-            if name not in self._ssm:
-                p = self.ssm.get_parameter(Name=SSM_PREFIX + name, WithDecryption=True)
-                self._ssm[name] = p["Parameter"]["Value"]
-            return self._ssm[name]
+            hit = self._ssm.get(name)
+            now = self._now()
+            if hit is not None and now - hit[0] < SSM_TTL_S:
+                return hit[1]
+            try:
+                value = self._fetch_secret(name)
+            except Exception:
+                if hit is None:
+                    raise
+                log.warning("SSM refresh of %s failed; keeping the cached value", name, exc_info=True)
+                value = hit[1]
+            self._ssm[name] = (now, value)
+            return value
 
     @property
     def session_key(self) -> bytes:
