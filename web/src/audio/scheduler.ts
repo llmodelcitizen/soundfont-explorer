@@ -59,6 +59,9 @@ export class Chain {
   /** set when fill() is waiting for a buffer */
   waitingFor: SegKey | null = null;
   lateStarts = 0;
+  /** times fill() stopped because no segment could advance the tail (a set that does not cover
+   *  its own duration): playback then simply runs out, so it is counted and reported */
+  coverageStalls = 0;
   /** voice fade-in automation (for an analytic gain value when releasing mid-fade) */
   private fadeInT0 = 0;
   private fadeInDur = 0;
@@ -146,8 +149,15 @@ export class Chain {
       }
       // a set whose slices do not cover its duration (or a zero slice length) yields a last
       // segment ending at or before the tail: scheduling it could never advance, so stop here
-      // instead of spinning forever (the `!(a > b)` form also catches NaN)
-      if (!(p.seg.uEnd > this.tail)) break;
+      // instead of spinning forever (the `!(a > b)` form also catches NaN). Breaking out looks
+      // to the engine exactly like "fully scheduled", i.e. audio just runs out at the tail with
+      // no status of its own, so record it where the debug panel already reads (store.lastError)
+      // rather than letting a malformed set fail silently.
+      if (!(p.seg.uEnd > this.tail)) {
+        this.coverageStalls++;
+        this.store.lastError = `${keyStr(p.key)}: segment ends at ${p.seg.uEnd} ≤ tail ${this.tail} — the set's slices do not cover its duration`;
+        break;
+      }
       const tSeam = this.timeline.timeAt(this.tail);
       this.scheduleSegment(p.seg, p.key, p.buf, this.tail, tSeam, /*rampIn*/ true);
     }

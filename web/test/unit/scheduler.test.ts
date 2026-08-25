@@ -38,6 +38,20 @@ describe('Chain.fill', () => {
     expect(h.chain.scheduled.length).toBe(scheduled);
   });
 
+  it('reports the uncovered stretch instead of stalling silently', () => {
+    // breaking out of fill() is indistinguishable from "fully scheduled" for the engine: audio
+    // simply runs out at the tail, so the stall must reach the debug panel (store.lastError)
+    const h = chainFor(8);
+    h.set.slices = 2;
+    h.ctx.currentTime = 4;
+    expect(h.store.lastError).toBeNull();
+    h.chain.fill(4);
+    expect(h.chain.coverageStalls).toBe(1);
+    expect(h.store.lastError).toMatch(/a\/s\/1: segment ends at 4 ≤ tail 4 .* do not cover its duration/);
+    h.chain.fill(4);
+    expect(h.chain.coverageStalls).toBe(2);
+  });
+
   it('fills a well-formed set up to the lookahead', () => {
     const h = chainFor(8);
     expect(h.chain.fill(0)).toBeNull();
