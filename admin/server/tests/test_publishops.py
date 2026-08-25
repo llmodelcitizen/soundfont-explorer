@@ -276,6 +276,22 @@ class PublishOpsTests(unittest.TestCase):
         publishops.rebuild_and_publish()
         self.assertEqual(self.site.live_ids(), ["alpha", "beta"])
 
+    # -- overview
+
+    def test_overview_reports_a_fresh_site_but_not_a_read_failure(self):
+        """With no songs.json the listings are the whole story. A transient S3 error is NOT
+        that: reporting an empty live set would chip every track "discrepancy" and invite a
+        Remove — which deletes its audio — so it has to surface as an error instead."""
+        del self.site.objects["songs.json"]
+        self.assertEqual([t["id"] for t in publishops.overview()["tracks"]], ["alpha", "beta"])
+
+        def boom(key):
+            raise RuntimeError("503 SlowDown")
+
+        with mock.patch.object(publishops, "_get_json", boom):
+            with self.assertRaisesRegex(RuntimeError, "SlowDown"):
+                publishops.overview()
+
     # -- prune
 
     def test_prune_keeps_what_the_live_sets_name(self):

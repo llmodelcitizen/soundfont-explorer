@@ -89,14 +89,10 @@ def sync_down() -> None:
     out_public = os.path.join(cfg.repo, "out", "public")
     os.makedirs(out_public, exist_ok=True)
     with OPS_LOCK:
-        _sync_down_locked(cfg, out_public)
-
-
-def _sync_down_locked(cfg, out_public: str) -> None:
-    for pre in ("s", "c"):
-        subprocess.run(["aws", "s3", "sync", f"s3://{cfg.site_bucket}/{pre}/",
-                        os.path.join(out_public, pre) + "/", "--delete", "--only-show-errors"],
-                       check=True)
+        for pre in ("s", "c"):
+            subprocess.run(["aws", "s3", "sync", f"s3://{cfg.site_bucket}/{pre}/",
+                            os.path.join(out_public, pre) + "/", "--delete",
+                            "--only-show-errors"], check=True)
 
 
 def _run_manifest() -> dict:
@@ -194,8 +190,10 @@ def overview() -> dict:
     """Live songs.json ⨝ S3 listings, with a discrepancy report."""
     try:
         live = live_songs_json()
-    except Exception:
-        live = {"songs": []}
+    except NoSongsJson:
+        live = {"songs": []}   # a fresh site: the listings below are the whole story
+    # Any other read failure propagates: "songs.json says nothing is published" would flag
+    # every track as a discrepancy and invite a Remove that deletes live audio.
     by_id = {s["id"]: s for s in live.get("songs", [])}
     audio: dict[str, dict] = {}
     for o in _list("a/"):
