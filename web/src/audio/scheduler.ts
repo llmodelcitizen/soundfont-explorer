@@ -59,6 +59,12 @@ export class Chain {
   /** set when fill() is waiting for a buffer */
   waitingFor: SegKey | null = null;
   lateStarts = 0;
+  /** times fill() stopped because no segment could advance the tail (a set that does not cover
+   *  its own duration): playback then simply runs out, so it is counted (here and on the store,
+   *  where the debug panel reads it) and reported once */
+  coverageStalls = 0;
+  /** stretch already reported through store.lastError, so a stall does not rewrite it per tick */
+  private stallReported: string | null = null;
   /** voice fade-in automation (for an analytic gain value when releasing mid-fade) */
   private fadeInT0 = 0;
   private fadeInDur = 0;
@@ -78,16 +84,27 @@ export class Chain {
     this.gen = timeline.gen;
   }
 
-  /** Decoded buffer for the segment covering u, best tier first. */
-  pick(u: number): { seg: Segment; key: SegKey; buf: BufferLike } | null {
+  /**
+   * Decoded buffer for the segment covering u, best tier first. With `advancing`, a tier whose
+   * segment ends at or before u is passed over while another tier's does not: one tier's slices
+   * can fall short of the duration while the other's cover it, and fill() must then be able to
+   * use the covering tier instead of stopping on whichever one pick() happened to prefer.
+   */
+  pick(u: number, advancing = false): { seg: Segment; key: SegKey; buf: BufferLike } | null {
     const tiers: Tier[] = this.preferTier === 'l' ? ['l', 's'] : ['s', 'l'];
-    for (const tier of tiers) {
+    let cands = tiers.map((tier) => {
       const seg = segmentAt(this.set, tier, u);
-      const key = { v: this.variant, tier, i: seg.i };
-      const buf = this.store.peek(key);
-      if (buf) return { seg, key, buf };
+      return { seg, key: { v: this.variant, tier, i: seg.i } };
+    });
+    if (advancing) {
+      const adv = cands.filter((x) => x.seg.uEnd > u);
+      if (adv.length) cands = adv; // no tier advances: fall through, the caller reports the stall
     }
-    return null;
+    // one counted lookup per pick: probing the preferred tier with has() keeps a scrub-tier hit
+    // from also counting as a listen-tier miss (which pinned the debug panel's hit rate near 50 %)
+    const c = cands.find((x) => this.store.has(x.key)) ?? cands[0]!;
+    const buf = this.store.peek(c.key);
+    return buf ? { seg: c.seg, key: c.key, buf } : null;
   }
 
   /**
@@ -135,12 +152,33 @@ export class Chain {
     const target = this.timeline.unwrapped(now) + AUDIO.LOOKAHEAD;
     while (this.tail < target) {
       if (!this.timeline.loop && this.tail >= this.set.duration_s) break;
-      const p = this.pick(this.tail);
+      const p = this.pick(this.tail, /* advancing */ true);
       if (!p) {
-        // nothing decoded for this boundary yet: ask for the preferred tier and the scrub fallback
-        const want = segmentAt(this.set, 's', this.tail);
-        this.waitingFor = { v: this.variant, tier: 's', i: want.i };
+        // nothing decoded for this boundary yet: ask for the scrub tier (the cheapest round
+        // trip), unless its slices no longer reach this stretch and the preferred tier's do
+        const s = segmentAt(this.set, 's', this.tail);
+        const want = s.uEnd > this.tail ? s : segmentAt(this.set, this.preferTier, this.tail);
+        this.waitingFor = { v: this.variant, tier: want.tier, i: want.i };
         return this.waitingFor;
+      }
+      // a set whose slices do not cover its duration (or a zero slice length) yields a last
+      // segment ending at or before the tail — on every tier, pick() having already preferred
+      // one that advances. Scheduling it could never advance, so stop here instead of spinning
+      // forever (the `!(a > b)` form also catches NaN). Breaking out looks to the engine exactly
+      // like "fully scheduled", i.e. audio just runs out at the tail with no status of its own,
+      // so record it where the debug panel already reads (store.lastError) rather than letting a
+      // malformed set fail silently — once per stretch: fill() runs on every engine tick and
+      // every frame, and rewriting lastError each time would bury every other error the panel
+      // could show for as long as the song plays.
+      if (!(p.seg.uEnd > this.tail)) {
+        this.coverageStalls++;
+        this.store.stats.coverageStalls++;
+        const msg = `${keyStr(p.key)}: segment ends at ${p.seg.uEnd} ≤ tail ${this.tail} — the set's slices do not cover its duration`;
+        if (msg !== this.stallReported) {
+          this.stallReported = msg;
+          this.store.lastError = msg;
+        }
+        break;
       }
       const tSeam = this.timeline.timeAt(this.tail);
       this.scheduleSegment(p.seg, p.key, p.buf, this.tail, tSeam, /*rampIn*/ true);

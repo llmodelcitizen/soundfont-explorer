@@ -29,6 +29,10 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return r.json() as Promise<T>;
 }
 
+/** A 401 has already sent the browser to /auth/login; the throw only exists to abandon the
+ *  caller's work. Callers must not paint it as a failure or retry it — the page is leaving. */
+export const isSessionExpired = (e: unknown): boolean => e instanceof ApiError && e.status === 401;
+
 export const get = <T>(path: string) => req<T>('GET', path);
 export const post = <T>(path: string, body?: unknown) => req<T>('POST', path, body);
 export const patch = <T>(path: string, body: unknown) => req<T>('PATCH', path, body);

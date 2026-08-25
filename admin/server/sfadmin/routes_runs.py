@@ -12,6 +12,8 @@ from .renders import get_manager
 
 router = APIRouter()
 
+FINISH_ROUTE_WAIT_S = 15  # how long a manual "Run finisher" waits for the publish mutex
+
 
 def _mgr():
     if not bootstrapstate.ready():
@@ -40,11 +42,19 @@ def render_songs() -> dict:
                        "duration_s": s["duration_s"]} for s in doc["songs"]]}
 
 
+def _variants(body: dict) -> int | None:
+    """Optional override of the per-song job count; the default is derived from the
+    catalog (planner.variant_counts), never a literal."""
+    return int(body["variants"]) if body.get("variants") else None
+
+
 @router.post("/api/render/plan")
 def plan(body: dict) -> dict:
     try:
         return _mgr().plan(list(body.get("songs", [])), int(body.get("shards", 8)),
-                           int(body.get("variants", 566)))
+                           variants=_variants(body),
+                           engines=body.get("engines") or None,
+                           limit=int(body["limit"]) if body.get("limit") else None)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
@@ -62,7 +72,7 @@ def submit(body: dict) -> dict:
             instance_types=body.get("instance_types") or None,
             shard_vcpus=int(body["shard_vcpus"]) if body.get("shard_vcpus") else None,
             shard_memory_mib=int(body["shard_memory_mib"]) if body.get("shard_memory_mib") else None,
-            variants=int(body.get("variants", 566)),
+            variants=_variants(body),
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
@@ -102,6 +112,11 @@ def terminate(rid: str) -> dict:
 @router.post("/api/runs/{rid}/finish")
 def finish(rid: str) -> dict:
     try:
-        return _mgr().finish(rid)
+        # a request thread must not sit on the publish mutex for the watcher's half hour:
+        # if another writer holds it, finish() records that as the finisher's error and the
+        # button is still there to retry
+        return _mgr().finish(rid, lock_wait=FINISH_ROUTE_WAIT_S)
     except KeyError:
         raise HTTPException(404, f"no run {rid}") from None
+    except RuntimeError as e:  # already being finished
+        raise HTTPException(409, str(e)) from e

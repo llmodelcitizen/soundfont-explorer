@@ -156,20 +156,35 @@ def sequence_title(smf: S.Smf) -> Optional[str]:
     return None
 
 
+def import_out_name(rel: str) -> str:
+    """songs/rendered/-relative name of an import's canonical MIDI, from its import/FILES/-relative
+    source path: the path itself, plus ``.mid`` unless it already ends in exactly that.
+
+    Stripping ``.mid``/``.midi`` case-insensitively and re-adding ``.mid`` made ``x.mid``,
+    ``x.MID`` and ``x.midi`` (Windows-era archives have all three) land on one
+    ``rendered/x.mid``: the last one canonicalized won and the other entries' ``sha256`` in
+    songs.json no longer matched the file on disk. Keeping the source's own extension in the
+    name maps distinct sources to distinct files (``x.MID.mid``, ``x.midi.mid``) while every
+    ``.mid`` source — nearly all of them — keeps the name it always had. The admin's stale-file
+    cleanup (sfadmin.library) uses this same function.
+    """
+    return rel if rel.endswith(".mid") else rel + ".mid"
+
+
 def import_labels(src: str, smf: S.Smf, explicit_title: Optional[str] = None) -> Tuple[str, str, str]:
     """(id, title, output path) for a song imported from songs/import/FILES/.
 
     The label keeps the file's directory path and ends with the song's own name:
     ``videogame-music/crystalis/Crystalis Desert`` when the MIDI carries a title,
     ``videogame-music/crystalis/crys_cave`` when it does not. The canonical MIDI keeps the
-    original *filename* under songs/rendered/, so the file on disk still matches its source.
+    original *filename* under songs/rendered/ (import_out_name), so the file on disk still
+    matches its source.
     """
     rel = src[len(IMPORT_ROOT):] if src.startswith(IMPORT_ROOT) else src
-    rel = re.sub(r"\.midi?$", "", rel, flags=re.I)
-    parent, _, stem = rel.rpartition("/")
+    parent, _, stem = re.sub(r"\.midi?$", "", rel, flags=re.I).rpartition("/")
     name = explicit_title or sequence_title(smf) or stem
     title = f"{parent}/{name}" if parent else name
-    return slug(title), title, os.path.join(RENDERED_DIR, parent, stem + ".mid")
+    return slug(title), title, os.path.join(RENDERED_DIR, import_out_name(rel))
 
 
 def slug(s: str) -> str:
@@ -391,9 +406,14 @@ def merge_fragment(corpus: dict) -> dict:
 
 
 def run_public(corpus: dict, check: bool, lenient: bool = False,
-               only: Optional[set] = None) -> Tuple[List[dict], bool, List[dict]]:
+               only: Optional[set] = None) -> Tuple[List[dict], bool, List[dict], List[str]]:
+    """(entries, songs.json unchanged, per-song refusals, ids dropped from songs.json).
+    `dropped` is only ever non-empty for a targeted (--only) run; it rides in
+    canon-report.json so the admin UI can show it — the printed version below goes to
+    stdout, which the admin inherits into the journal and never shows (#19)."""
     entries: List[dict] = []
     refused: List[dict] = []
+    dropped: List[str] = []
     for spec in corpus["songs"]:
         sid = spec.get("id")
         if only is not None and sid is not None and sid not in only:
@@ -424,8 +444,25 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
         with open(os.path.join(SONGS_DIR, "songs.json"), encoding="utf-8") as fh:
             existing = json.load(fh)["songs"]
         by_id = {e["id"]: e for e in entries}
-        merged = [by_id.pop(e["id"], e) for e in existing]
-        entries = merged + [e for e in entries if e["id"] in by_id]
+        merged: List[dict] = []
+        for e in existing:
+            if e["id"] in by_id:
+                merged.append(by_id.pop(e["id"]))       # re-canonicalized this run
+            elif e["id"] not in only:
+                merged.append(e)                        # not selected: untouched
+            else:
+                # selected but not produced (refused, or gone from the corpus): its stale
+                # entry must not survive, or the render list goes on offering a song canon
+                # has just rejected
+                dropped.append(e["id"])
+        entries = merged + list(by_id.values())
+        if dropped:
+            # the admin's publish path refuses to drop a track that is live on the site, so
+            # this is also the moment that path stops working for it — say so here rather
+            # than at the next "Republish songs.json" (#19)
+            print("  dropped from songs.json (selected, not produced): %s" % ", ".join(dropped))
+            print("  if one of those is live on the site, publishing is blocked until it is "
+                  "fixed, hidden (Library) or removed (Published tab)")
     ids = [e["id"] for e in entries]
     if len(set(ids)) != len(ids):
         raise SystemExit("duplicate song ids")
@@ -442,7 +479,7 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
     data["default"] = corpus["default"]
     data["songs"] = entries
     ok = write_json(os.path.join(SONGS_DIR, "songs.json"), data, check)
-    return entries, ok, refused
+    return entries, ok, refused, dropped
 
 
 def run_private(corpus: dict, check: bool) -> Tuple[List[dict], bool]:
@@ -493,12 +530,15 @@ def main(argv: List[str]) -> int:
         corpus = json.load(fh)
     corpus = merge_fragment(corpus)
     print("public corpus:")
-    _, ok1, refused = run_public(corpus, args.check, lenient=args.lenient,
-                                 only=set(args.only) if args.only else None)
+    _, ok1, refused, dropped = run_public(corpus, args.check, lenient=args.lenient,
+                                          only=set(args.only) if args.only else None)
     print("private songs:")
     _, ok2 = run_private(corpus, args.check)
     if args.lenient:
-        report = {"schema": 1, "refused": refused}
+        # `dropped` is how the admin UI learns what a targeted run cost: the printed
+        # version above goes to canon.py's stdout, which library.canon_run inherits
+        # into the sfadmin journal on purpose and never shows the operator (#19)
+        report = {"schema": 1, "refused": refused, "dropped": dropped}
         with open(os.path.join(SONGS_DIR, "canon-report.json"), "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=1, ensure_ascii=False)
             fh.write("\n")

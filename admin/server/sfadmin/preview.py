@@ -13,6 +13,7 @@ capped at 500 MB.
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -21,8 +22,14 @@ import time
 
 from .config import get_config
 
+log = logging.getLogger("sfadmin.preview")
+
 CACHE_MAX_BYTES = 500 * 1024 * 1024
 RENDER_TIMEOUT_S = 600
+# how long the route waits for the render's first bytes before streaming anyway: long
+# enough to turn the usual fast failure (no soundfont, unplayable MIDI) into a 500, short
+# enough that a queued render cannot hold a threadpool worker for minutes (#19)
+PRIME_TIMEOUT_S = 5.0
 _render_slots = threading.Semaphore(2)
 _sweep_lock = threading.Lock()
 _active: dict[str, "Job"] = {}
@@ -107,6 +114,7 @@ def _render(job: Job, midi_path: str) -> None:
         _sweep()
     except Exception as e:
         job.error = str(e)
+        log.warning("preview %s failed: %s", job.sha256[:12], e)
         try:
             os.remove(job.tmp)
         except FileNotFoundError:
@@ -147,6 +155,39 @@ def follow(job: Job):
     finally:
         if fh is not None:
             fh.close()
+
+
+def _produced(job: Job) -> bool:
+    """Has the render written anything a follower could read yet?"""
+    try:
+        if os.path.getsize(job.tmp) > 0:
+            return True
+    except OSError:
+        pass
+    return cached(job.sha256) is not None  # finished and renamed into place
+
+
+def open_stream(job: Job, prime_s: float = PRIME_TIMEOUT_S):
+    """follow(job), after a bounded wait for the render to produce something. Raises
+    RuntimeError(job.error) if it failed before producing anything, so the route answers an
+    error status instead of a 200 with an empty body — which is what a failed preview used
+    to look like, with job.error never read (#19).
+
+    The wait is bounded and does not block in read(): preview_mp3 is a sync FastAPI route,
+    so it holds an anyio threadpool worker in one uncancellable call, and priming with
+    next(follow(job)) could hold it for a queued render's whole RENDER_TIMEOUT_S — a burst
+    of preview clicks then pinned the pool and a client disconnect could not break it out
+    (#19). A render still queued for a slot after prime_s streams instead: the response
+    starts and follow() tails it; a failure that late is a truncated body, as it always was
+    once the status line is gone."""
+    deadline = time.monotonic() + prime_s
+    while not _produced(job):
+        if job.done.is_set():
+            raise RuntimeError(job.error or "render produced no output")
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.05)
+    return follow(job)
 
 
 def doctor() -> dict:

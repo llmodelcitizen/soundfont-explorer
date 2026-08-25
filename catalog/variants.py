@@ -7,7 +7,9 @@ Inputs (all committed, all produced by the sibling tools):
 * ``adl_banks.json`` (``adlbanks.py``)        - 79 embedded libADLMIDI banks -> ``adl-b{NN}``
 * ``adl_passes.json`` (hand-written)          - OPL2 / ESFMu / CQM passes -> ``adl-b{NN}-{suffix}``
 * ``opn_banks.json`` (hand-edited)            - WOPN banks; each ``enabled`` one -> ``opn-<slug>`` + ``opn-<slug>-opna``
-* ``render/engines.json``                     - base flags of the render command templates (+ sc55 romset families)
+* ``render/engines.json``                     - base flags of the render command templates (+ sc55 romset families);
+                                                the only source of those flags (no copies here: a missing doc or key
+                                                falls back to the committed file via ``_util.load_engines``)
 * built-in tables below (M2b)                 - ``edm-opll|scc|all``, ``gus-freepats``, ``sc55-<family>`` (x9), ``mt32``, ``cm32l``
 
 Variant ids are the cache/manifest identity (plan §6) and never change on re-render:
@@ -39,7 +41,7 @@ import re
 import sys
 
 from . import adlbanks
-from ._util import count_values, decade_of, write_json
+from ._util import ENGINES_JSON, count_values, decade_of, load_engines, now_iso, utc_now, write_json
 
 SCHEMA = 1
 
@@ -65,13 +67,6 @@ ADL_BANK_LICENSE_FLAG = {  # adlbanks.PROVENANCE license_hint -> facets license_
 ADL_REVIEW_HINTS = ("game_release", "proprietary", "unknown")  # listed under the issue #301 section
 QUALITY_TAGS = ("non_gm", "mt32", "miss_ins", "broken_drums")
 
-DEFAULT_ADL_BASE_ARGS = ["-f32", "-vm", "0", "--gain", "2.0"]
-DEFAULT_FLUID_BASE_ARGS = [
-    "-ni", "-T", "wav", "-O", "float", "-r", "48000", "-g", "0.5", "-R", "0", "-C", "0",
-    "-o", "synth.polyphony=256", "-o", "synth.cpu-cores=1",
-]
-DEFAULT_DYNAMIC_LOADING_ABOVE = 128 * 1024 * 1024
-
 ISSUE_301_URL = "https://github.com/Wohlstand/libADLMIDI/issues/301"
 
 
@@ -82,23 +77,42 @@ def slugify(text: str) -> str:
     return adlbanks.slugify(text)
 
 
-def _engine_args(engines: dict | None, eid: str, key: str, default):
+_COMMITTED_ENGINES: dict | None = None
+
+
+def _committed_engines() -> dict:
+    """The committed render/engines.json, loaded once: the fallback for a missing engines doc or key.
+
+    It is the single source of the render flags — nothing in this module copies its tables — so
+    ``build(..., engines=None)`` (and a partial doc in tests) still yields the real render.cmd.
+    """
+    global _COMMITTED_ENGINES
+    if _COMMITTED_ENGINES is None:
+        _COMMITTED_ENGINES = load_engines()
+    return _COMMITTED_ENGINES
+
+
+def _engine_args(engines: dict | None, eid: str, key: str, default=None):
     try:
         return engines["engines"][eid][key]
     except (KeyError, TypeError):
+        pass
+    try:
+        return _committed_engines()["engines"][eid][key]
+    except KeyError:
         return default
 
 
 def adl_cmd(bank_number: int, core_flag: str, engines: dict | None) -> str:
-    base = " ".join(_engine_args(engines, "adlmidi", "base_args", DEFAULT_ADL_BASE_ARGS))
-    chips = _engine_args(engines, "adlmidi", "chips", 1)
+    base = " ".join(_engine_args(engines, "adlmidi", "base_args"))
+    chips = _engine_args(engines, "adlmidi", "chips")
     # WAVE_ONLY build: no -w / -nl; output lands at <song>.mid.wav at 44.1 kHz (render/engines.json)
     return f"adlmidiplay <song>.mid {base} {core_flag} {bank_number} {chips}"
 
 
 def fluid_cmd(file: str, nbytes: int, engines: dict | None) -> str:
-    base = list(_engine_args(engines, "fluidsynth", "base_args", DEFAULT_FLUID_BASE_ARGS))
-    threshold = int(_engine_args(engines, "fluidsynth", "dynamic_sample_loading_above_bytes", DEFAULT_DYNAMIC_LOADING_ABOVE))
+    base = list(_engine_args(engines, "fluidsynth", "base_args"))
+    threshold = int(_engine_args(engines, "fluidsynth", "dynamic_sample_loading_above_bytes"))
     if nbytes >= threshold:
         base += ["-o", "synth.dynamic-sample-loading=1"]
     return "fluidsynth -F raw.wav " + " ".join(base) + f" /fonts/{_shell_quote(file)} <song>.mid"
@@ -421,14 +435,6 @@ def adl_variants(banks_doc: dict, passes_doc: dict | None, engines: dict | None,
 # completeness full_gm unless documented otherwise (edm-scc has no percussion, FreePats 2006 defines 72
 # melodic programs -> partial, the MT-32 family is pre-GM -> bank_map non_gm + quality mt32).
 
-DEFAULT_OPN_BASE_ARGS = ["-f32", "-vm", "0", "--gain", "2.0"]
-DEFAULT_EDM_BASE_ARGS = ["-r", "48000", "-n", "8", "-f", "f32"]
-DEFAULT_TIMIDITY_BASE_ARGS = ["-c", "/etc/timidity/freepats.cfg", "-Ow2", "-s", "48000", "-EFreverb=d", "-EFchorus=d",
-                              "-A", "25", "--preserve-silence"]
-DEFAULT_SC55_BASE_ARGS = ["-f", "f32", "--end", "release", "-n", "1"]
-DEFAULT_MUNT_BASE_ARGS = ["--quiet", "-f", "--src-quality", "3", "--renderer-type", "1", "--output-sample-format", "1",
-                          "--record-max-start-silence", "-1", "--record-max-end-silence", "-1"]
-
 OPN_PASSES = (  # (id suffix, slug suffix, label suffix, core, core flag, chip, year, chip name)
     ("", "-opn2", None, "nuked-3438", "--emu-nuked-3438", "opn2", 1988, "YM2612 OPN2 (Nuked-OPN2 core)"),
     ("-opna", "-opna", "OPNA", "mame-opna", "--emu-mame-opna", "opna", 1985, "YM2608 OPNA (MAME core)"),
@@ -475,30 +481,30 @@ def _hw_source(url: str | None, license_flag: str, **extra) -> dict:
 
 
 def opn_cmd(bank_file: str, core_flag: str, engines: dict | None) -> str:
-    base = " ".join(_engine_args(engines, "opnmidi", "base_args", DEFAULT_OPN_BASE_ARGS))
-    chips = _engine_args(engines, "opnmidi", "chips", 2)
-    flag = _engine_args(engines, "opnmidi", "chips_flag", "--chips")
+    base = " ".join(_engine_args(engines, "opnmidi", "base_args"))
+    chips = _engine_args(engines, "opnmidi", "chips")
+    flag = _engine_args(engines, "opnmidi", "chips_flag")
     # WAVE_ONLY build: options first, then the bank (positional, no -b), then the MIDI; output <song>.mid.wav at 44.1 kHz
     return f"opnmidiplay {base} {flag} {chips} {core_flag} {OPN_BANKS_DIR}/{bank_file} <song>.mid"
 
 
 def edm_cmd(module: str, engines: dict | None) -> str:
-    base = " ".join(_engine_args(engines, "edmidi", "base_args", DEFAULT_EDM_BASE_ARGS))
+    base = " ".join(_engine_args(engines, "edmidi", "base_args"))
     return f"edmidi-render {base} -m {module} -o raw.wav <song>.mid"
 
 
 def timidity_cmd(engines: dict | None) -> str:
-    base = " ".join(_engine_args(engines, "timidity", "base_args", DEFAULT_TIMIDITY_BASE_ARGS))
+    base = " ".join(_engine_args(engines, "timidity", "base_args"))
     return f"timidity {base} -o raw.wav <song>.mid"
 
 
 def sc55_cmd(romset: str, family: str, engines: dict | None) -> str:
-    base = " ".join(_engine_args(engines, "sc55", "base_args", DEFAULT_SC55_BASE_ARGS))
+    base = " ".join(_engine_args(engines, "sc55", "base_args"))
     return f"nuked-sc55-render {base} -d /roms/{romset} --romset {family} -o raw.wav <song>.mid"
 
 
 def munt_cmd(romset: str, model: str, engines: dict | None) -> str:
-    base = " ".join(_engine_args(engines, "munt", "base_args", DEFAULT_MUNT_BASE_ARGS))
+    base = " ".join(_engine_args(engines, "munt", "base_args"))
     return f"mt32emu-smf2wav {base} -m /roms/{romset} -i {model} -o raw.wav <song>.mid"
 
 
@@ -579,7 +585,7 @@ def opn_variants(opn_doc: dict | None, engines: dict | None) -> list[dict]:
 
 
 def edm_variants(engines: dict | None) -> list[dict]:
-    url = _engine_args(engines, "edmidi", "url", "https://github.com/Wohlstand/libEDMIDI")
+    url = _engine_args(engines, "edmidi", "url")
     out = []
     for vid, module, label, chip_family, chip_facet, core, comp, bmap, year, note in EDM_MODULES:
         out.append({
@@ -612,9 +618,9 @@ def gus_variants(engines: dict | None) -> list[dict]:
 
 
 def sc55_variants(engines: dict | None) -> list[dict]:
-    url = _engine_args(engines, "sc55", "url", "https://github.com/jcmoyer/Nuked-SC55")
+    url = _engine_args(engines, "sc55", "url")
     families = list(SC55_FAMILIES)
-    table = _engine_args(engines, "sc55", "romset_flag", None)
+    table = _engine_args(engines, "sc55", "romset_flag")
     if table:
         known = {f[0] for f in families}
         extra = sorted(set(table.values()) - known)
@@ -642,7 +648,7 @@ def sc55_variants(engines: dict | None) -> list[dict]:
 
 
 def munt_variants(engines: dict | None) -> list[dict]:
-    url = _engine_args(engines, "munt", "url", "https://github.com/munt/munt")
+    url = _engine_args(engines, "munt", "url")
     out = []
     for vid, model, romset, label, year, note in MUNT_MODELS:
         out.append({
@@ -666,7 +672,7 @@ def munt_variants(engines: dict | None) -> list[dict]:
 def build(facets_doc: dict, scan_doc: dict | None, banks_doc: dict, passes_doc: dict | None,
           opn_doc: dict | None = None, engines: dict | None = None, overrides_doc: dict | None = None,
           now: _dt.datetime | None = None) -> dict:
-    now = now or _dt.datetime.now(_dt.timezone.utc)
+    now = now or utc_now()
     sf2, aliases = sf2_variants(facets_doc, scan_doc, engines)
     adl, pass_counts = adl_variants(banks_doc, passes_doc, engines, load_adl_overrides(overrides_doc))
     opn = opn_variants(opn_doc, engines)
@@ -732,7 +738,7 @@ def build(facets_doc: dict, scan_doc: dict | None, banks_doc: dict, passes_doc: 
 
     return {
         "schema": SCHEMA,
-        "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": now_iso(now),
         "_comment": [
             "Generated by python3 -m catalog.variants from soundfonts.facets.json + soundfonts.json + adl_banks.json + adl_passes.json + opn_banks.json + render/engines.json (+ overrides.json 'adl_banks'); do not edit (use overrides.json / adl_passes.json / opn_banks.json).",
             "ids are the render/cache identity and never change: sf2-<sha256[:10]> (rename-proof, byte-identical twins share one id and appear in 'aliases'), adl-b{NN}, adl-b{NN}-opl2|-esfmu|-cqm, opn-<slug>[-opna], edm-opll|scc|all, gus-freepats, sc55-<family>, mt32, cm32l.",
@@ -1003,7 +1009,7 @@ def main(argv=None) -> int:
     overrides_doc = _load(os.path.join(cat, "overrides.json"), required=False)
     engines = _load(args.engines, required=False)
     if engines is None:
-        log(f"warning: {args.engines} not found; using built-in default flags for render.cmd")
+        log(f"warning: {args.engines} not found; render.cmd flags fall back to the committed {ENGINES_JSON}")
 
     doc = build(facets_doc, scan_doc, banks_doc, passes_doc, opn_doc, engines, overrides_doc)
     out = args.out or os.path.join(cat, "variants.json")

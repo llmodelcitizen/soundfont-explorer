@@ -27,14 +27,21 @@ export type FacetCounts = { value: string; count: number }[];
 function facetValues(v: Variant, key: FacetKey): string[] {
   const f = v.facets ?? {};
   let raw: unknown = f[key];
-  if (key === 'engine') raw = v.engine || raw;
-  if (key === 'chip') raw = v.chip || raw;
-  if (key === 'type') raw = v.type || raw;
+  // the top-level engine/chip/type strings mirror single facet values; a multi-chip variant
+  // keeps the full list only in facets (edm-all publishes chip_family 'opll' and facets.chip
+  // ['opll', 'scc'], so Variant.chip is the joined 'opll,scc' — a value no filter offers).
+  // An empty list carries no values (published catalogs do contain empty facet lists — every
+  // SF2 variant has facets.quality []), so treat it like a missing facet rather than as "none"
+  if (!Array.isArray(raw) || raw.length === 0) {
+    if (key === 'engine') raw = v.engine || raw;
+    if (key === 'chip') raw = v.chip || raw;
+    if (key === 'type') raw = v.type || raw;
+  }
   if (key === 'quality') {
     const tags = tagNames(raw);
     return tags.length ? tags : ['ok'];
   }
-  if (Array.isArray(raw)) return raw.map(String);
+  if (Array.isArray(raw)) return raw.length ? raw.map(String) : ['unknown'];
   if (raw === null || raw === undefined || raw === '') return ['unknown'];
   return [String(raw)];
 }
@@ -51,7 +58,7 @@ export class FilterIndex {
       const v = catalog.byId.get(id);
       if (!v) return id.toLowerCase();
       const info = v.source?.sf2;
-      return [v.id, v.label, v.slug, v.source?.file, info?.INAM, info?.IENG, info?.ICMT, v.bank?.family, v.bank?.name, ...(v.bank?.tags ?? []), ...v.aliases]
+      return [v.id, v.label, v.slug, v.source?.file, info?.INAM, info?.IENG, v.bank?.family, v.bank?.name, ...(v.bank?.tags ?? []), ...v.aliases]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();

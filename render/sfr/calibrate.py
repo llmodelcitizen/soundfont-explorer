@@ -39,8 +39,11 @@ START_IDX, END_IDX = 1, 3          # clicks used for start_offset_s / drift_ppm 
 ONSET_FRAC = 0.02
 
 
-def _mono_48k(wav: Path) -> array.array:
-    res = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(wav), "-af",
+def _mono_48k(wav: Path, in_args: list[str] | None = None) -> array.array:
+    """in_args precede `-i`: the FluidSynth adapter writes headerless f32le (see engines/fluid.py),
+    which ffmpeg cannot probe on its own — without `-f f32le -ar … -ac …` the reference decode fails
+    and `sfr calibrate` dies before it measures anything."""
+    res = run(["ffmpeg", "-hide_banner", "-nostats", *(in_args or []), "-i", str(wav), "-af",
                "aresample=48000:resampler=soxr:precision=28,pan=mono|c0=0.5*c0+0.5*c1",
                "-f", "s16le", "-ac", "1", "-ar", "48000", "-"], timeout_s=300, what="calib decode")
     a = array.array("h")
@@ -109,8 +112,12 @@ def calibrate(paths: Paths, settings: RenderSettings, engines_json: dict, varian
         spec = engines.get(eid).spec(job, paths, engines_json, tmp)
         for pre in spec.pre:
             pre()
-        run(spec.argv, cwd=spec.cwd, timeout_s=spec.timeout_s, what=eid)
-        mono = _mono_48k(spec.out_wav)
+        # same invocation shape as render.run_job: the output cap is what stops a FluidSynth font
+        # whose click never decays, and the raw-format args are what let ffmpeg read the result
+        stop_when = (spec.out_wav, spec.max_out_bytes) if spec.max_out_bytes else None
+        run(spec.argv, cwd=spec.cwd, timeout_s=spec.timeout_s, rlimit_as=spec.rlimit_as_bytes, what=eid,
+            stop_when=stop_when)
+        mono = _mono_48k(spec.out_wav, engines.ffmpeg_input_args(spec))
         onsets[eid] = [onset(mono, c) for c in CLICKS]
         echo(f"[calib] {eid}: onsets {onsets[eid]}")
     results = analyse(onsets)

@@ -146,6 +146,20 @@ class TestParseEbur128(unittest.TestCase):
         with self.assertRaises(JobError):
             parse_ebur128("ffmpeg said nothing useful")
 
+    def test_missing_line_is_a_parse_error_not_minus_inf(self):
+        """A summary without a `Peak:` line used to yield input_tp = -inf, and gain_db would then
+        ignore the true-peak ceiling entirely (min(x, +inf)); a missing `I:` line failed the job as
+        "silent". Both are format changes and must stop the job with the reason in the detail."""
+        no_peak = EBUR128_SUMMARY.replace("    Peak:       -6.5 dBFS\n", "")
+        with self.assertRaises(JobError) as cm:
+            parse_ebur128(no_peak)
+        self.assertIn("Peak", cm.exception.detail)
+        with self.assertRaises(JobError) as cm:
+            parse_ebur128(EBUR128_SUMMARY.replace("    I:         -21.3 LUFS\n", ""))
+        self.assertIn("I:", cm.exception.detail)
+        # while a printed -inf is still a value (silence), see test_silence_floors_at_minus_70_and_inf_peak
+        self.assertEqual(parse_ebur128(EBUR128_SUMMARY.replace("-6.5 dBFS", "-inf dBFS"))["input_tp"], float("-inf"))
+
 
 class TestDeterministicSerial(unittest.TestCase):
     def test_serial_is_stable_and_per_stream(self):

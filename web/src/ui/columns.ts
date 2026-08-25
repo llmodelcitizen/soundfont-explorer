@@ -50,6 +50,29 @@ export function visibleColumns(keys: readonly string[]): ColumnDef[] {
   return COLUMNS.filter((c) => c.always || want.has(c.key));
 }
 
+/**
+ * The list's design em. The column track sizes are written in em, but the row's *minimum* width
+ * is geometry the themes pin: Windows 95 renders its bitmap face at its native 11px, and an
+ * em-relative minimum would make the list scroll sideways in one theme and not in another at
+ * the same viewport (web/scripts/geometry.mjs compares every theme against the modern one).
+ */
+const LIST_EM_PX = 14;
+
+/**
+ * Minimum row width for a column set, in px: the column minimums (em) at the design em plus the
+ * fixed gaps and padding. Computed, not measured — setColumns() runs before the list is in the
+ * document, where getComputedStyle() reports no usable font size, so the measured value silently
+ * depended on when the columns were last set.
+ */
+export function rowMinWidth(cols: readonly ColumnDef[]): string {
+  const em = cols.reduce((n, c) => {
+    const min = /^minmax\(([\d.]+)em/.exec(c.width)?.[1]; // 'minmax(14em, 1fr)' counts its minimum
+    return n + parseFloat(min ?? c.width);
+  }, 0);
+  const px = 8 * (cols.length - 1) + 26; // column gaps + row padding
+  return `${Math.round(em * LIST_EM_PX + px)}px`;
+}
+
 const CHIP_SUFFIX = /\s*[[(](OPL2|OPL3|ESFM|CQM|OPN2|OPNA|OPLL|SCC|SF2)[\])]\s*$/i;
 
 /** name without a chip tag the chip column already shows */

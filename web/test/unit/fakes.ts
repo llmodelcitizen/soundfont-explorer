@@ -277,12 +277,20 @@ export class FakeDecoder implements Decoder {
   readonly kind = 'native' as const;
   readonly stats = { decoded: 0, msTotal: 0, errors: 0, queued: 0, active: 0 };
   latencyMs = 0;
+  /** keys (`v/tier/i`, as keyStr prints them) whose bytes arrive fine but will not decode */
+  failKeys = new Set<string>();
   private q = new DecodeQueue(4);
   decode(bytes: ArrayBuffer, priority: number): Promise<BufferLike> {
-    return this.q.submit(priority, () => new Promise<BufferLike>((resolve) => {
+    return this.q.submit(priority, () => new Promise<BufferLike>((resolve, reject) => {
       const finish = () => {
+        const buf = descriptorToBuffer(bytes);
+        if (this.failKeys.has(buf.tag)) {
+          this.stats.errors++;
+          reject(new Error(`decode failed for ${buf.tag}`));
+          return;
+        }
         this.stats.decoded++;
-        resolve(descriptorToBuffer(bytes));
+        resolve(buf);
       };
       if (this.latencyMs > 0) setTimeout(finish, this.latencyMs);
       else queueMicrotask(finish);

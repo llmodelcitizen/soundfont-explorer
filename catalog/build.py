@@ -24,7 +24,7 @@ import os
 import re
 import sys
 
-from ._util import count_values, decade_of, write_json
+from ._util import count_values, decade_of, now_iso, utc_now, write_json
 
 SCHEMA = 1
 
@@ -226,7 +226,10 @@ def year_and_confidence(info: dict, file: str, now_year: int) -> tuple[int | Non
     if icrd.strip():
         y = year_from_icrd(icrd, now_year)
         if y is not None:
-            conf = "high" if YEAR4_RE.search(icrd) else "medium"
+            # "high" only when the year IS a 4-digit token of ICRD. A 4-digit year that was
+            # rejected as out of range ("1985. 12. 25") still matches YEAR4_RE, but the year we
+            # return then came from the 2-digit fallback (2025) and deserves no more than "medium".
+            conf = "high" if y in {int(t) for t in YEAR4_RE.findall(icrd)} else "medium"
             return y, conf, "ICRD"
     for field in ("ICMT", "INAM"):
         y = year_from_text(info.get(field) or "", now_year)
@@ -266,19 +269,62 @@ def default_label(file: str) -> str:
 # ------------------------------------------------------------------ overrides
 
 
+INSTRUMENT_RE = re.compile(r"^[a-z][a-z0-9_]*$")   # what jobs.variant_allowed_for_song matches against
+DECADE_RE = re.compile(r"^\d{3}0s$")
+
+
+def validate_override(key: str, entry: dict, lineage_values=LINEAGE_VALUES) -> None:
+    """Reject an override whose *value* would be taken at face value downstream.
+
+    `build()` used `bool(ov["publish"])`, so `"publish": "false"` kept a font published, and a
+    facet value that is not one of the enumerated ones ("completeness": "complete") went straight
+    into soundfonts.facets.json / variants.json where the client's facet filters never match it.
+    """
+    def bad(k, want):
+        raise ValueError(f"overrides.json fonts[{key!r}].{k}: {entry[k]!r} is not {want}")
+
+    enums = {"completeness": COMPLETENESS_VALUES, "bank_map": BANK_MAP_VALUES, "lineage": lineage_values,
+             "license_flag": LICENSE_VALUES}
+    for k, allowed in enums.items():
+        if k in entry and entry[k] not in allowed:
+            bad(k, f"one of {list(allowed)}")
+    if "publish" in entry and not isinstance(entry["publish"], bool):
+        bad("publish", "a JSON boolean (true/false, not a string)")
+    if "year" in entry and (isinstance(entry["year"], bool) or not isinstance(entry["year"], int)):
+        bad("year", "an integer year")
+    if "decade" in entry and not (entry["decade"] == "unknown" or (isinstance(entry["decade"], str)
+                                                                   and DECADE_RE.match(entry["decade"]))):
+        bad("decade", "'<year>0s' or 'unknown'")
+    if "instrument" in entry and not (entry["instrument"] is None or (isinstance(entry["instrument"], str)
+                                                                       and INSTRUMENT_RE.match(entry["instrument"]))):
+        bad("instrument", "a lowercase slug such as 'piano'")
+    for k in ("label", "notes"):
+        if k in entry and not (isinstance(entry[k], str) and (k == "notes" or entry[k].strip())):
+            bad(k, "a non-empty string" if k == "label" else "a string")
+
+
+def validate_overrides(overrides: dict) -> None:
+    """Validate every per-font entry of a loaded/constructed overrides dict (keys and values)."""
+    table = overrides.get("lineage_regex") or DEFAULT_LINEAGE_REGEX
+    lineage_values = tuple(table) + ("generic",)
+    for key, entry in (overrides.get("fonts") or {}).items():
+        if not isinstance(entry, dict):
+            raise ValueError(f"overrides.json fonts[{key!r}] must be an object")
+        unknown = set(entry) - set(OVERRIDABLE) - {"file", "_comment"}
+        if unknown:
+            raise ValueError(f"overrides.json fonts[{key!r}] has unknown keys {sorted(unknown)}")
+        validate_override(key, entry, lineage_values)
+
+
 def load_overrides(path: str | None) -> dict:
     if not path or not os.path.exists(path):
         return {"lineage_regex": None, "ignore_values": None, "fonts": {}}
     with open(path, encoding="utf-8") as fh:
         doc = json.load(fh)
     fonts = {k: v for k, v in (doc.get("fonts") or {}).items() if not k.startswith("_")}
-    for key, entry in fonts.items():
-        if not isinstance(entry, dict):
-            raise ValueError(f"overrides.json fonts[{key!r}] must be an object")
-        unknown = set(entry) - set(OVERRIDABLE) - {"file", "_comment"}
-        if unknown:
-            raise ValueError(f"overrides.json fonts[{key!r}] has unknown keys {sorted(unknown)}")
-    return {"lineage_regex": doc.get("lineage_regex"), "ignore_values": doc.get("ignore_values"), "fonts": fonts}
+    out = {"lineage_regex": doc.get("lineage_regex"), "ignore_values": doc.get("ignore_values"), "fonts": fonts}
+    validate_overrides(out)
+    return out
 
 
 def overrides_for(fonts: dict, sha256: str | None, file: str) -> tuple[dict, list[str]]:
@@ -296,7 +342,8 @@ def overrides_for(fonts: dict, sha256: str | None, file: str) -> tuple[dict, lis
 
 
 def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
-    now = now or _dt.datetime.now(_dt.timezone.utc)
+    validate_overrides(overrides)   # also for callers that bypass load_overrides()
+    now = now or utc_now()
     now_year = now.year
     regex_table = overrides.get("lineage_regex") or DEFAULT_LINEAGE_REGEX
     compiled = compile_lineage_regex(regex_table)
@@ -388,7 +435,7 @@ def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
     unused = sorted(k for k in override_fonts if k not in used_override_keys)
     return {
         "schema": SCHEMA,
-        "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": now_iso(now),
         "scan_generated_at": scan.get("generated_at"),
         "count": len(out_fonts),
         "canonical_count": len(out_fonts) - sum(len(d["twins"]) for d in duplicates),

@@ -16,7 +16,7 @@ from pathlib import Path
 from . import __version__, engines
 from .config import Paths, load_engines, load_settings, load_songs, load_variants
 from .engines import MEM_UNIT_BYTES
-from .jobs import State, classify, plan_jobs, read_meta
+from .jobs import State, classify, plan_jobs, read_meta, rom_digest
 
 PATH_FLAGS = ("fonts", "songs", "catalog", "roms", "work", "out")
 # codec tools every engine shares (the engine binaries come from engines.json)
@@ -56,10 +56,11 @@ def paths_from(args) -> Paths:
     return Paths(**kw)
 
 
-def available_roms(paths: Paths) -> set[str]:
+def available_roms(paths: Paths) -> dict[str, str]:
+    """romset -> content digest of roms/<romset>/ (jobs.rom_digest); the digest keys the master."""
     if not paths.roms.exists():
-        return set()
-    return {p.name for p in paths.roms.iterdir() if p.is_dir()}
+        return {}
+    return {p.name: rom_digest(p) for p in paths.roms.iterdir() if p.is_dir()}
 
 
 def select_jobs(args, paths: Paths):
@@ -242,10 +243,12 @@ def cmd_manifest(args) -> int:
 
 
 def cmd_publish(args) -> int:
-    from .publish import prune, publish
+    from .publish import prune, publish, restamp
     paths = paths_from(args)
     if args.prune:
         return prune(paths, args.bucket, dry_run=args.dry_run)
+    if args.restamp:
+        return restamp(paths, args.bucket, args.distribution, dry_run=args.dry_run)
     return publish(paths, args.bucket, args.distribution, dry_run=args.dry_run)
 
 
@@ -307,6 +310,9 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("publish", help="aws s3 sync out/public (dry-run first!)"); add_path_args(s)
     s.add_argument("--bucket"); s.add_argument("--distribution")
     s.add_argument("--dry-run", action="store_true"); s.add_argument("--prune", action="store_true")
+    s.add_argument("--restamp", action="store_true",
+                   help="rewrite Content-Type / Cache-Control on objects already in the bucket to what "
+                        "publish sends (backfill for #14); --dry-run lists what would change")
     s = sub.add_parser("status", help="summarize work/renders"); add_path_args(s)
     s.add_argument("--json", action="store_true")
     s = sub.add_parser("worker", help="phase-2 upload worker (stub)"); add_path_args(s)

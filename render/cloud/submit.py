@@ -12,7 +12,8 @@ from __future__ import annotations
 import argparse, json, os, pathlib, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from planner import estimate, plan_shards, song_durations  # noqa: E402
+from planner import (estimate, job_count, plan_shards, song_durations,  # noqa: E402
+                     variant_counts, variants_per_song)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
@@ -37,7 +38,14 @@ def song_ids(args) -> list[str]:
         f = REPO / p
         if f.exists():
             ids += [s["id"] for s in json.loads(f.read_text())["songs"]]
-    return ids if args.all else [s for s in ids if s in set(args.song)]
+    if args.all:
+        return ids
+    # a mistyped --song used to vanish from the selection: the run went ahead with the rest
+    # (or died with "no songs selected" when it was the only one) and nobody rendered the song
+    unknown = sorted(set(args.song) - set(ids))
+    if unknown:
+        sys.exit(f"[submit] unknown song id(s): {', '.join(unknown)} (ids come from songs/songs.json)")
+    return [s for s in ids if s in set(args.song)]
 
 
 def set_state(ce: str, state: str) -> None:
@@ -51,7 +59,8 @@ def main() -> int:
     ap.add_argument("--song", action="append", default=[])
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--shards", type=int, default=8)
-    ap.add_argument("--variants", type=int, default=566, help="variants per song, for the estimate")
+    ap.add_argument("--variants", type=int, default=None,
+                    help="variants per song, for the estimate (default: counted from catalog/variants.json)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--max-usd", type=float, default=60.0,
                     help="refuse to submit above this estimate; raise deliberately")
@@ -61,13 +70,14 @@ def main() -> int:
     if not songs:
         sys.exit("no songs selected (use --all or --song ID)")
     shards = plan_shards(songs, args.shards, song_durations(REPO))
-    cpu_h, usd = estimate(shards, args.variants)
+    variants = args.variants or variants_per_song(variant_counts(REPO))
+    cpu_h, usd = estimate(shards, variants)
 
     print(f"[submit] {len(songs)} songs across {len(shards)} shards")
     for i, s in enumerate(shards):
         print(f"   shard {i}: {len(s['songs']):>2} songs, D={s['duration_total_s']:>5}s  "
               f"{' '.join(s['songs'])}")
-    print(f"[submit] estimate: {len(songs) * args.variants} jobs, {cpu_h:.0f} CPU-h, "
+    print(f"[submit] estimate: {job_count(shards, variants)} jobs ({variants}/song), {cpu_h:.0f} CPU-h, "
           f"~${usd:.2f} of spot (ceiling ${args.max_usd:.2f})")
     if usd > args.max_usd:
         sys.exit(f"[submit] REFUSING: estimate ${usd:.2f} exceeds --max-usd ${args.max_usd:.2f}")

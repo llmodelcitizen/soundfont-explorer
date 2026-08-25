@@ -8,7 +8,7 @@
 # as root. (Previously the tree was chowned to sfadmin and root then ran pip against wheels
 # inside it.) The bucket side of the same boundary is the IAM Deny on app/* in
 # infra/modules/admin: the box can read its bundle but never rewrite it.
-set -euo pipefail
+set -Eeuo pipefail
 rm -f /run/sfadmin/update-requested
 # shellcheck source=/dev/null
 . /etc/sfadmin.env
@@ -16,8 +16,35 @@ export AWS_DEFAULT_REGION
 APP=/opt/sfadmin/app
 VENV=/opt/sfadmin/venv
 as_sfadmin() { runuser -u sfadmin -- env HOME=/var/lib/sfadmin "$@"; }
+# The bootstrap status file is the app's gate: library routes (canon runs included) 503
+# unless it says ready. Flip it to "updating" for the swap + restore and back to "ready"
+# only once everything is in place, so a restore that fails leaves the still-running app
+# unable to run canon over the bundle's stub songs/ tree and persist that (#16). The SPA
+# shows the phase on its wait screen; recover with `systemctl start sfadmin-update` from
+# an SSM shell, or relaunch.
+status() {
+  printf '{"phase":"%s","pct":%d,"msg":"%s"}\n' "$1" "$2" "$3" > "$SFADMIN_STATUS.tmp"
+  mv "$SFADMIN_STATUS.tmp" "$SFADMIN_STATUS"
+}
+trap 'status failed 0 "update died (journalctl -u sfadmin-update)"' ERR
 
+status updating 50 "re-pulling the app bundle"
 KEY=$(aws s3 cp "s3://$SFADMIN_BUCKET/app/current" -)
+
+# Root's own copy of the parts it will run itself: the systemd units and this script.
+# They must NEVER be taken from "$APP" — that tree is unpacked AS sfadmin below and stays
+# sfadmin-writable while the app keeps running (it is only restarted at the end), so root
+# copying a unit out of it would let the unprivileged, network-facing app choose an
+# ExecStart that root then installs and starts. That is exactly the boundary the header
+# states (#9). This extraction runs as root from the write-protected bundle and the
+# directory is 0700 root-owned, so sfadmin never touches these bytes — that is what the
+# second GET of the same immutable key buys. Extracting before the tree swap also means a
+# bundle missing them aborts while the box is still consistent.
+ROOTSTAGE=$(mktemp -d)
+trap 'rm -rf "$ROOTSTAGE"' EXIT
+aws s3 cp "s3://$SFADMIN_BUCKET/$KEY" - \
+  | tar -xz -C "$ROOTSTAGE" ./admin/systemd ./admin/scripts/sfadmin-update
+
 rm -rf "$APP.new"
 install -d -o sfadmin -g sfadmin "$APP.new"
 aws s3 cp "s3://$SFADMIN_BUCKET/$KEY" - | as_sfadmin tar -xz -C "$APP.new"
@@ -27,10 +54,17 @@ mv "$APP.new" "$APP"
 rm -rf "$APP/songs/import/FILES"
 as_sfadmin mkdir -p "$APP/songs/import"
 as_sfadmin ln -sfn "$SFADMIN_DATA/library/FILES" "$APP/songs/import/FILES"
-# restore the canon products the fresh snapshot just clobbered (see bootstrap.sh)
-aws s3 sync "s3://$SFADMIN_BUCKET/canon/rendered/" "$APP/songs/rendered/" --size-only || true
+# restore the canon products the fresh snapshot just clobbered (see bootstrap.sh); a
+# failure here fails the update — only a key that does not exist yet is tolerated
+status updating 75 "restoring canon products"
+aws s3 sync "s3://$SFADMIN_BUCKET/canon/rendered/" "$APP/songs/rendered/" --size-only
 for f in songs.json corpus-imports.json canon-report.json; do
-  aws s3 cp "s3://$SFADMIN_BUCKET/canon/$f" "$APP/songs/$f" 2>/dev/null || true
+  if ! err=$(aws s3 cp "s3://$SFADMIN_BUCKET/canon/$f" "$APP/songs/$f" --only-show-errors 2>&1); then
+    case $err in
+      *"(404)"*|*NoSuchKey*) echo "note: no canon/$f in the bucket yet (run a Canon check)" ;;
+      *) echo "$err" >&2; false ;;
+    esac
+  fi
 done
 chown -R sfadmin:sfadmin "$APP/songs"   # data restored as root above; the code stays as unpacked
 # the venv is sfadmin's (bootstrap.sh), so the install runs unprivileged against the wheels
@@ -38,5 +72,35 @@ chown -R sfadmin:sfadmin "$APP/songs"   # data restored as root above; the code 
 chown -R sfadmin:sfadmin "$VENV"
 as_sfadmin "$VENV/bin/pip" install -q --no-index \
   --find-links "$APP/admin/wheels" -r "$APP/admin/server/requirements.txt"
+# Units ride with the bundle: only bootstrap.sh installed them, so a unit change (e.g. the
+# caddy-sync ExecStart) took effect only after a full relaunch, never after a deploy (#19).
+# Everything below comes from $ROOTSTAGE, never from $APP — see the note at the fetch.
+# nullglob + a count: three separate globs under `set -e` meant that renaming or dropping
+# the one .timer or the one .path aborted the deploy here, after the tree swap and before
+# the restart, leaving the box on the new tree with the old process (#19).
+shopt -s nullglob
+UNITS=("$ROOTSTAGE"/admin/systemd/*)
+shopt -u nullglob
+[ "${#UNITS[@]}" -gt 0 ] || { echo "bundle ships no systemd units" >&2; exit 1; }
+install -o root -g root -m 0644 -t /etc/systemd/system "${UNITS[@]}"
+# this script is one of the things the bundle ships, and only bootstrap.sh ever installed
+# it — so a fix to it (including the one above) could not reach a running box (#19).
+# Installed under a temp name and renamed: bash reads the running script from the open
+# inode, and rewriting it in place would corrupt the rest of this run.
+install -o root -g root -m 0755 "$ROOTSTAGE/admin/scripts/sfadmin-update" \
+  /usr/local/sbin/sfadmin-update.new
+mv /usr/local/sbin/sfadmin-update.new /usr/local/sbin/sfadmin-update
+systemctl daemon-reload
+# a unit shipped for the first time is not enabled by the deploy path otherwise; the ones
+# with an [Install] section are exactly the ones `systemctl enable` accepts, and enabling
+# or starting an already-active timer/path is a no-op
+for u in "${UNITS[@]}"; do
+  if grep -q '^\[Install\]' "$u"; then
+    n=$(basename "$u")
+    systemctl enable -q "$n"
+    case "$n" in *.timer | *.path) systemctl start "$n" ;; esac
+  fi
+done
 systemctl restart sfadmin.service
+status ready 100 "ready"
 echo "sfadmin updated to $KEY"

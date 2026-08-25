@@ -79,8 +79,9 @@ export class NowPlaying {
     if (src?.file) rows.push(['file', h('code', null, src.file)]);
     const sf2 = src?.sf2;
     if (sf2) {
+      // SF2_INFO_KEYS is the whole set the catalog publishes: the free-prose ICMT comment is
+      // deliberately not among them (it carries third-party PII — see issue #2)
       for (const k of SF2_INFO_KEYS) if (sf2[k]) rows.push([k, sf2[k]]);
-      if (sf2.ICMT) rows.push(['ICMT', h('span', { class: 'icmt' }, sf2.ICMT.slice(0, 600))]);
     }
     if (src?.bytes) rows.push(['size', fmtBytes(src.bytes)]);
     if (sf2) rows.push(['presets', `${sf2.preset_count ?? '?'} presets · ${sf2.melodic_bank0 ?? '?'} melodic in bank 0 · ${sf2.has_drums ? 'drums' : 'no drums'}${sf2.ifil ? ` · sf ${sf2.ifil}` : ''}`]);

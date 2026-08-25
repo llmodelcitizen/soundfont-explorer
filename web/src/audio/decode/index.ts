@@ -13,7 +13,18 @@ export class DecodeQueue {
   private active = 0;
   private seq = 0;
 
-  constructor(private readonly concurrency: number) {}
+  constructor(private concurrency: number) {}
+
+  /**
+   * Lower/raise the admission bound. The wasm pool shrinks when a slot is retired, and a queue
+   * that kept admitting the original number of jobs would hand the surplus job a pool where
+   * every worker is busy. Never below 1: with a concurrency of 0 nothing would ever be admitted
+   * and the job would hang instead of failing.
+   */
+  setConcurrency(n: number): void {
+    this.concurrency = Math.max(1, n);
+    this.pump();
+  }
 
   get queued(): number {
     return this.queue.length;

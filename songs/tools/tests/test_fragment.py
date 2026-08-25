@@ -1,4 +1,6 @@
 """Tests for the admin-library bridge: fragment.py and canon.py's fragment/lenient/--only paths."""
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -123,7 +125,7 @@ class CanonBridgeTests(unittest.TestCase):
             self.frag_spec("game-good", "import/FILES/game/good.mid", "Good Tune", "game"),
             self.frag_spec("game-bad", "import/FILES/game/bad.mid", "bad", "game"),
         ]
-        entries, ok, refused = canon.run_public(self.corpus, check=False, lenient=True)
+        entries, ok, refused, dropped = canon.run_public(self.corpus, check=False, lenient=True)
         self.assertEqual([e["id"] for e in entries], ["game-good"])
         self.assertEqual(entries[0]["title"], "Good Tune")         # leaf, not game/Good Tune
         self.assertEqual(entries[0]["path"], "game")
@@ -135,7 +137,7 @@ class CanonBridgeTests(unittest.TestCase):
 
     def test_legacy_import_title_keeps_prefix(self):
         self.corpus["default"] = "old-import"
-        entries, ok, refused = canon.run_public(self.corpus, check=False)
+        entries, ok, refused, dropped = canon.run_public(self.corpus, check=False)
         self.assertEqual(entries[0]["id"], "old-import")           # explicit id honored
         self.assertEqual(entries[0]["title"], "game/Good Tune")    # old behavior: prefixed
         self.assertNotIn("path", entries[0])
@@ -148,11 +150,65 @@ class CanonBridgeTests(unittest.TestCase):
         # second import appears; --only must touch it alone and keep game-good untouched
         self.corpus["songs"].append(
             self.frag_spec("game-good-2", "import/FILES/game/good.mid", "Again", "game"))
-        entries, ok, refused = canon.run_public(self.corpus, check=False, only={"game-good-2"})
+        entries, ok, refused, dropped = canon.run_public(self.corpus, check=False, only={"game-good-2"})
         self.assertEqual([e["id"] for e in entries], ["game-good", "game-good-2"])
         self.assertEqual(entries[1]["title"], "Again")
         doc = json.load(open(os.path.join(self.tmp, "songs.json")))
         self.assertEqual([e["id"] for e in doc["songs"]], ["game-good", "game-good-2"])
+
+    def test_only_drops_a_selected_song_that_is_refused(self):
+        self.corpus["songs"] = [
+            self.frag_spec("game-good", "import/FILES/game/good.mid", "Good Tune", "game"),
+            self.frag_spec("game-two", "import/FILES/game/good.mid", "Two", "game"),
+        ]
+        canon.run_public(self.corpus, check=False)
+        # the track's source goes bad (no program change) and only it is re-checked: its
+        # old songs.json entry must go, not linger as a renderable song (#19)
+        self.corpus["songs"][1]["src"] = "import/FILES/game/bad.mid"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            entries, ok, refused, dropped = canon.run_public(self.corpus, check=False, lenient=True,
+                                                    only={"game-two"})
+        self.assertEqual([r["id"] for r in refused], ["game-two"])
+        self.assertEqual([e["id"] for e in entries], ["game-good"])
+        doc = json.load(open(os.path.join(self.tmp, "songs.json")))
+        self.assertEqual([e["id"] for e in doc["songs"]], ["game-good"])
+        # dropping it is right, but it is also the moment the admin's publish path starts
+        # refusing the track while it is still live on the site — the run has to say so (#19)
+        self.assertIn("game-two", out.getvalue())
+        self.assertIn("dropped from songs.json", out.getvalue())
+        self.assertIn("live on the site", out.getvalue())
+        # ... and say it where the admin UI can read it: canon.py's stdout is inherited by
+        # library.canon_run on purpose, so the print above only reaches the journal (#19)
+        self.assertEqual(dropped, ["game-two"])
+
+    def test_the_report_carries_the_dropped_ids(self):
+        self.corpus["songs"] = [
+            self.frag_spec("game-good", "import/FILES/game/good.mid", "Good Tune", "game"),
+            self.frag_spec("game-two", "import/FILES/game/good.mid", "Two", "game"),
+        ]
+        with open(os.path.join(self.tmp, "corpus.json"), "w") as fh:
+            json.dump(self.corpus, fh)
+        with contextlib.redirect_stdout(io.StringIO()):
+            canon.main(["--lenient"])
+            self.corpus["songs"][1]["src"] = "import/FILES/game/bad.mid"
+            with open(os.path.join(self.tmp, "corpus.json"), "w") as fh:
+                json.dump(self.corpus, fh)
+            canon.main(["--lenient", "--only", "game-two"])
+        with open(os.path.join(self.tmp, "canon-report.json")) as fh:
+            report = json.load(fh)
+        self.assertEqual(report["dropped"], ["game-two"])
+        self.assertEqual([r["id"] for r in report["refused"]], ["game-two"])
+
+    def test_only_is_quiet_when_it_drops_nothing(self):
+        self.corpus["songs"] = [
+            self.frag_spec("game-good", "import/FILES/game/good.mid", "Good Tune", "game"),
+        ]
+        canon.run_public(self.corpus, check=False)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            canon.run_public(self.corpus, check=False, only={"game-good"})
+        self.assertNotIn("dropped from songs.json", out.getvalue())
 
 
 if __name__ == "__main__":

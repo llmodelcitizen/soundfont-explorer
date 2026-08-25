@@ -1,9 +1,12 @@
 # Persist Caddy's Let's Encrypt material to the admin bucket so a relaunched box reuses
 # its certificate instead of burning LE rate limits. Installed by bootstrap.sh.
+# No --size-only: a renewed certificate and its fresh key are the same size as the ones
+# they replace, so size-only sync skipped them and the bucket kept the expired pair.
+# The default comparison (size or newer mtime) uploads a renewal.
 [Unit]
 Description=sync /var/lib/caddy to the admin bucket
 
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/sfadmin.env
-ExecStart=/usr/bin/aws s3 sync /var/lib/caddy s3://${SFADMIN_BUCKET}/caddy/ --size-only
+ExecStart=/usr/bin/aws s3 sync /var/lib/caddy s3://${SFADMIN_BUCKET}/caddy/

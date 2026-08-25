@@ -28,15 +28,22 @@ def measure(wav: Path, settings: RenderSettings, timeout_s: int = 300, in_args: 
     return parse_ebur128(res.stderr.decode("utf-8", "replace"))
 
 
-def _f(text: str, pattern: str) -> float:
-    """Parse one number out of the ebur128 summary; `-inf`/`inf` are real values here."""
+def _f(text: str, pattern: str, what: str) -> float:
+    """Parse one number out of the ebur128 summary; `-inf`/`inf` are real values here.
+
+    A line that is missing altogether is a parse failure, not a value: turning it into -inf
+    would make a missing `Peak:` line disable the true-peak ceiling (gain_db takes
+    min(target - I, ceiling - (-inf)) = the loudness term alone) and a missing `I:` line fail
+    the job as "silent" for the wrong reason. Either way the summary format has changed under
+    us and the render must stop rather than master with a bogus gain.
+    """
     m = re.search(pattern, text)
     if not m:
-        return float("-inf")
+        raise JobError("measure", f"ebur128 summary has no {what} line:\n" + text[-1500:])
     try:
         return float(m.group(1))
     except ValueError:
-        return float("-inf")
+        raise JobError("measure", f"ebur128 {what} is not a number: {m.group(1)!r}") from None
 
 
 def parse_ebur128(stderr: str) -> dict:
@@ -47,10 +54,10 @@ def parse_ebur128(stderr: str) -> dict:
     s = stderr[i:]
     num = r"(-?(?:inf|[\d.]+))"
     return {
-        "input_i": _f(s, r"I:\s*" + num + r"\s*LUFS"),
-        "input_tp": _f(s, r"Peak:\s*" + num + r"\s*dBFS"),
-        "input_lra": _f(s, r"LRA:\s*" + num + r"\s*LU"),
-        "input_thresh": _f(s, r"Threshold:\s*" + num + r"\s*LUFS"),
+        "input_i": _f(s, r"I:\s*" + num + r"\s*LUFS", "integrated loudness (I:)"),
+        "input_tp": _f(s, r"Peak:\s*" + num + r"\s*dBFS", "true peak (Peak:)"),
+        "input_lra": _f(s, r"LRA:\s*" + num + r"\s*LU", "loudness range (LRA:)"),
+        "input_thresh": _f(s, r"Threshold:\s*" + num + r"\s*LUFS", "threshold (Threshold:)"),
     }
 
 

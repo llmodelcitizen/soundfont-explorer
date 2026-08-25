@@ -34,7 +34,7 @@ import re
 import subprocess
 import sys
 
-from ._util import load_engines, write_json
+from ._util import load_engines, now_iso, utc_now, write_json
 
 SCHEMA = 1
 EXPECTED_COUNT = 79  # libADLMIDI 1.6.2 (c462209); a different count means the image changed
@@ -290,7 +290,7 @@ def enrich(bank: dict) -> dict:
 
 
 def build_doc(banks: list[dict], source: dict, now: _dt.datetime | None = None) -> dict:
-    now = now or _dt.datetime.now(_dt.timezone.utc)
+    now = now or utc_now()
     banks = [enrich(b) for b in banks]
     families = sorted({b["family"] for b in banks})
     unknown_fam = [f for f in families if f not in FAMILIES]
@@ -301,7 +301,7 @@ def build_doc(banks: list[dict], source: dict, now: _dt.datetime | None = None) 
         lic_counts[h] = lic_counts.get(h, 0) + 1
     return {
         "schema": SCHEMA,
-        "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": now_iso(now),
         "source": source,
         "libadlmidi": dict(LIBADLMIDI),
         "count": len(banks),
