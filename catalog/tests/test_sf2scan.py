@@ -5,6 +5,7 @@ import os
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
 from catalog import sf2scan
 from catalog.tests.fixtures import build_sf2, chunk, phdr_record, sdta_range
@@ -166,6 +167,49 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(any("parsed only the first" in w for w in rec["warnings"]))
         self.assertEqual(rec["preset_count"], len(PRESETS))
 
+    def test_list_smaller_than_its_type_is_a_parse_failure(self):
+        """LIST/INFO size 0..3: `size - 4` went negative, so fh.read(-1) slurped the whole file
+        (size 3) or fh.read(-2..-4) raised ValueError out of a "never raises" function."""
+        for size in (0, 1, 2, 3):
+            data = bytearray(build_sf2(presets=PRESETS))
+            struct.pack_into("<I", data, 16, size)   # first top-level chunk = LIST/INFO
+            rec = self.scan_bytes(bytes(data))
+            self.assertFalse(rec["parse_ok"], size)
+            self.assertIn("LIST chunk", rec["error"])
+
+    def test_phdr_size_is_bounded_by_the_file_and_the_format(self):
+        class RequestRecorder(io.BytesIO):
+            def __init__(self, data):
+                super().__init__(data)
+                self.requested = []
+
+            def read(self, n=-1):
+                self.requested.append(n)
+                return super().read(n)
+
+        data = bytearray(build_sf2(presets=PRESETS))
+        # LIST/pdta and its phdr both claim ~4 GiB: neither may turn into a 4 GiB read
+        pos = 12
+        while pos + 12 <= len(data):
+            (size,) = struct.unpack_from("<I", data, pos + 4)
+            if data[pos:pos + 4] == b"LIST" and data[pos + 8:pos + 12] == b"pdta":
+                struct.pack_into("<I", data, pos + 4, 0xFFFFFFFF)
+                struct.pack_into("<I", data, pos + 16, 0xFFFFFFF0)   # phdr is the first sub-chunk
+                break
+            pos += 8 + size + (size & 1)
+        else:
+            self.fail("no pdta in fixture")
+        fh = RequestRecorder(bytes(data))
+        walked = sf2scan._walk_riff(fh, len(data))
+        self.assertLessEqual(max(fh.requested), len(data))   # never asks for more than the file holds
+        self.assertTrue(any("overruns" in w for w in walked["warnings"]))
+        self.scan_bytes(bytes(data))                          # and scan_file still never raises
+        # a phdr bigger than 65536 records cannot be a SoundFont (bag indices are u16)
+        hdr = b"phdr" + struct.pack("<I", sf2scan.PHDR_CAP + sf2scan.PHDR_RECORD) + b"\0" * 8
+        with self.assertRaises(sf2scan.SF2Error) as cm:
+            sf2scan._find_phdr(io.BytesIO(hdr), 0, 1 << 40, [])
+        self.assertIn("records", str(cm.exception))
+
 
 class DirectoryTests(unittest.TestCase):
     def setUp(self):
@@ -225,6 +269,21 @@ class DirectoryTests(unittest.TestCase):
 
     def test_cli_bad_root(self):
         self.assertEqual(sf2scan.main(["--root", os.path.join(self.root, "nope"), "--quiet"]), 2)
+
+    def test_non_utf8_file_name_fails_before_hashing(self):
+        """os.listdir returns a non-UTF-8 name as lone surrogates; json.dump(ensure_ascii=False)
+        cannot write those, and it used to find out in write_json — after the sha256 pass over
+        the whole collection. Refuse up front, naming the file."""
+        with open(os.path.join(os.fsencode(self.root), b"caf\xe9.sf2"), "wb") as fh:
+            fh.write(self.files["b.sf2"])
+        with self.assertRaises(ValueError) as cm:
+            sf2scan.list_soundfonts(self.root)
+        self.assertIn("caf�.sf2", str(cm.exception))
+        self.assertIn("rename", str(cm.exception))
+        out = os.path.join(self.root, "out.json")
+        with mock.patch.object(sf2scan, "sha256_file", side_effect=AssertionError("hashed anyway")):
+            self.assertEqual(sf2scan.main(["--root", self.root, "--out", out, "--quiet"]), 2)
+        self.assertFalse(os.path.exists(out))
 
 
 class StructTests(unittest.TestCase):
