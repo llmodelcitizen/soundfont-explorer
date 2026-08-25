@@ -1,4 +1,6 @@
 """Tests for the admin-library bridge: fragment.py and canon.py's fragment/lenient/--only paths."""
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -163,12 +165,29 @@ class CanonBridgeTests(unittest.TestCase):
         # the track's source goes bad (no program change) and only it is re-checked: its
         # old songs.json entry must go, not linger as a renderable song (#19)
         self.corpus["songs"][1]["src"] = "import/FILES/game/bad.mid"
-        entries, ok, refused = canon.run_public(self.corpus, check=False, lenient=True,
-                                                only={"game-two"})
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            entries, ok, refused = canon.run_public(self.corpus, check=False, lenient=True,
+                                                    only={"game-two"})
         self.assertEqual([r["id"] for r in refused], ["game-two"])
         self.assertEqual([e["id"] for e in entries], ["game-good"])
         doc = json.load(open(os.path.join(self.tmp, "songs.json")))
         self.assertEqual([e["id"] for e in doc["songs"]], ["game-good"])
+        # dropping it is right, but it is also the moment the admin's publish path starts
+        # refusing the track while it is still live on the site — the run has to say so (#19)
+        self.assertIn("game-two", out.getvalue())
+        self.assertIn("dropped from songs.json", out.getvalue())
+        self.assertIn("live on the site", out.getvalue())
+
+    def test_only_is_quiet_when_it_drops_nothing(self):
+        self.corpus["songs"] = [
+            self.frag_spec("game-good", "import/FILES/game/good.mid", "Good Tune", "game"),
+        ]
+        canon.run_public(self.corpus, check=False)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            canon.run_public(self.corpus, check=False, only={"game-good"})
+        self.assertNotIn("dropped from songs.json", out.getvalue())
 
 
 if __name__ == "__main__":
