@@ -10,12 +10,11 @@ terraform {
       version = "~> 2.4"
     }
   }
-  backend "s3" {
-    bucket       = "soundfont-explorer-tfstate-977521774238"
-    key          = "live.tfstate"
-    region       = "us-east-1"
-    use_lockfile = true
-  }
+  # Partial configuration: the state bucket is named after the AWS account, which — like
+  # every other deployment identifier — lives in the private overlay (README "Deploying
+  # your own"). Once per checkout, after scripts/overlay.sh:
+  #   terraform -chdir=infra/live init -backend-config=backend.hcl
+  backend "s3" {}
 }
 
 provider "aws" {

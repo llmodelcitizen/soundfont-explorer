@@ -34,4 +34,4 @@ if [[ ${#DRY[@]} -eq 0 ]]; then
   echo "== invalidate"
   aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/" "/index.html" "/404.html" --query 'Invalidation.Id' --output text
 fi
-echo "done: https://soundfonts.ericq.com/"
+echo "done: $(python3 -c "import json;print(json.load(open('$OUT'))['site_url']['value'])")"

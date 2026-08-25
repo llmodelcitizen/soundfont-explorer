@@ -12,7 +12,9 @@
 #     -v "$PWD/roms:/roms:ro" -v "$PWD/work:/work" -v "$PWD/out:/out" \
 #     sfr-render sfr render --song freedoom-e1m1 --limit 5
 
-ARG DEBIAN_IMAGE=debian:trixie-slim
+# pinned by digest (multi-arch index) so a rebuild resolves to the same base; bump the digest
+# deliberately, together with engines.json, rather than picking up whatever :trixie-slim is today
+ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
 ARG WITH_ROM_ENGINES=0
 
 # ---------------------------------------------------------------------------

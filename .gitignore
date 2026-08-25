@@ -35,9 +35,13 @@ vendor/*.log
 # terraform local artefacts
 infra/**/.terraform/
 infra/**/terraform.tfstate*
+infra/modules/*/lambda/*.zip
+
+# deployment identity: symlinks into the private overlay (scripts/overlay.sh); *.example are tracked
+infra/live/backend.hcl
 infra/live/terraform.tfvars
 infra/live/outputs.json
-infra/modules/*/lambda/*.zip
+web/.env.local
 
 # imported music: sources are gitignored (songs/import/FILES/), so their canonical
 # copies are too — only the freely licensed corpus is committed

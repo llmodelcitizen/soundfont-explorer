@@ -2,7 +2,7 @@
 
 Environment contract:
   SFADMIN_BUCKET    admin bucket name (library, runs, caddy state, app bundle)
-  SFADMIN_HOSTNAME  public FQDN (admin.soundfonts.ericq.com)
+  SFADMIN_HOSTNAME  public FQDN (admin.<domain>)
   SFADMIN_REPO      repo snapshot root (/opt/sfadmin/app)
   SFADMIN_DATA      mutable data root (/opt/sfadmin/data: library/FILES, gm.sf2)
   SFADMIN_CACHE     preview cache dir (/var/cache/sfadmin)

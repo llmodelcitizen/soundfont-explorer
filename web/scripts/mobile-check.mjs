@@ -1,11 +1,17 @@
 import { chromium, devices } from 'playwright';
+import { siteUrl } from './site-url.mjs';
+const url = process.argv[2] ?? siteUrl();
+if (!url) {
+  console.error('usage: node scripts/mobile-check.mjs <url>   (or set SFP_SITE_URL / link infra/live/outputs.json)');
+  process.exit(2);
+}
 const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
 const ctx = await b.newContext({ ...devices['iPhone 13'], locale: 'en-US' });
 const p = await ctx.newPage();
 const errors = [];
 p.on('pageerror', (e) => errors.push(String(e)));
 p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await p.goto('https://soundfonts.ericq.com/', { waitUntil: 'networkidle' });
+await p.goto(url, { waitUntil: 'networkidle' });
 await p.waitForSelector('.rows .row', { timeout: 20000 });
   await p.tap('.rows .row:nth-child(3)');
 await p.waitForFunction(() => document.querySelector('.row.audible') !== null, null, { timeout: 20000 });

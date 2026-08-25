@@ -3,7 +3,8 @@ import { engineVersion, type CatalogDoc, type Source } from '../contracts/catalo
 import type { SongsDoc } from '../contracts/songs';
 import { h } from './dom';
 
-export const CONTACT = 'soundfonts@ericq.com';
+/** Takedown contact for the About page: VITE_CONTACT_EMAIL from web/.env.local (private overlay). */
+export const CONTACT: string = (import.meta.env.VITE_CONTACT_EMAIL as string | undefined) ?? '';
 
 /** One paragraph per source collection found in the catalog (attribution is per file, never assumed). */
 function soundfontSources(catalog: CatalogDoc): HTMLElement[] {
@@ -83,7 +84,7 @@ export function renderCredits(songs: SongsDoc, catalog: CatalogDoc): HTMLElement
       ' recreation.',
     ),
     h('h2', null, 'Takedown / DMCA'),
-    h('p', null, `If you hold rights to something here and want it removed, email ${CONTACT} with the variant id (shown in the now-playing panel) and the work concerned; it will be taken down promptly.`),
+    h('p', null, `If you hold rights to something here and want it removed, ${CONTACT ? `email ${CONTACT}` : 'contact the site operator'} with the variant id (shown in the now-playing panel) and the work concerned; it will be taken down promptly.`),
     h('h2', null, 'Privacy'),
     h('p', null, 'No analytics, no tracking, no selling your information.'),
     h(

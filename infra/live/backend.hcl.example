@@ -1,0 +1,7 @@
+# Copy to backend.hcl in your private overlay (scripts/overlay.sh links it here), then:
+#   terraform -chdir=infra/live init -backend-config=backend.hcl
+# The bucket is created once by infra/bootstrap (soundfont-explorer-tfstate-<account id>).
+bucket       = "soundfont-explorer-tfstate-123456789012"
+key          = "live.tfstate"
+region       = "us-east-1"
+use_lockfile = true

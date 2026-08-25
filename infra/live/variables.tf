@@ -1,11 +1,13 @@
+# Deployment identity — no defaults on purpose: these come from terraform.tfvars in the private
+# overlay (README "Deploying your own"; terraform.tfvars.example is the template).
 variable "domain" {
-  type    = string
-  default = "soundfonts.ericq.com"
+  type        = string
+  description = "Site hostname served by CloudFront, e.g. soundfonts.example.com"
 }
 
 variable "zone_name" {
-  type    = string
-  default = "ericq.com."
+  type        = string
+  description = "Route 53 hosted zone that contains `domain`, with the trailing dot, e.g. example.com."
 }
 
 variable "alert_email" {

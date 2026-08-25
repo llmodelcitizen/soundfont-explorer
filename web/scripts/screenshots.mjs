@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
-const url = process.argv[2] ?? 'https://soundfonts.ericq.com/';
+import { siteUrl } from './site-url.mjs';
+const url = process.argv[2] ?? siteUrl() ?? 'http://127.0.0.1:5173/';
 const out = process.argv[3] ?? '../work/shots';
 await mkdir(out, { recursive: true });
 const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
