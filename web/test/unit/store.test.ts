@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Fetcher } from '../../src/audio/net/fetcher';
 import { SegmentStore } from '../../src/audio/store';
 import { packUrl } from '../../src/contracts/set';
@@ -7,13 +7,16 @@ import { FakeDecoder, FakeFetch, flush, makeSet } from './fakes';
 function storeFor(variants: string[], D = 8) {
   const { set, objects } = makeSet(variants, D);
   const ff = new FakeFetch(objects);
+  const decoder = new FakeDecoder();
   let now = 0;
   const clock = () => now;
-  const store = new SegmentStore(set, new Fetcher(8, ff.fn, clock), new FakeDecoder(), { decodedBytes: 8 << 20, compressedBytes: 8 << 20 }, clock);
-  return { set, ff, store, tick: (ms: number) => (now += ms) };
+  const store = new SegmentStore(set, new Fetcher(8, ff.fn, clock), decoder, { decodedBytes: 8 << 20, compressedBytes: 8 << 20 }, clock);
+  return { set, ff, decoder, store, tick: (ms: number) => (now += ms) };
 }
 
 describe('SegmentStore', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('fetch-only wants enter the negative cache: a missing pack is not re-fetched every tick', async () => {
     const h = storeFor(['a', 'b']);
     const missing = packUrl(h.set, 'g0', 0);
@@ -50,6 +53,47 @@ describe('SegmentStore', () => {
     h.ff.failUrls.add(url);
     await want();
     expect(h.store.backoffMs(key)).toBe(1000); // a later failure starts over, not at 2000
+  });
+
+  it('records one failure per failed request, not one per prefetch tick', async () => {
+    // want() runs every AUDIO.RETRY_TICK_MS (60 ms) and none of its guards sees a byte-only
+    // fetch in flight, so every tick used to attach another rejection handler to the same
+    // Fetcher promise: one failed request counted as ten, walking the exponential backoff to
+    // its 30 s cap — and that is the cache the audible path consults, so a transient prefetch
+    // miss on a distant neighbour silenced the segment long enough to time the switch out.
+    vi.useFakeTimers();
+    const h = storeFor(['a', 'b']);
+    const missing = packUrl(h.set, 'g0', 0);
+    h.ff.failUrls.add(missing);
+    h.ff.latencyMs = 600; // ten prefetch ticks fit inside the one request
+    const key = { v: 'a', tier: 's' as const, i: 0 };
+    // the store clock stays put so backoffMs() reads back the recorded wait, not what is left of it
+    for (let t = 0; t <= 660; t += 60) {
+      h.store.want([{ key, priority: 5, fetchOnly: true }]);
+      await vi.advanceTimersByTimeAsync(60);
+    }
+    await flush(20);
+    expect(h.ff.log.filter((l) => l.url === missing).length).toBe(1);
+    expect(h.store.backoffMs(key)).toBe(1000); // one failure → base backoff, not the 30 s cap
+    await expect(h.store.request(key, 0)).rejects.toThrow('backoff a/s/0 for 1000 ms');
+  });
+
+  it('a successful byte fetch clears a fetch failure but not a decode failure', async () => {
+    // bytes that arrive fine and will not decode (a corrupt member) must keep ratcheting:
+    // clearing the count on the byte fetch alone let the prefetcher reset it every time the
+    // compressed bytes aged out, so the audible path retried the bad decode at ~1 Hz forever
+    const h = storeFor(['a', 'b']);
+    const key = { v: 'a', tier: 's' as const, i: 0 };
+    h.decoder.failKeys.add('a/s/0');
+    await expect(h.store.request(key, 0)).rejects.toThrow(/decode failed/);
+    expect(h.store.backoffMs(key)).toBe(1000);
+    h.tick(1000);
+    h.store.compressed.clear(); // the compressed bytes aged out under cache pressure
+    h.store.want([{ key, priority: 5, fetchOnly: true }]);
+    await flush(20);
+    expect(h.store.compressed.has(`${packUrl(h.set, 'g0', 0)}#0`)).toBe(true); // the fetch worked
+    await expect(h.store.request(key, 0)).rejects.toThrow(/decode failed/);
+    expect(h.store.backoffMs(key)).toBe(2000); // second decode failure: the ratchet still climbs
   });
 
   it('splits a whole pack once, however many members were waiting on the same fetch', async () => {
