@@ -6,6 +6,7 @@
 // 350 ms so arrowing through the list doesn't stack renders on the 2-vCPU box (the
 // server additionally caps concurrent preview renders at 2).
 import { get, isSessionExpired, patch, post } from './api';
+import { el, note, statusLine } from './dom';
 
 export interface CanonInfo {
   status: 'ok' | 'pending' | 'refused' | 'unparsed';
@@ -52,18 +53,6 @@ const CANON_POLL_MS = 3000;
 const CANON_POLL_MAX_FAILURES = 10; // consecutive failed status GETs before the poll gives up
 const CANON_POLL_MAX_BACKOFF = 5; // ... spaced out to at most 5x the interval between tries
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]
-): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') e.className = v;
-    else e.setAttribute(k, v);
-  }
-  e.append(...children);
-  return e;
-}
-
 function fmtSize(n: number): string {
   return n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 }
@@ -85,7 +74,7 @@ export class LibraryView {
   private open = new Set<string>();
   private autoplay = false;
   private autoplayTimer: number | null = null;
-  private status = el('span', { class: 'statusline' });
+  private status = statusLine();
   // The toolbar is built once and stays in the DOM; render() only swaps the columns
   // below it. Rebuilding the filter box on every render — i.e. on every keystroke —
   // replaced the focused element and dropped focus after the first character.
@@ -118,22 +107,17 @@ export class LibraryView {
     } catch { /* private mode */ }
   }
 
-  private note(msg: string, isError = false): void {
-    this.status.textContent = msg;
-    this.status.classList.toggle('error', isError);
-  }
-
   private async act(label: string, fn: () => Promise<unknown>): Promise<boolean> {
     try {
-      this.note(`${label}…`);
+      note(this.status, `${label}…`);
       await fn();
       await this.load();
-      this.note(`${label}: done`);
+      note(this.status, `${label}: done`);
       return true;
     } catch (e) {
       // an expired session is not this action's failure: api.ts has already sent the
       // browser to /auth/login, so the message would only flash up on the way out
-      if (!isSessionExpired(e)) this.note(`${label}: ${(e as Error).message}`, true);
+      if (!isSessionExpired(e)) note(this.status, `${label}: ${(e as Error).message}`, true);
       return false;
     }
   }
@@ -426,7 +410,7 @@ export class LibraryView {
     apply.onclick = () => {
       const body: Record<string, string> = {};
       for (const [k, inp] of inputs) if (inp.value.trim()) body[k] = inp.value.trim();
-      if (!Object.keys(body).length) return this.note('nothing to set', true);
+      if (!Object.keys(body).length) return note(this.status, 'nothing to set', true);
       void this.act(`edit ${ids.length}`,
         () => post('/api/library/bulk', { op: 'edit', ids, fields: body }));
     };
@@ -506,7 +490,7 @@ export class LibraryView {
     inp.onchange = async () => {
       if (!inp.files?.length) return;
       const dir = prompt('Upload into directory (empty = top level):', this.selectedDir());
-      if (dir === null) return this.note('upload cancelled'); // Cancel used to fall through as '' and upload to the top level
+      if (dir === null) return note(this.status, 'upload cancelled'); // Cancel used to fall through as '' and upload to the top level
       const fd = new FormData();
       for (const f of inp.files) fd.append('files', f);
       fd.append('dir', dir.trim());
@@ -533,10 +517,10 @@ export class LibraryView {
     // reloading the library at the end. The loop is deliberately not tied to the tab being
     // shown: the server run outlives a tab switch and its result still belongs here.
     try {
-      this.note('canon: starting…');
+      note(this.status, 'canon: starting…');
       await post('/api/library/canon', ids ? { ids } : {});
     } catch (e) {
-      if (!isSessionExpired(e)) this.note(`canon: ${(e as Error).message}`, true);
+      if (!isSessionExpired(e)) note(this.status, `canon: ${(e as Error).message}`, true);
       return;
     }
     // Claim the generation only once the POST has actually started a run. The server runs
@@ -574,16 +558,16 @@ export class LibraryView {
         if (isSessionExpired(e)) return;
         const msg = (e as Error).message;
         if (++failures >= CANON_POLL_MAX_FAILURES) {
-          this.note(`canon: lost track of the run after ${failures} failed status checks (${msg}) — reload to see the result`, true);
+          note(this.status, `canon: lost track of the run after ${failures} failed status checks (${msg}) — reload to see the result`, true);
           return;
         }
-        this.note(`canon: status check failed (${msg}), retrying…`, true);
+        note(this.status, `canon: status check failed (${msg}), retrying…`, true);
         setTimeout(poll, retryDelay());
         return;
       }
       if (gen !== this.canonGen) return; // ... or while this status GET was in flight
       if (s.running) {
-        this.note('canon: running… (a full run takes a few minutes on this box)');
+        note(this.status, 'canon: running… (a full run takes a few minutes on this box)');
         setTimeout(poll, CANON_POLL_MS);
         return;
       }
@@ -595,21 +579,21 @@ export class LibraryView {
           + ' — publishing is blocked while one of those is live on the site (fix, hide, or'
           + ' remove it on the Published tab)'
         : '';
-      if (s.error) this.note(`canon: ${s.error}`, true);
+      if (s.error) note(this.status, `canon: ${s.error}`, true);
       else if (s.result?.ran) {
         const parts = Object.entries(s.result.ran)
           .map(([id, c]) => `${id}: ${c.status}${c.reason ? ` (${c.reason.slice(0, 80)})` : ''}`);
         const shown = parts.slice(0, 3).join(' · ') + (parts.length > 3 ? ` · +${parts.length - 3} more` : '');
-        this.note(`canon: ${shown}${dropped}`,
+        note(this.status, `canon: ${shown}${dropped}`,
           !!dropped || Object.values(s.result.ran).some((c) => c.status !== 'ok'));
       } else {
-        this.note(`canon (library totals): ${JSON.stringify(s.result?.totals ?? s.result)}${dropped}`,
+        note(this.status, `canon (library totals): ${JSON.stringify(s.result?.totals ?? s.result)}${dropped}`,
           !!dropped);
       }
       try {
         await this.load();
       } catch (e) {
-        this.note(`canon finished, but reloading the library failed: ${(e as Error).message}`, true);
+        note(this.status, `canon finished, but reloading the library failed: ${(e as Error).message}`, true);
       }
     };
     void poll();
@@ -620,7 +604,7 @@ export class LibraryView {
     try {
       chans = await get<ChannelInfo[]>(`/api/library/${e.id}/channels`);
     } catch (err) {
-      this.note(`channels: ${(err as Error).message}`, true);
+      note(this.status, `channels: ${(err as Error).message}`, true);
       return;
     }
     const missing = chans.filter((c) => c.missing_program);
@@ -634,7 +618,7 @@ export class LibraryView {
       if (p.trim() === '') continue;
       const num = Number(p);
       if (!Number.isInteger(num) || num < 0 || num > 127) {
-        this.note(`bad program ${p}`, true);
+        note(this.status, `bad program ${p}`, true);
         return;
       }
       rules.push({ track: c.track, channel: c.channel, program: num });
