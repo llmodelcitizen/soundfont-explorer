@@ -74,6 +74,9 @@ export class TrackList {
   private songs: SongEntry[] = [];
   private current = '';
   private open = new Set<string>();
+  private observer: ResizeObserver | null = null;
+  private stopWatchingFonts: (() => void) | null = null;
+  private disposed = false;
 
   readonly autoNextBox: HTMLInputElement;
   readonly preserveBox: HTMLInputElement;
@@ -123,15 +126,44 @@ export class TrackList {
    * Drop both toggles from the caption when the pane is too narrow to hold them (a dragged-in
    * split, a small window, iOS mobile-landscape). Measuring beats a breakpoint: the pane width
    * is the user's, not the viewport's. Hiding them cannot change the caption's own box — it is
-   * a fixed-height row stretched to the pane — so this never feeds itself a new observation.
+   * a fixed-height row stretched to the pane, and `.tracks { min-width: 0 }` makes the pane set
+   * the caption's width rather than the other way round — so this never feeds itself a new
+   * observation, and the overflow it looks for can actually happen.
    */
+  private fitCaption(): void {
+    if (this.disposed) return;
+    this.head.classList.remove('cramped');
+    if (this.head.clientWidth && this.head.scrollWidth > this.head.clientWidth) this.head.classList.add('cramped');
+  }
+
+  /**
+   * Re-take the decision whenever the caption's *content* width can have changed at a fixed box
+   * width: a webfont arriving after the first observation (Topaz and IBM Plex both swap in late),
+   * a theme switch, a Modern font cycle. The ResizeObserver alone only sees the box.
+   */
+  refit(): void {
+    this.fitCaption();
+  }
+
   private watchCaptionWidth(): void {
-    const fit = () => {
-      this.head.classList.remove('cramped');
-      if (this.head.clientWidth && this.head.scrollWidth > this.head.clientWidth) this.head.classList.add('cramped');
-    };
     if (typeof ResizeObserver === 'undefined') return;
-    new ResizeObserver(fit).observe(this.head);
+    this.observer = new ResizeObserver(() => this.fitCaption());
+    this.observer.observe(this.head);
+    const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+    if (!fonts) return;
+    const onLoaded = () => this.fitCaption();
+    fonts.addEventListener('loadingdone', onLoaded);
+    this.stopWatchingFonts = () => fonts.removeEventListener('loadingdone', onLoaded);
+    void fonts.ready.then(onLoaded, () => undefined);
+  }
+
+  /** Drop the observers before the pane is replaced: a song switch builds a whole new TrackList. */
+  dispose(): void {
+    this.disposed = true;
+    this.observer?.disconnect();
+    this.observer = null;
+    this.stopWatchingFonts?.();
+    this.stopWatchingFonts = null;
   }
 
   setSongs(songs: SongEntry[], current: string): void {

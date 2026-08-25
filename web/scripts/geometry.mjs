@@ -323,12 +323,16 @@ async function measure(theme, viewport, label) {
     const box = document.querySelector('.settings')?.getBoundingClientRect();
     const defaultsBox = defaults?.getBoundingClientRect();
     const resetBox = reset?.getBoundingClientRect();
+    const trackOptions = Array.from(document.querySelectorAll('.settings .trackopts input[type="checkbox"]'));
     reset?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     return {
       guidance,
       equalButtons: !!defaultsBox && !!resetBox && Math.abs(defaultsBox.width - resetBox.width) <= 0.5 && Math.abs(defaultsBox.height - resetBox.height) <= 0.5,
       resetBelow: !!defaultsBox && !!resetBox && resetBox.top >= defaultsBox.bottom,
       fitsViewport: !!box && box.top >= 0 && box.bottom <= innerHeight,
+      // #28: both track options are in Settings at every window size, whatever the Tracks caption does
+      trackOptions: trackOptions.map((input) => input.closest('label')?.textContent?.trim() ?? ''),
+      trackOptionsVisible: trackOptions.every((input) => input.getBoundingClientRect().width > 0),
       font: { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') },
     };
   });
@@ -427,6 +431,219 @@ async function titleSpaceStaysOnTheTitle() {
 
 await titleSpaceStaysOnTheTitle();
 
+/**
+ * The Tracks caption (#28) drops both toggles when the pane cannot hold them and shows them when
+ * it can. Two things have to hold and neither is visible to a unit test: the caption is narrowed
+ * by the pane rather than the pane widened by the caption (so the overflow it measures can happen
+ * at all), and the decision is re-taken when the *text* changes at a fixed box width — a theme
+ * switch swaps Topaz for the Modern face without resizing anything.
+ */
+async function trackCaptionFollowsThePane() {
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`desktop/tracks: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  await page.evaluate(() => document.fonts.ready);
+  /** `needed` is the caption's content width with both toggles shown, whatever the class says */
+  const state = async () => {
+    await page.waitForTimeout(80); // one ResizeObserver delivery
+    return page.evaluate(() => {
+      const head = document.querySelector('.tracks .np-head');
+      const right = document.querySelector('.main > .right');
+      const app = document.querySelector('#app');
+      const cramped = head.classList.contains('cramped');
+      head.classList.remove('cramped');
+      const needed = head.scrollWidth;
+      if (cramped) head.classList.add('cramped');
+      const toggles = Array.from(document.querySelectorAll('.tracks .track-toggles input'));
+      return {
+        theme: document.documentElement.dataset.theme,
+        client: head.clientWidth,
+        needed,
+        cramped,
+        pastPane: head.getBoundingClientRect().right - right.getBoundingClientRect().right,
+        appOverflow: app.scrollWidth - app.clientWidth,
+        toggles: toggles.length,
+        togglesVisible: toggles.length === 2 && toggles.every((box) => box.getBoundingClientRect().width > 0),
+        tracksVisible: getComputedStyle(document.querySelector('.tracks')).display !== 'none',
+      };
+    });
+  };
+  const setPane = async (width) => {
+    await page.evaluate((w) => {
+      if (w === null) document.querySelector('.main').style.removeProperty('--right-w');
+      else document.querySelector('.main').style.setProperty('--right-w', `${w}px`);
+    }, width);
+    return state();
+  };
+  const consistent = (s) => s.cramped === (s.needed > s.client);
+  const opened = await state();
+  assert(opened.pastPane <= 0.5 && opened.appOverflow <= 0.5, `desktop/modern: the Tracks caption runs ${opened.pastPane}px past its pane: ${JSON.stringify(opened)}`);
+  assert(consistent(opened), `desktop/modern: the Tracks caption is stale at the default split: ${JSON.stringify(opened)}`);
+
+  // a caption wider than any sensible pane: both toggles go, and nothing spills out of the pane
+  const narrow = await setPane(300);
+  assert(narrow.cramped && !narrow.togglesVisible && narrow.pastPane <= 0.5, `desktop/modern: a 300px Tracks pane does not drop the caption toggles: ${JSON.stringify(narrow)}`);
+  // room to spare: both come back
+  const wide = await setPane(900);
+  assert(!wide.cramped && wide.togglesVisible && wide.toggles === 2, `desktop/modern: a 900px Tracks pane does not show the caption toggles: ${JSON.stringify(wide)}`);
+
+  // park the pane just wide enough for the Modern caption, then change only the text
+  const content = await setPane(200);
+  const fitted = await setPane(content.needed + 36);
+  assert(!fitted.cramped, `desktop/modern: the caption did not fit a pane sized to its own content: ${JSON.stringify({ content, fitted })}`);
+  await page.evaluate(() => {
+    const picker = document.querySelector('.themepick');
+    picker.value = 'amiga';
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.evaluate(() => document.fonts.ready);
+  const swapped = await state();
+  assert(swapped.theme === 'amiga' && swapped.needed > swapped.client, `desktop/amiga: the Topaz caption unexpectedly fits the Modern fit width — this check no longer proves anything: ${JSON.stringify(swapped)}`);
+  assert(swapped.cramped && swapped.pastPane <= 0.5, `desktop/amiga: switching theme did not re-take the caption decision (toggles left showing, ${swapped.pastPane}px past the pane): ${JSON.stringify(swapped)}`);
+  await page.evaluate(() => {
+    const picker = document.querySelector('.themepick');
+    picker.value = 'modern';
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  const restored = await state();
+  assert(!restored.cramped && restored.togglesVisible, `desktop/modern: switching back left the caption toggles hidden where they fit: ${JSON.stringify(restored)}`);
+  await setPane(null);
+  await page.close();
+
+  // the case #28 names: iOS mobile-landscape is above the 720px breakpoint, so Tracks is on show
+  for (const theme of ['modern', 'win95', 'amiga']) {
+    const landscape = await browser.newPage({ viewport: { width: 844, height: 390 }, hasTouch: true });
+    landscape.on('pageerror', (error) => errors.push(`landscape/${theme}: ${String(error)}`));
+    const phoneTarget = new URL(url);
+    phoneTarget.searchParams.set('theme', theme);
+    await landscape.goto(phoneTarget.href, { waitUntil: 'networkidle' });
+    await landscape.waitForSelector('.rows .row', { timeout: 20000 });
+    await landscape.evaluate(() => document.fonts.ready);
+    await landscape.waitForTimeout(120);
+    const shown = await landscape.evaluate(() => {
+      const head = document.querySelector('.tracks .np-head');
+      const right = document.querySelector('.main > .right');
+      return {
+        tracksVisible: getComputedStyle(document.querySelector('.tracks')).display !== 'none',
+        cramped: head.classList.contains('cramped'),
+        togglesVisible: Array.from(document.querySelectorAll('.tracks .track-toggles input')).some((box) => box.getBoundingClientRect().width > 0),
+        pastPane: head.getBoundingClientRect().right - right.getBoundingClientRect().right,
+        appOverflow: document.querySelector('#app').scrollWidth - document.querySelector('#app').clientWidth,
+      };
+    });
+    assert(shown.tracksVisible && shown.cramped && !shown.togglesVisible, `landscape/${theme}: the Tracks caption keeps its toggles at 844x390: ${JSON.stringify(shown)}`);
+    assert(shown.pastPane <= 0.5 && shown.appOverflow <= 0.5, `landscape/${theme}: the Tracks caption runs ${shown.pastPane}px past its pane: ${JSON.stringify(shown)}`);
+    await landscape.close();
+  }
+}
+
+await trackCaptionFollowsThePane();
+
+/**
+ * Topaz is `font-display: swap`: on a cold load the caption is first measured in the fallback
+ * face, which is ~90px wider than Topaz at the same size. The head's box does not change when
+ * the real face arrives, so no ResizeObserver notification is delivered and the first decision
+ * would stand forever — the toggles staying hidden on a pane that now has room for them.
+ */
+async function trackCaptionSurvivesALateWebfont() {
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`desktop/amiga: ${String(error)}`));
+  await page.route('**/Topaz_a500*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await route.continue();
+  });
+  const target = new URL(url);
+  target.searchParams.set('theme', 'amiga');
+  await page.goto(target.href, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const caption = () => page.evaluate(() => {
+    const head = document.querySelector('.tracks .np-head');
+    const cramped = head.classList.contains('cramped');
+    head.classList.remove('cramped');
+    const needed = head.scrollWidth;
+    if (cramped) head.classList.add('cramped');
+    return {
+      cramped,
+      needed,
+      client: head.clientWidth,
+      topaz: getComputedStyle(head).fontFamily,
+      togglesVisible: Array.from(document.querySelectorAll('.tracks .track-toggles input')).every((box) => box.getBoundingClientRect().width > 0),
+    };
+  });
+  const setPane = async (width) => {
+    await page.evaluate((w) => document.querySelector('.main').style.setProperty('--right-w', `${w}px`), width);
+    await page.waitForTimeout(80);
+  };
+  // a pane 20px narrower than the fallback face needs, which Topaz will comfortably fit into
+  await setPane(200);
+  const fallback = await caption();
+  await setPane(fallback.needed + 4);
+  const early = await caption();
+  assert(early.cramped, `desktop/amiga: the fallback-face caption was not measured as cramped: ${JSON.stringify({ fallback, early })}`);
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(150);
+  const late = await caption();
+  // scrollWidth clamps to the box once the content fits, so "fits" reads as needed === client
+  assert(late.needed <= late.client && early.needed > early.client, `desktop/amiga: Topaz did not narrow the caption below the pane — this check no longer proves anything: ${JSON.stringify({ early, late })}`);
+  assert(!late.cramped && late.togglesVisible, `desktop/amiga: the caption kept a decision taken in the fallback face after Topaz arrived: ${JSON.stringify({ early, late })}`);
+  await page.close();
+}
+
+await trackCaptionSurvivesALateWebfont();
+
+/**
+ * Every song switch builds a new TrackList, so the old one's caption observer has to go with it:
+ * otherwise a long listening session accumulates one live ResizeObserver per switch, each holding
+ * a detached caption element. Counted from a wrapper installed before the app boots.
+ */
+async function trackListObserversAreReleased() {
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`desktop/observers: ${String(error)}`));
+  await page.addInitScript(() => {
+    const Real = window.ResizeObserver;
+    window.__observerCounts = { made: 0, disconnected: 0 };
+    window.ResizeObserver = class extends Real {
+      constructor(callback) {
+        super(callback);
+        window.__observerCounts.made += 1;
+      }
+
+      disconnect() {
+        window.__observerCounts.disconnected += 1;
+        return super.disconnect();
+      }
+    };
+  });
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const songs = await page.evaluate(() => Array.from(document.querySelector('.songpicker')?.options ?? []).map((option) => option.value));
+  if (songs.length < 2) {
+    process.stderr.write('desktop/modern: only one song served — skipping the TrackList observer-release check\n');
+    await page.close();
+    return;
+  }
+  for (const song of [songs[1], songs[0], songs[1]]) {
+    await page.evaluate((id) => {
+      const picker = document.querySelector('.songpicker');
+      picker.value = id;
+      picker.dispatchEvent(new Event('change', { bubbles: true }));
+    }, song);
+    await page.waitForTimeout(400);
+  }
+  const counts = await page.evaluate(() => window.__observerCounts);
+  assert(counts.made >= 4, `desktop/modern: the song switches did not rebuild the Tracks pane: ${JSON.stringify(counts)}`);
+  // one observer stays live: the caption currently on screen
+  assert(counts.disconnected >= counts.made - 1, `desktop/modern: ${counts.made - counts.disconnected} caption observers are still attached after ${counts.made} TrackLists: ${JSON.stringify(counts)}`);
+  await page.close();
+}
+
+await trackListObserversAreReleased();
+
 
 for (const [label, viewport] of Object.entries(viewports)) {
   const modern = await measure('modern', viewport, label);
@@ -451,6 +668,8 @@ for (const [label, viewport] of Object.entries(viewports)) {
     if (snapshot.headerCenters.length > 1) assert(Math.max(...snapshot.headerCenters) - Math.min(...snapshot.headerCenters) <= 1, `${label}/${snapshot.theme}: header controls are not vertically centered`);
     assert(snapshot.settingsFontReset.guidance === 'Click or tap the title bar to cycle font selection (modern theme only)', `${label}/${snapshot.theme}: font guidance is missing: ${JSON.stringify(snapshot.settingsFontReset)}`);
     assert(snapshot.settingsFontReset.equalButtons && snapshot.settingsFontReset.resetBelow && snapshot.settingsFontReset.fitsViewport, `${label}/${snapshot.theme}: font reset row geometry is wrong: ${JSON.stringify(snapshot.settingsFontReset)}`);
+    // #28: Settings carries both track options at every window size, whatever the Tracks caption does
+    assert(snapshot.settingsFontReset.trackOptions.length === 2 && snapshot.settingsFontReset.trackOptionsVisible, `${label}/${snapshot.theme}: Settings does not show both track options: ${JSON.stringify(snapshot.settingsFontReset.trackOptions)}`);
   }
 
   assert(win95.fonts.msSans && win95.fonts.fixedsys, `${label}/win95: bundled fonts did not load`);

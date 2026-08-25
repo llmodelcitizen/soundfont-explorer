@@ -543,6 +543,10 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* the caption's nowrap content must not set this grid item's floor: without it the pane is
+     widened by the caption instead of the caption being narrowed by the pane, and the overflow
+     the Tracks caption measures itself against can never happen */
+  min-width: 0;
   background: var(--panel-2);
   padding: 8px 12px 0;
 }
@@ -550,6 +554,9 @@ select:focus-visible {
   margin-bottom: 0;
   /* fixed-height caption: flex-shrink must not crush it when the track list overflows */
   flex: none;
+  /* the caption's own overflow — what `cramped` measures — stays inside it, never over the rows
+     next to it, and is not painted for the frame between the first layout and the first measure */
+  overflow: hidden;
 }
 .track-rows {
   overflow: auto;

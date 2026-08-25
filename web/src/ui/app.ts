@@ -107,6 +107,7 @@ export class App {
       this.modernFontId = clearModernFontPreference();
       applyModernFont(this.modernFontId);
       this.syncFontCycler();
+      if (this.tracks) this.tracks.refit();
     },
     trackTitle: () => this.song?.title ?? '',
   });
@@ -324,6 +325,8 @@ export class App {
 
   private buildUi(sel: Selection, query: string): void {
     if (this.uninstallKeys) this.uninstallKeys();
+    // every song switch builds a new TrackList: drop the old one's resize/font observers with it
+    if (this.tracks) this.tracks.dispose();
     clear(this.root);
     // the new FilterBar starts closed: a `filters-open` left over from the previous song would
     // keep Now Playing hidden on phones (and the scrim it pointed at is gone with the old root)
@@ -860,6 +863,8 @@ export class App {
     this.syncFontCycler();
     const sel = this.header.querySelector('.themepick') as HTMLSelectElement | null;
     if (sel) sel.value = t;
+    // the caption's box has not changed but its text has: Topaz is far wider than the Modern face
+    if (this.tracks) this.tracks.refit();
     this.syncUrl();
   }
 
@@ -869,6 +874,7 @@ export class App {
     applyModernFont(this.modernFontId);
     saveModernFont(this.modernFontId);
     this.syncFontCycler();
+    if (this.tracks) this.tracks.refit();
   }
 
   private syncFontCycler(): void {
