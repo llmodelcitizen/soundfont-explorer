@@ -129,6 +129,30 @@ class WatchTests(unittest.TestCase):
         self.assertEqual(batch.calls, 1)
 
 
+class LogTailTests(unittest.TestCase):
+    """logs() returns the newest events of the run, scoped to the run's window (#19)."""
+
+    def test_tail_keeps_the_last_events_across_pages(self):
+        pages = [{"events": [{"timestamp": i, "message": f"line {i}\n"} for i in range(0, 150)]},
+                 {"events": [{"timestamp": i, "message": f"line {i}"} for i in range(150, 230)]},
+                 {}]
+        tail = renders._tail_events(pages, 100)
+        self.assertEqual(len(tail), 100)
+        self.assertEqual(tail[0], {"t": 130, "msg": "line 130"})
+        self.assertEqual(tail[-1], {"t": 229, "msg": "line 229"})
+        self.assertEqual(renders._tail_events([{"events": []}], 100), [])
+
+    def test_query_window_follows_the_run(self):
+        import datetime
+        start = int(datetime.datetime(2026, 8, 24, tzinfo=datetime.timezone.utc).timestamp() * 1000)
+        rec = run_record("r1", "running")
+        q = renders._log_query(rec, "/aws/batch/x")
+        self.assertEqual(q, {"logGroupName": "/aws/batch/x", "startTime": start})
+        rec["finished_at"] = "2026-08-24T02:00:00Z"
+        q = renders._log_query(rec, "/aws/batch/x")
+        self.assertEqual(q["endTime"], start + 2 * 3600 * 1000 + renders.LOG_END_SLACK_MS)
+
+
 class FinisherTests(unittest.TestCase):
     """finish() is single-writer and a finishing run still counts as active (#19)."""
 

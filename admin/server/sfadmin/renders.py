@@ -16,6 +16,7 @@ songs.json publishing are both single-writer.
 """
 from __future__ import annotations
 
+import collections
 import datetime
 import json
 import os
@@ -39,6 +40,34 @@ STAGE_EXCLUDES = ["--exclude", "import/*", "--exclude", "*__pycache__/*", "--exc
 
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _ms(iso: str) -> int:
+    return int(datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000)
+
+
+LOG_END_SLACK_MS = 60_000  # a terminated shard still logs for a few seconds after finished_at
+
+
+def _log_query(rec: dict, log_group: str) -> dict:
+    """filter_log_events window for one run: from submit to (once finished) shortly after
+    the end, so a later run's shards never show up in this run's tail. The log group is
+    shared by every run."""
+    q = {"logGroupName": log_group, "startTime": _ms(rec["submitted_at"])}
+    if rec.get("finished_at"):
+        q["endTime"] = _ms(rec["finished_at"]) + LOG_END_SLACK_MS
+    return q
+
+
+def _tail_events(pages, limit: int) -> list[dict]:
+    """The LAST `limit` events of a filter_log_events page sequence. The API only walks
+    forward and its `limit=` truncates from the head, so one capped call returned the
+    oldest events of the run, not a tail (#19)."""
+    keep: collections.deque = collections.deque(maxlen=limit)
+    for page in pages:
+        for e in page.get("events", []):
+            keep.append({"t": e["timestamp"], "msg": e["message"].rstrip()})
+    return list(keep)
 
 
 def _planner():
@@ -397,15 +426,14 @@ class RunManager:
         return rec
 
     def logs(self, rid: str, limit: int = 100) -> list[dict]:
+        """The last `limit` log events of the run (shard logs share one CloudWatch group)."""
         import boto3
         rec = self.get(rid)
         if not self.cfg.log_group:
             return []
-        since = int(datetime.datetime.fromisoformat(
-            rec["submitted_at"].replace("Z", "+00:00")).timestamp() * 1000)
-        r = boto3.client("logs").filter_log_events(
-            logGroupName=self.cfg.log_group, startTime=since, limit=limit)
-        return [{"t": e["timestamp"], "msg": e["message"].rstrip()} for e in r.get("events", [])]
+        pages = boto3.client("logs").get_paginator("filter_log_events").paginate(
+            **_log_query(rec, self.cfg.log_group), PaginationConfig={"PageSize": 10_000})
+        return _tail_events(pages, limit)
 
 
 _manager: RunManager | None = None
