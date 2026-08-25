@@ -29,9 +29,9 @@ SHORT = "public,max-age=60,stale-while-revalidate=600"
 # minutes (an aws s3 sync plus an sfr manifest over the corpus). FastAPI serves these sync
 # routes on a threadpool and the render finisher syncs from its own watcher thread, so a
 # second caller could otherwise re-mirror out/public in the middle of a remove and restore
-# the very set doc it just dropped (#15). Re-entrant: remove_track() and /rebuild hold it
-# across their own calls to sync_down()/rebuild_and_publish(). prune() stays outside it —
-# it decides from the bucket alone, never from out/public.
+# the very set doc it just dropped (#15). Re-entrant: remove_track() and resync_and_publish()
+# hold it across their own calls to sync_down()/rebuild_and_publish(). prune() stays outside
+# it — it decides from the bucket alone, never from out/public.
 OPS_LOCK = threading.RLock()
 
 
@@ -182,6 +182,19 @@ def rebuild_and_publish(require_dropped: frozenset[str] = frozenset()) -> dict:
                 "docs came back (a concurrent sync or rebuild?); nothing was published")
         _publish_songs_json()
     return report
+
+
+def resync_and_publish() -> dict:
+    """Mirror the bucket into out/public, then rebuild + publish songs.json from it.
+
+    The pair has to be atomic: between the two, another caller's sync or remove can
+    rewrite out/public under us (a remove's rmtree'd set doc coming back, or a set doc
+    it just dropped disappearing from a mirror this rebuild is about to publish), so
+    both run under OPS_LOCK. Callers that need the pair should use this rather than
+    calling sync_down() and rebuild_and_publish() themselves."""
+    with OPS_LOCK:
+        sync_down()
+        return rebuild_and_publish()
 
 
 # ---------------------------------------------------------------- overview

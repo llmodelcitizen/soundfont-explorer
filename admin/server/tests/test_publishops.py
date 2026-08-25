@@ -17,6 +17,24 @@ os.environ.setdefault("SFADMIN_HOSTNAME", "test")
 from sfadmin import publishops  # noqa: E402
 
 
+def _another_thread_could_lock() -> bool:
+    """Could a second request's threadpool worker start its own sync/publish right now?
+    Asked from another thread on purpose: OPS_LOCK is re-entrant, so the caller (which is
+    inside the operation under test) already holds it and would sail straight through."""
+    got: list[bool] = []
+
+    def grab():
+        ok = publishops.OPS_LOCK.acquire(timeout=0.05)
+        got.append(ok)
+        if ok:
+            publishops.OPS_LOCK.release()
+
+    t = threading.Thread(target=grab)
+    t.start()
+    t.join()
+    return got[0]
+
+
 class FakeCfg:
     site_bucket = "site"
     distribution = ""
@@ -202,27 +220,25 @@ class PublishOpsTests(unittest.TestCase):
 
     def test_remove_holds_the_ops_lock_across_the_whole_operation(self):
         """Nothing else may sync/rebuild/publish while a remove is between its sync_down()
-        and its delete — that window is what the test above exploits."""
-        real = self.site._run_manifest
+        and its delete — that window is what the test above exploits. The probes sit in the
+        stubbed primitives, which take no lock of their own, so this is about remove_track's
+        lock and not the one rebuild_and_publish takes around the manifest."""
         got: list[bool] = []
+        sync, delete = self.site.sync_down, self.site._delete_keys
 
-        def grab():
-            ok = publishops.OPS_LOCK.acquire(timeout=0.05)
-            got.append(ok)
-            if ok:
-                publishops.OPS_LOCK.release()
+        def probing_sync():
+            sync()
+            got.append(_another_thread_could_lock())      # before the rmtree + manifest
 
-        def probe():
-            t = threading.Thread(target=grab)     # another request's threadpool worker
-            t.start()
-            t.join()
-            return real()
+        def probing_delete(keys):
+            got.append(_another_thread_could_lock())      # after the publish
+            return delete(keys)
 
-        with mock.patch.object(publishops, "_run_manifest", probe):
+        with mock.patch.object(publishops, "sync_down", probing_sync), \
+                mock.patch.object(publishops, "_delete_keys", probing_delete):
             publishops.remove_track("alpha")
-        self.assertEqual(got, [False])
-        self.assertTrue(publishops.OPS_LOCK.acquire(timeout=0.05))   # released afterwards
-        publishops.OPS_LOCK.release()
+        self.assertEqual(got, [False, False])
+        self.assertTrue(_another_thread_could_lock())     # released afterwards
 
     def test_remove_deletes_objects_written_during_the_rebuild(self):
         """The sync + manifest + publish take minutes; anything that lands under the track's
@@ -275,6 +291,22 @@ class PublishOpsTests(unittest.TestCase):
         publishops.sync_down()
         publishops.rebuild_and_publish()
         self.assertEqual(self.site.live_ids(), ["alpha", "beta"])
+
+    def test_resync_and_publish_holds_the_lock_across_the_pair(self):
+        """/rebuild's sync + publish: a remove landing between them would rmtree a set doc
+        out of the mirror this publish is about to build songs.json from — so the gap
+        between the two calls has to be inside the lock too, not just each call."""
+        got: list[bool] = []
+        sync = self.site.sync_down
+
+        def probing_sync():
+            sync()
+            got.append(_another_thread_could_lock())
+
+        with mock.patch.object(publishops, "sync_down", probing_sync):
+            publishops.resync_and_publish()
+        self.assertEqual(got, [False])
+        self.assertEqual(self.site.events, ["sync", "manifest", "publish"])
 
     # -- overview
 
