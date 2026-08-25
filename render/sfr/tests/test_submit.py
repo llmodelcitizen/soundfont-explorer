@@ -8,8 +8,23 @@ import types
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cloud"))
-import submit  # noqa: E402
+CLOUD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cloud")
+submit = None    # bound by setUpModule
+
+
+def setUpModule():
+    """submit.py lives in render/cloud. Scoped to the module, not done at import time: a
+    bare insert runs during DISCOVERY of the whole render/sfr suite and is never undone
+    (#19 test_planner.ImportHygieneTests enforces this)."""
+    global submit
+    sys.path.insert(0, CLOUD)
+    import submit as _submit
+    submit = _submit
+
+
+def tearDownModule():
+    if CLOUD in sys.path:
+        sys.path.remove(CLOUD)
 
 
 class SongIdsTests(unittest.TestCase):

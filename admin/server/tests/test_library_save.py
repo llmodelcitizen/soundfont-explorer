@@ -154,7 +154,7 @@ class CanonRunReportTests(unittest.TestCase):
                 mock.patch.object(config, "_client", lambda service: s3), \
                 mock.patch.object(library.subprocess, "run",
                                   return_value=mock.Mock(returncode=0, stderr="")), \
-                mock.patch.object(library.Library, "_persist_canon_products", lambda _self: True):
+                mock.patch.object(library.Library, "_persist_canon_products", lambda _self, full_run=True: True):
             return library.Library().canon_run(only)
 
     def test_a_dropped_song_is_reported_to_the_caller(self):

@@ -182,12 +182,29 @@ class TestManifest(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertEqual(report["songs"]["freedoom-e1m1"]["variants"], 3)
 
+    def test_a_pre_fix_work_tree_still_publishes(self):
+        """Every variant left by a pre-#13 image (master_kept=false, master.flac on disk) must
+        still reach songs.json. Treating that as an exclusion emptied the set and dropped the
+        song from songs.json entirely, which full-run.sh then published with exit 0."""
+        jobs = self.jobs()[:3]
+        for j in jobs:
+            _fake_render(j, self.paths, master_kept=False)
+        report = build_manifests(self.paths, [self.song], self.variants, self.settings, ENGINES_JSON,
+                                 {self.song["id"]: jobs}, echo=lambda *_: None, allow_partial=True)
+        self.assertEqual(report["songs"]["freedoom-e1m1"]["variants"], 3)
+        self.assertEqual(report["songs"]["freedoom-e1m1"]["warnings"], 3)
+        songs_json = json.loads((self.paths.public / "songs.json").read_text())
+        self.assertEqual([s["id"] for s in songs_json["songs"]], ["freedoom-e1m1"])
+
     def test_validate_rejects_a_master_the_meta_disowns(self):
         """master_kept=false next to a master.flac is what a re-render without --keep-masters
         used to leave behind: the previous spec's audio, never a re-encode source (#13)."""
         j = self.jobs()[0]
         _fake_render(j, self.paths, master_kept=False)
-        self.assertEqual(validate_job(j, self.paths).reason, "stale-master")
+        v = validate_job(j, self.paths)
+        # a warning, never an exclusion: a pre-fix work tree must not vanish from songs.json
+        self.assertTrue(v.ok, v.reason)
+        self.assertTrue(any(w.startswith("stale-master") for w in v.warnings), v.warnings)
         j.master_path(self.paths).unlink()
         self.assertTrue(validate_job(j, self.paths).ok)          # no master, none claimed
         for kept in (True, None):                                # claimed (or older than the flag): must exist

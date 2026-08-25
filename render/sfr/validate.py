@@ -45,11 +45,13 @@ def validate_job(job: Job, paths: Paths, *, thorough: bool = False) -> Verdict:
     kept, master = bool(meta.get("master_kept", True)), job.master_path(paths).exists()
     if kept and not master:
         return Verdict(False, "no-master")
-    if master and not kept:
-        # a master.flac this meta does not vouch for is the previous spec's audio that a re-render
-        # without --keep-masters used to leave behind (#13): never a re-encode source, and not a
-        # state the pipeline produces any more — the remedy is to delete the file
-        return Verdict(False, "stale-master")
+    # a master.flac this meta does not vouch for is the previous spec's audio that a re-render
+    # without --keep-masters used to leave behind (#13). classify() already refuses it as a
+    # re-encode source, so the encoded segments beside it are still the ones this meta
+    # describes: report it, but do NOT fail the job. Excluding it would silently shrink a
+    # published set for every variant a pre-fix image produced (the exclusion path drops
+    # variants without refusing the song, unlike the never-rendered check).
+    stale_master = master and not kept
     lufs = meta.get("lufs")
     if lufs is None or not (lufs > job.settings.silent_below_lufs):
         return Verdict(False, "silent")
@@ -57,7 +59,7 @@ def validate_job(job: Job, paths: Paths, *, thorough: bool = False) -> Verdict:
     if g is None or abs(g) > job.settings.gain_clamp_db + 1e-6:
         return Verdict(False, "gain-out-of-range")
     n = 0
-    warnings: list[str] = []
+    warnings: list[str] = ["stale-master: master.flac on disk that meta disowns; safe to delete"] if stale_master else []
     for p, want in job.segment_files(paths):
         if not p.exists():
             return Verdict(False, f"missing:{p.parent.name}/{p.name}", n)

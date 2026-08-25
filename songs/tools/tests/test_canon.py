@@ -281,7 +281,7 @@ class StemCollisionTests(unittest.TestCase):
             "songs": [{"id": "g-lower", "src": "import/FILES/game/x.mid", "title": "lower", "license": "owner-supplied"},
                       {"id": "g-upper", "src": "import/FILES/game/x.MID", "title": "upper", "license": "owner-supplied"}],
         }
-        entries, _, refused = canon.run_public(corpus, check=False)
+        entries, _, refused, _dropped = canon.run_public(corpus, check=False)
         self.assertEqual(refused, [])
         files = []
         for e in entries:

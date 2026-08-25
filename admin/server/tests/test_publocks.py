@@ -20,7 +20,7 @@ from sfadmin import publocks  # noqa: E402
 
 SFADMIN = os.path.join(HERE, "..", "sfadmin")
 # publishops calls that write out/public and/or s3://<site>/songs.json
-WRITERS = ("sync_down", "rebuild_and_publish", "remove_track", "prune")
+WRITERS = ("sync_down", "rebuild_and_publish", "resync_and_publish", "remove_track", "prune")
 
 
 class ExclusiveTests(unittest.TestCase):
@@ -122,7 +122,9 @@ class RouteGuardTests(unittest.TestCase):
     def test_routes_publish_takes_the_mutex_for_every_writer(self):
         inside, outside = _guarded_calls(self.source("routes_publish.py"))
         self.assertEqual(outside, set(), "publishops writer called without publocks.exclusive")
-        self.assertEqual(inside, set(WRITERS))
+        # rebuild goes through resync_and_publish, which holds OPS_LOCK across
+        # sync_down + rebuild_and_publish rather than letting a caller interleave them (#15)
+        self.assertEqual(inside, {"remove_track", "prune", "resync_and_publish"})
 
     def test_the_finisher_takes_the_mutex_too(self):
         inside, outside = _guarded_calls(self.source("renders.py"))
