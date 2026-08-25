@@ -681,6 +681,15 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
 }
+/* Tracks caption: both options when they fit, neither when they do not (Settings always has them) */
+.track-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+.np-head.cramped .track-toggles {
+  display: none;
+}
 .preserve input {
   accent-color: var(--accent);
   margin: 0;
@@ -932,6 +941,16 @@ kbd {
   letter-spacing: 0.08em;
   color: var(--fg-dim);
   margin-bottom: 6px;
+}
+.settings .trackopts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 8px;
+}
+.settings .trackopts label {
+  display: inline-flex;
+  margin-bottom: 0;
 }
 .settings .colgrid {
   display: grid;

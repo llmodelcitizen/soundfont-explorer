@@ -26,7 +26,7 @@ import { VariantList } from './list';
 import { sortIds, visibleColumns, type CellContext, type ColKey } from './columns';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
-import { adjacentTrackId, TrackList } from './tracklist';
+import { adjacentTrackId, autoAdvanceTarget, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
@@ -84,7 +84,10 @@ export class App {
       this.prefs = p;
       savePrefs(p);
       this.refreshListened();
-      if (this.tracks) this.tracks.preserveBox.checked = p.preserveTrackPosition;
+      if (this.tracks) {
+        this.tracks.autoNextBox.checked = p.autoNextTrack;
+        this.tracks.preserveBox.checked = p.preserveTrackPosition;
+      }
       // the 'listened after' slider fires this on every tick: rebuild the rows only when the column set changed
       const cols = this.effectiveColumns();
       if (this.list && !sameKeys(this.list.columns, visibleColumns(cols).map((c) => c.key))) {
@@ -249,19 +252,21 @@ export class App {
   // ---------------------------------------------------------------- song lifecycle
 
   /** switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor */
-  private switchSong(id: string): void {
-    const stopped = this.stoppedByUser || this.engine.status.kind === 'stopped' || this.engine.status.kind === 'ended';
+  private switchSong(id: string, opts: { play?: boolean } = {}): void {
+    const ended = this.engine.status.kind === 'ended';
+    const stopped = this.stoppedByUser || this.engine.status.kind === 'stopped' || ended;
     if (id !== this.song.id && stopped) this.playOnRenderClick = true;
     this.trackScrollTop = this.tracks?.scrollTop ?? this.trackScrollTop;
     this.ledger.flush();
     const preserve = this.prefs.preserveTrackPosition;
-    if (preserve) this.trackPositions.remember(this.song.id, this.engine.position());
+    // a track that ran to its end has no position left to resume from: play() would restart it anyway
+    if (preserve) this.trackPositions.remember(this.song.id, ended ? 0 : this.engine.position());
     const position = preserve ? this.trackPositions.recall(id) : 0;
-    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined, t: position });
+    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined, t: position, play: opts.play });
   }
 
   /** `setDoc`: the set boot() already fetched; later switches fetch their own */
-  private async loadSong(id: string, opts: { setDoc?: SetDoc; variant?: string; t?: number; keepIndex?: number }): Promise<void> {
+  private async loadSong(id: string, opts: { setDoc?: SetDoc; variant?: string; t?: number; keepIndex?: number; play?: boolean }): Promise<void> {
     const entry = this.songs.songs.find((s) => s.id === id);
     if (!entry) return;
     let set = opts.setDoc;
@@ -277,7 +282,8 @@ export class App {
     }
     // Boot honors the URL position; later switches pass this track's own saved position (or zero).
     const targetPos = opts.t ?? 0;
-    const wasPlaying = this.engine ? this.engine.playing : false;
+    // `play` forces playback on the new song: the auto-step happens after the old one has ended (not playing)
+    const wasPlaying = opts.play ?? (this.engine ? this.engine.playing : false);
     const prevFilters = this.filters ? this.filters.sel : (this.url.filters ?? { completeness: new Set(['full_gm']) });
     const prevQuery = this.filters ? this.filters.query : (this.url.q ?? '');
     const loop = this.engine ? this.engine.timeline.loop : !!this.url.loop;
@@ -444,12 +450,22 @@ export class App {
     );
     this.syncFontCycler();
     this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => this.switchSong(id), {
-      value: this.prefs.preserveTrackPosition,
-      onChange: (v) => {
-        if (!v) this.trackPositions.clear();
-        this.prefs = { ...this.prefs, preserveTrackPosition: v };
-        savePrefs(this.prefs);
-        this.settings.setPrefs(this.prefs);
+      autoNext: {
+        value: this.prefs.autoNextTrack,
+        onChange: (v) => {
+          this.prefs = { ...this.prefs, autoNextTrack: v };
+          savePrefs(this.prefs);
+          this.settings.setPrefs(this.prefs);
+        },
+      },
+      preserve: {
+        value: this.prefs.preserveTrackPosition,
+        onChange: (v) => {
+          if (!v) this.trackPositions.clear();
+          this.prefs = { ...this.prefs, preserveTrackPosition: v };
+          savePrefs(this.prefs);
+          this.settings.setPrefs(this.prefs);
+        },
       },
     });
     this.rightPane = h('section', { class: 'right' }, this.tracks.el, this.splitHandle(), this.nowPlaying.el);
@@ -524,6 +540,8 @@ export class App {
         this.stoppedByUser = false;
       }
       this.onStatus(s);
+      const next = autoAdvanceTarget(this.songs.songs, this.song.id, s.kind, { loop: this.engine.timeline.loop, autoNext: this.prefs.autoNextTrack });
+      if (next) this.switchSong(next, { play: true });
     });
     this.engine.on('audible', (v) => {
       this.list.setAudible(v);

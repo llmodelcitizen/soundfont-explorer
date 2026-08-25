@@ -6,6 +6,8 @@
 export interface Prefs {
   /** seconds of audible playback before a variant's dot lights up */
   listenedAfterS: number;
+  /** step to the next track when the current one plays to its end (ignored while LOOP is on) */
+  autoNextTrack: boolean;
   /** remember a separate playhead position for each track (false = start from the beginning) */
   preserveTrackPosition: boolean;
   /** visible list columns (keys from ui/columns.ts); always-on columns are implied */
@@ -16,6 +18,7 @@ export interface Prefs {
 
 export const DEFAULT_PREFS: Prefs = {
   listenedAfterS: 2,
+  autoNextTrack: true,
   preserveTrackPosition: true,
   columns: ['chip', 'engine', 'decade', 'fav', 'dot'],
   mobileColumns: ['chip', 'fav', 'dot'],
@@ -45,6 +48,8 @@ export function loadPrefs(): Prefs {
   const n = Number(p.listenedAfterS);
   return {
     listenedAfterS: Number.isFinite(n) && n >= 0 ? Math.min(60, n) : DEFAULT_PREFS.listenedAfterS,
+    // a pre-existing sfp.prefs.v1 has no autoNextTrack: it gets the default, like a fresh browser
+    autoNextTrack: typeof p.autoNextTrack === 'boolean' ? p.autoNextTrack : DEFAULT_PREFS.autoNextTrack,
     preserveTrackPosition: typeof p.preserveTrackPosition === 'boolean' ? p.preserveTrackPosition : DEFAULT_PREFS.preserveTrackPosition,
     columns: Array.isArray(p.columns) ? p.columns.map(String) : [...DEFAULT_PREFS.columns],
     mobileColumns: Array.isArray(p.mobileColumns) ? p.mobileColumns.map(String) : [...DEFAULT_PREFS.mobileColumns],

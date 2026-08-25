@@ -26,6 +26,39 @@ describe('prefs + listened ledger', () => {
   });
 });
 
+describe('prefs: stored shape', () => {
+  /** run fn with a localStorage stub holding `items` (node has no localStorage at all) */
+  function withPrefs(raw: string, fn: () => void): void {
+    const g = globalThis as { localStorage?: unknown };
+    g.localStorage = { getItem: (k: string) => (k === 'sfp.prefs.v1' ? raw : null), setItem: () => undefined, removeItem: () => undefined };
+    try {
+      fn();
+    } finally {
+      delete g.localStorage;
+    }
+  }
+
+  it('steps to the next track by default', () => {
+    expect(DEFAULT_PREFS.autoNextTrack).toBe(true);
+  });
+
+  it('gives a pre-existing prefs object the automatic-stepping default', () => {
+    // exactly what a browser that last ran the previous build has stored
+    withPrefs(JSON.stringify({ listenedAfterS: 4, preserveTrackPosition: false, columns: ['chip'], mobileColumns: ['chip'] }), () => {
+      const p = loadPrefs();
+      expect(p.autoNextTrack).toBe(true);
+      expect(p.listenedAfterS).toBe(4);
+      expect(p.preserveTrackPosition).toBe(false);
+      expect(p.columns).toEqual(['chip']);
+    });
+  });
+
+  it('keeps a stored choice and ignores a non-boolean one', () => {
+    withPrefs(JSON.stringify({ autoNextTrack: false }), () => expect(loadPrefs().autoNextTrack).toBe(false));
+    withPrefs(JSON.stringify({ autoNextTrack: 'no' }), () => expect(loadPrefs().autoNextTrack).toBe(true));
+  });
+});
+
 describe('per-track positions', () => {
   it('starts unseen tracks at zero and recalls each visited track independently', () => {
     const positions = new TrackPositions();

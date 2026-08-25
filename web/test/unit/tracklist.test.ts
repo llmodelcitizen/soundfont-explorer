@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SongEntry } from '../../src/contracts/songs';
-import { adjacentTrackId, trackMetadata, trackOrder } from '../../src/ui/tracklist';
+import { adjacentTrackId, autoAdvanceTarget, trackMetadata, trackOrder } from '../../src/ui/tracklist';
 
 const song = (id: string, path: string | null): SongEntry => ({ id, path } as SongEntry);
 
@@ -36,5 +36,31 @@ describe('track metadata', () => {
 
   it('keeps known composers', () => {
     expect(metadata('John Williams')).toBe('6:04 · 564 variants · John Williams');
+  });
+});
+
+describe('automatic next-track stepping', () => {
+  const songs = [song('a', null), song('b', null), song('c', null)];
+  const on = { loop: false, autoNext: true };
+
+  it('steps to the next displayed track when the current one ends', () => {
+    expect(autoAdvanceTarget(songs, 'a', 'ended', on)).toBe('b');
+    expect(autoAdvanceTarget(songs, 'c', 'ended', on)).toBe('a'); // wraps, like [ ]
+  });
+
+  it('stays put for every status other than the end of the song', () => {
+    for (const kind of ['idle', 'loading', 'playing', 'paused', 'stopped', 'wontload'] as const) {
+      expect(autoAdvanceTarget(songs, 'a', kind, on)).toBeUndefined();
+    }
+  });
+
+  it('stays put while LOOP is on or the preference is off', () => {
+    expect(autoAdvanceTarget(songs, 'a', 'ended', { loop: true, autoNext: true })).toBeUndefined();
+    expect(autoAdvanceTarget(songs, 'a', 'ended', { loop: false, autoNext: false })).toBeUndefined();
+  });
+
+  it('never re-loads the only track there is', () => {
+    expect(autoAdvanceTarget([song('solo', null)], 'solo', 'ended', on)).toBeUndefined();
+    expect(autoAdvanceTarget([], 'solo', 'ended', on)).toBeUndefined();
   });
 });

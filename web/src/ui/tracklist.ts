@@ -5,10 +5,14 @@
  * open/closed state persists in localStorage; stepping with [ ] follows this displayed
  * logical order, and selecting a track inside a closed folder opens it.
  */
+import type { StatusKind } from '../audio/engine';
 import { songTitle, type SongEntry } from '../contracts/songs';
 import { clear, h } from './dom';
 
 const OPEN_KEY = 'sfp.folders.v1';
+
+export const AUTO_NEXT_TIP = 'This is only useful when the LOOP button is not activated.';
+export const PRESERVE_TIP = 'When checked, each track resumes from its own previous position. When unchecked, tracks start from the beginning.';
 
 function groupedTracks(songs: SongEntry[]): { root: SongEntry[]; folders: [string, SongEntry[]][] } {
   const root = songs.filter((s) => !s.path);
@@ -32,6 +36,22 @@ export function adjacentTrackId(songs: SongEntry[], current: string, delta: numb
   return ids[(i + delta + ids.length) % ids.length];
 }
 
+/**
+ * The track to step to when the engine reports the end of the current one, or undefined when
+ * nothing should move: any other status, LOOP on (the song never ends), the preference off, or
+ * a one-track list (whose "next" track is the one that just finished).
+ */
+export function autoAdvanceTarget(
+  songs: SongEntry[],
+  current: string,
+  kind: StatusKind,
+  opts: { loop: boolean; autoNext: boolean },
+): string | undefined {
+  if (kind !== 'ended' || opts.loop || !opts.autoNext) return undefined;
+  const next = adjacentTrackId(songs, current, 1);
+  return next === current ? undefined : next;
+}
+
 export function trackMetadata(s: Pick<SongEntry, 'duration_s' | 'variant_count' | 'composer'>): string {
   const mm = Math.floor(s.duration_s / 60);
   const ss = String(Math.round(s.duration_s % 60)).padStart(2, '0');
@@ -39,37 +59,79 @@ export function trackMetadata(s: Pick<SongEntry, 'duration_s' | 'variant_count' 
   return [`${mm}:${ss}`, `${s.variant_count} variants`, composer?.toLowerCase() === 'unknown' ? '' : composer ?? ''].filter(Boolean).join(' · ');
 }
 
+/** one of the two track options: its current value and where a click on it goes */
+export interface TrackToggle {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}
+
 export class TrackList {
   readonly el: HTMLElement;
   private rows = new Map<string, HTMLElement>();
   private rowOrder: HTMLElement[] = [];
   private body: HTMLElement;
+  private head: HTMLElement;
   private songs: SongEntry[] = [];
   private current = '';
   private open = new Set<string>();
 
+  readonly autoNextBox: HTMLInputElement;
   readonly preserveBox: HTMLInputElement;
 
-  constructor(songs: SongEntry[], current: string, private readonly onPick: (id: string) => void, preserve: { value: boolean; onChange: (v: boolean) => void }) {
+  constructor(
+    songs: SongEntry[],
+    current: string,
+    private readonly onPick: (id: string) => void,
+    toggles: { autoNext: TrackToggle; preserve: TrackToggle },
+  ) {
     try {
       this.open = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]);
     } catch { /* fresh */ }
     this.body = h('div', { class: 'track-rows', role: 'listbox', 'aria-label': 'tracks' });
-    this.preserveBox = h('input', { type: 'checkbox', id: 'preserve-pos' }) as HTMLInputElement;
-    this.preserveBox.checked = preserve.value;
-    this.preserveBox.addEventListener('change', () => {
-      preserve.onChange(this.preserveBox.checked);
-      this.preserveBox.blur();
-    });
-    const tip = 'When checked, each track resumes from its own previous position. When unchecked, tracks start from the beginning.';
-    const label = h('label', { class: 'preserve', for: 'preserve-pos', title: tip }, this.preserveBox, ' Preserve track position');
-    this.el = h(
-      'section',
-      { class: 'tracks' },
-      h('div', { class: 'np-head' }, h('span', { class: 'np-title' }, 'tracks'), h('span', { class: 'muted small' }, `${songs.length} · [ ] to step`), h('span', { class: 'spacer' }), label),
-      this.body,
+    this.autoNextBox = this.toggle('auto-next-track', toggles.autoNext);
+    this.preserveBox = this.toggle('preserve-pos', toggles.preserve);
+    this.head = h(
+      'div',
+      { class: 'np-head' },
+      h('span', { class: 'np-title' }, `${songs.length} tracks`),
+      h('span', { class: 'muted small' }, '· [ ] to step'),
+      h('span', { class: 'spacer' }),
+      // Settings carries the same two options at every window size; here they only fit sometimes.
+      h(
+        'span',
+        { class: 'track-toggles' },
+        h('label', { class: 'preserve', for: 'auto-next-track', title: AUTO_NEXT_TIP }, this.autoNextBox, ' Automatically step to next track'),
+        h('label', { class: 'preserve', for: 'preserve-pos', title: PRESERVE_TIP }, this.preserveBox, ' Preserve track position'),
+      ),
     );
+    this.el = h('section', { class: 'tracks' }, this.head, this.body);
+    this.watchCaptionWidth();
     this.setSongs(songs, current);
+  }
+
+  private toggle(id: string, toggle: TrackToggle): HTMLInputElement {
+    const box = h('input', { type: 'checkbox', id }) as HTMLInputElement;
+    box.checked = toggle.value;
+    box.addEventListener('change', () => {
+      toggle.onChange(box.checked);
+      box.blur();
+    });
+    return box;
+  }
+
+  /**
+   * Drop both toggles from the caption when the pane is too narrow to hold them (a dragged-in
+   * split, a small window, iOS mobile-landscape). Measuring beats a breakpoint: the pane width
+   * is the user's, not the viewport's. Hiding them cannot change the caption's own box — it is
+   * a fixed-height row stretched to the pane — so this never feeds itself a new observation.
+   */
+  private watchCaptionWidth(): void {
+    const fit = () => {
+      this.head.classList.remove('cramped');
+      if (this.head.clientWidth && this.head.scrollWidth > this.head.clientWidth) this.head.classList.add('cramped');
+    };
+    if (typeof ResizeObserver === 'undefined') return;
+    new ResizeObserver(fit).observe(this.head);
   }
 
   setSongs(songs: SongEntry[], current: string): void {
