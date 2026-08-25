@@ -1,0 +1,174 @@
+{
+ "duration_s": 190,
+ "excluded": [],
+ "groups": [
+  {
+   "hash": "1ff95d998aea",
+   "variants": [
+    "adl-b0",
+    "adl-b1",
+    "adl-b2",
+    "adl-b7",
+    "adl-b8",
+    "adl-b9",
+    "adl-b10",
+    "adl-b11",
+    "adl-b12",
+    "adl-b13",
+    "adl-b14",
+    "adl-b15",
+    "adl-b16",
+    "adl-b17"
+   ]
+  }
+ ],
+ "lead_in_s": 0.12,
+ "lead_out_s": 0.02,
+ "listen": {
+  "bitrate": 96,
+  "segment_samples": 486720,
+  "slice_s": 10,
+  "slices": 19
+ },
+ "lufs_target": -16,
+ "order": [
+  "adl-b0",
+  "adl-b1",
+  "adl-b2",
+  "adl-b7",
+  "adl-b8",
+  "adl-b9",
+  "adl-b10",
+  "adl-b11",
+  "adl-b12",
+  "adl-b13",
+  "adl-b14",
+  "adl-b15",
+  "adl-b16",
+  "adl-b17"
+ ],
+ "schema": 1,
+ "scrub": {
+  "bitrate": 48,
+  "pack_size": 24
+ },
+ "segment_samples": 102720,
+ "slice_s": 2,
+ "slices": 95,
+ "song": "freedoom-e1m1",
+ "sr": 48000,
+ "variants": {
+  "adl-b0": {
+   "gain_db": 8.67,
+   "group": 0,
+   "lufs": -24.67,
+   "render_hash": "acf2c16661cc",
+   "slot": 0,
+   "tp": -10.24
+  },
+  "adl-b1": {
+   "gain_db": -0.34,
+   "group": 0,
+   "lufs": -15.81,
+   "render_hash": "8032dfc6c5b8",
+   "slot": 1,
+   "tp": -1.16
+  },
+  "adl-b2": {
+   "gain_db": 2.97,
+   "group": 0,
+   "lufs": -18.97,
+   "render_hash": "1e804d8140bc",
+   "slot": 2,
+   "tp": -4.94
+  },
+  "adl-b7": {
+   "gain_db": 2.99,
+   "group": 0,
+   "lufs": -18.99,
+   "render_hash": "1f841027e9d9",
+   "slot": 3,
+   "tp": -5.47
+  },
+  "adl-b8": {
+   "gain_db": 4.97,
+   "group": 0,
+   "lufs": -21.91,
+   "render_hash": "6548e90f5052",
+   "slot": 4,
+   "tp": -6.47
+  },
+  "adl-b9": {
+   "gain_db": 1.23,
+   "group": 0,
+   "lufs": -17.23,
+   "render_hash": "0f4892df8034",
+   "slot": 5,
+   "tp": -6.11
+  },
+  "adl-b10": {
+   "gain_db": 2.37,
+   "group": 0,
+   "lufs": -19.26,
+   "render_hash": "8a59e59298b8",
+   "slot": 6,
+   "tp": -3.87
+  },
+  "adl-b11": {
+   "gain_db": 5.88,
+   "group": 0,
+   "lufs": -22.46,
+   "render_hash": "480177cdc33c",
+   "slot": 7,
+   "tp": -7.38
+  },
+  "adl-b12": {
+   "gain_db": 6.2,
+   "group": 0,
+   "lufs": -22.48,
+   "render_hash": "07aac59a635f",
+   "slot": 8,
+   "tp": -7.7
+  },
+  "adl-b13": {
+   "gain_db": 3.4,
+   "group": 0,
+   "lufs": -19.4,
+   "render_hash": "56e8e8f8c2c2",
+   "slot": 9,
+   "tp": -5.66
+  },
+  "adl-b14": {
+   "gain_db": 4.32,
+   "group": 0,
+   "lufs": -20.76,
+   "render_hash": "1a017f615897",
+   "slot": 10,
+   "tp": -5.82
+  },
+  "adl-b15": {
+   "gain_db": 4.39,
+   "group": 0,
+   "lufs": -20.95,
+   "render_hash": "4993798470c2",
+   "slot": 11,
+   "tp": -5.89
+  },
+  "adl-b16": {
+   "gain_db": 4.32,
+   "group": 0,
+   "lufs": -20.71,
+   "render_hash": "468cd082cf96",
+   "slot": 12,
+   "tp": -5.82
+  },
+  "adl-b17": {
+   "gain_db": 8.75,
+   "group": 0,
+   "lufs": -24.75,
+   "render_hash": "2518736a43f8",
+   "slot": 13,
+   "tp": -10.8
+  }
+ }
+}

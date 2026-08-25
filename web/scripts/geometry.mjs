@@ -1,10 +1,18 @@
 #!/usr/bin/env node
-/** Compare modern, Windows 95, and Amiga geometry at desktop and phone sizes. */
+/**
+ * Compare modern, Windows 95, and Amiga geometry at desktop and phone sizes.
+ *
+ *   --url=…          the running dev server (default http://127.0.0.1:5173/)
+ *   --audio=none     the site behind it serves manifests but no audio (test/fixtures/site, which
+ *                    is what CI runs): missing /a/ objects are then not console errors. Every
+ *                    measurement here is layout, so nothing else changes.
+ */
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => arg.replace(/^--/, '').split('=')));
 const url = args.url ?? 'http://127.0.0.1:5173/';
+const noAudio = args.audio === 'none';
 const viewports = {
   desktop: { width: 1280, height: 800 },
   phone: { width: 390, height: 844 },
@@ -27,7 +35,9 @@ async function measure(theme, viewport, label) {
   const page = await browser.newPage({ viewport, hasTouch: label === 'phone' });
   page.on('pageerror', (error) => errors.push(`${label}/${theme}: ${String(error)}`));
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(`${label}/${theme}: ${message.text()}`);
+    if (message.type() !== 'error') return;
+    if (noAudio && /\/a\//.test(message.location()?.url ?? '')) return; // no audio in the fixture site
+    errors.push(`${label}/${theme}: ${message.text()}`);
   });
   const target = new URL(url);
   target.searchParams.set('theme', theme);
@@ -645,6 +655,41 @@ for (const [label, viewport] of Object.entries(viewports)) {
         if (expected) assert(close(button.outer.w, expected.outer.w) && close(button.outer.h, expected.outer.h), `${label}/${themed.theme}: ${button.label} changed from ${expected.outer.w}×${expected.outer.h} to ${button.outer.w}×${button.outer.h}`);
       });
     }
+  }
+}
+
+/**
+ * Issue #30, the narrow-phone band the two measured viewports miss. Adding the share button to
+ * the header cost it a control row at the widths below; these are the widths at which each theme
+ * kept its controls on one row *before* the button existed, so they are the budget it has to fit
+ * into. The volume slider counts: it is the control that drops to a line of its own first.
+ */
+const ONE_CONTROL_ROW_FROM = { modern: 350, win95: 320, amiga: 340 };
+for (const [theme, width] of Object.entries(ONE_CONTROL_ROW_FROM)) {
+  for (const w of [width, 390]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 568 }, hasTouch: true });
+    const target = new URL(url);
+    target.searchParams.set('theme', theme);
+    await page.goto(target.href, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.rows .row', { timeout: 20000 });
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
+    const header = await page.evaluate(() => {
+      const shown = Array.from(document.querySelector('.top').children).filter((child) => getComputedStyle(child).display !== 'none' && child.getBoundingClientRect().height > 0);
+      // the track name and the song dropdown each take a line of their own on a phone by design
+      const controls = shown.filter((child) => !child.classList.contains('title') && !child.classList.contains('songpicker'));
+      const icons = Array.from(document.querySelectorAll('.top .btn.icon')).map((button) => +button.getBoundingClientRect().width.toFixed(1));
+      // controls on one row share a centre line to within a pixel; a wrapped one is ~30px below
+      const centres = controls.map((child) => { const box = child.getBoundingClientRect(); return box.y + box.height / 2; }).sort((a, b) => a - b);
+      const rows = centres.reduce((n, centre, i) => (i && centre - centres[i - 1] > 8 ? n + 1 : n), 1);
+      return { rows, controls: controls.map((child) => child.className), icons };
+    });
+    assert(header.rows === 1, `${w}px/${theme}: the header controls take ${header.rows} rows: ${JSON.stringify(header.controls)}`);
+    // and the icon gadgets only give their side padding back on the narrow phones that need it
+    const min = w >= 360 ? 34 : 28;
+    assert(Math.min(...header.icons) >= min, `${w}px/${theme}: header icon buttons are only ${Math.min(...header.icons)}px wide`);
+    await page.close();
   }
 }
 

@@ -1,0 +1,59 @@
+{
+ "schema": 1,
+ "generated_at": "2026-08-22T09:21:38Z",
+ "catalog": "/c/fixture.json",
+ "defaults": {
+  "song": "freedoom-e1m1",
+  "variant": "adl-b58"
+ },
+ "songs": [
+  {
+   "composer": "J.Astartes and Mr795",
+   "duration_s": 190,
+   "id": "freedoom-e1m1",
+   "license": {
+    "id": "BSD-3-Clause",
+    "notice_text": "Fixture data for the layout harness; see the real site for the licence text.",
+    "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc"
+   },
+   "modifications": "none",
+   "sequencer": "J.Astartes and Mr795",
+   "set": "/s/freedoom-e1m1/fixture.json",
+   "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_e1m1.mid",
+   "title": "Steel and Brass (Freedoom E1M1)",
+   "variant_count": 14
+  },
+  {
+   "composer": "J.Astartes",
+   "duration_s": 210,
+   "id": "freedoom-map20",
+   "license": {
+    "id": "BSD-3-Clause",
+    "notice_text": "Fixture data for the layout harness; see the real site for the licence text.",
+    "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc"
+   },
+   "modifications": "none",
+   "sequencer": "J.Astartes",
+   "set": "/s/freedoom-map20/fixture.json",
+   "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_map20.mid",
+   "title": "Wrath of Horizon (Freedoom MAP20)",
+   "variant_count": 14
+  },
+  {
+   "composer": "Korp",
+   "duration_s": 220,
+   "id": "freedoom-e2m5",
+   "license": {
+    "id": "BSD-3-Clause",
+    "notice_text": "Fixture data for the layout harness; see the real site for the licence text.",
+    "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc"
+   },
+   "modifications": "none",
+   "sequencer": "Korp",
+   "set": "/s/freedoom-e2m5/fixture.json",
+   "source_url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/musics/d_e2m5.mid",
+   "title": "Reminiscence (Freedoom E2M5)",
+   "variant_count": 14
+  }
+ ]
+}
