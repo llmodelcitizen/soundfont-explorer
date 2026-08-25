@@ -1,5 +1,5 @@
 import './style.css';
-import { get, post, type BootstrapStatus, type Me } from './api';
+import { get, isSessionExpired, post, type BootstrapStatus, type Me } from './api';
 import { LibraryView } from './library';
 import { PublishedView } from './published';
 import { RunsView } from './runs';
@@ -127,5 +127,10 @@ async function boot(): Promise<void> {
   shell(await get<Me>('/api/me'));
 }
 
-boot().catch((e: Error) => app.replaceChildren(
-  el('div', { class: 'notice' }, `admin failed to start: ${e.message}`)));
+boot().catch((e: Error) => {
+  // An expired session is the ordinary way boot() fails: /api/me answers 401 and api.ts has
+  // already set location.href, so painting the error only flashes it up for the moment
+  // before the browser leaves for the login flow.
+  if (isSessionExpired(e)) return;
+  app.replaceChildren(el('div', { class: 'notice' }, `admin failed to start: ${e.message}`));
+});

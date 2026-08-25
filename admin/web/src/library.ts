@@ -5,7 +5,7 @@
 // h hide/unhide, d delete. "Play on click" auto-previews the selected track, debounced
 // 350 ms so arrowing through the list doesn't stack renders on the 2-vCPU box (the
 // server additionally caps concurrent preview renders at 2).
-import { get, patch, post } from './api';
+import { get, isSessionExpired, patch, post } from './api';
 
 export interface CanonInfo {
   status: 'ok' | 'pending' | 'refused' | 'unparsed';
@@ -554,6 +554,9 @@ export class LibraryView {
         failures = 0;
       } catch (e) {
         if (gen !== this.canonGen) return;
+        // an expired session is terminal: retrying it just re-assigns location.href ten
+        // times over while the browser is already on its way to the login flow
+        if (isSessionExpired(e)) return;
         const msg = (e as Error).message;
         if (++failures >= CANON_POLL_MAX_FAILURES) {
           this.note(`canon: lost track of the run after ${failures} failed status checks (${msg}) — reload to see the result`, true);

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryView } from '../../src/library';
-import { FakeFetch, entry, libraryDoc, until } from './fakes';
+import { Fail, FakeFetch, entry, libraryDoc, until } from './fakes';
 
 const doc = () => libraryDoc([
   entry('a1', 'alpha/one.mid'),
@@ -158,6 +158,21 @@ describe('LibraryView canon poll', () => {
     expect(ff.count('GET', '/api/library/canon/status') - started).toBe(1); // one loop, not two
     await vi.advanceTimersByTimeAsync(3000);
     expect(ff.count('GET', '/api/library/canon/status') - started).toBe(2);
+  });
+
+  it('stops on an expired session rather than retrying into the login redirect', async () => {
+    const ff = new FakeFetch().on('GET', '/api/library', doc)
+      .on('POST', '/api/library/canon', () => ({ ok: true }))
+      .on('GET', '/api/library/canon/status', () => { throw new Fail(401, 'session expired'); });
+    const view = mount(ff);
+    await view.load();
+    vi.stubGlobal('location', { href: '' });
+    button(view, 'Canon check').click();
+    await until(() => ff.count('GET', '/api/library/canon/status') === 1);
+    await vi.advanceTimersByTimeAsync(3000 * 20);
+    expect(ff.count('GET', '/api/library/canon/status')).toBe(1); // not 10 tries over 30 s
+    expect(location.href).toBe('/auth/login');
+    expect(status(view).textContent).not.toMatch(/retrying/);
   });
 
   it('gives up after repeated failures instead of polling forever', async () => {

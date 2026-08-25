@@ -26,6 +26,32 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('boot failures', () => {
+  it('leaves an expired session to the login redirect instead of painting over the page', async () => {
+    const ff = api().on('GET', '/api/me', () => { throw new Fail(401, 'session expired'); });
+    document.body.innerHTML = '<div id="app"></div>';
+    vi.stubGlobal('fetch', ff.fn);
+    vi.stubGlobal('location', { href: '' });
+    vi.resetModules();
+    await import('../../src/main');
+    const app = document.getElementById('app')!;
+    await until(() => location.href === '/auth/login'); // api.ts sent us to the login flow
+    await new Promise((r) => setTimeout(r, 0)); // let boot()'s rejection settle
+    expect(app.textContent).toBe('');
+  });
+
+  it('still reports a real boot failure', async () => {
+    const ff = api().on('GET', '/api/me', () => { throw new Fail(500, 'identity oracle down'); });
+    document.body.innerHTML = '<div id="app"></div>';
+    vi.stubGlobal('fetch', ff.fn);
+    vi.resetModules();
+    await import('../../src/main');
+    const app = document.getElementById('app')!;
+    await until(() => app.querySelector('.notice') !== null);
+    expect(app.textContent).toBe('admin failed to start: identity oracle down');
+  });
+});
+
 describe('shell buttons', () => {
   it('Update & restart comes back (with the error) when the request fails', async () => {
     const ff = api().on('POST', '/api/update', () => { throw new Fail(500, 'no update path'); });
