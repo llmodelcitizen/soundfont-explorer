@@ -435,7 +435,9 @@ await filterPanelResetsOnSongSwitch();
  * Now Playing must go with the pane it resizes. It is positioned, so left in its grid row it
  * paints its bar across the filter buttons of a panel tall enough to reach that row. CSS in a
  * breakpoint has no unit test (web/test/unit runs in the node environment, with no cascade), so
- * it is measured here, in all three themes: no filter button may be under the handle.
+ * it is measured here, in all three themes, by what a thumb would hit: every filter button on
+ * screen must be the topmost element at its own centre, and the list pane must own the grid the
+ * hidden Now Playing rows left behind (otherwise the panel is squeezed back into a third of it).
  */
 async function filterPanelClearsTheResizeHandle() {
   for (const theme of ['modern', 'win95', 'amiga']) {
@@ -451,17 +453,43 @@ async function filterPanelClearsTheResizeHandle() {
       const before = handle ? getComputedStyle(handle).display : null;
       const toggle = Array.from(document.querySelectorAll('.filterrow .btn')).find((button) => (button.title ?? '').startsWith('filters'));
       toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      const box = handle.getBoundingClientRect();
+      const main = document.querySelector('.main');
+      const left = document.querySelector('.left');
+      const facets = document.querySelector('.facets');
+      const panel = facets.getBoundingClientRect();
       const opts = Array.from(document.querySelectorAll('.facets .opt'));
-      const covered = opts.filter((opt) => {
+      // only the buttons the panel is actually showing: it scrolls, and one scrolled out of its
+      // box is behind the scrim by design, not covered by anything the layout put there
+      const onScreen = opts.filter((opt) => {
         const rect = opt.getBoundingClientRect();
-        return Math.min(rect.right, box.right) - Math.max(rect.left, box.left) > 0.5 && Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top) > 0.5;
-      }).length;
-      return { before, display: getComputedStyle(handle).display, covered, opts: opts.length, open: document.querySelector('#app')?.classList.contains('filters-open') ?? false };
+        return rect.top >= panel.top - 0.5 && rect.bottom <= panel.bottom + 0.5;
+      });
+      const covered = onScreen
+        .map((opt) => {
+          const rect = opt.getBoundingClientRect();
+          const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return top === opt || opt.contains(top) ? null : { opt: opt.textContent?.trim() ?? '', by: top?.className || top?.tagName || 'nothing' };
+        })
+        .filter(Boolean);
+      const mainBox = main.getBoundingClientRect();
+      const leftBox = left.getBoundingClientRect();
+      return {
+        before,
+        display: getComputedStyle(handle).display,
+        covered,
+        onScreen: onScreen.length,
+        opts: opts.length,
+        rows: getComputedStyle(main).gridTemplateRows.split(' ').length,
+        listReachesTheBottom: Math.abs(leftBox.bottom - mainBox.bottom) <= 1,
+        deadSpace: Math.round(mainBox.bottom - leftBox.bottom),
+        open: document.querySelector('#app')?.classList.contains('filters-open') ?? false,
+      };
     });
     assert(result.before === 'block', `${label}: the phone layout has no Now Playing handle to get out of the way: ${JSON.stringify(result)}`);
-    assert(result.open && result.opts > 0, `${label}: the filter panel did not open: ${JSON.stringify(result)}`);
-    assert(result.display === 'none' && result.covered === 0, `${label}: the Now Playing handle is drawn over the filter panel: ${JSON.stringify(result)}`);
+    assert(result.open && result.onScreen > 0, `${label}: the filter panel did not open: ${JSON.stringify(result)}`);
+    assert(result.display === 'none', `${label}: the Now Playing handle is still drawn while the filter panel is open: ${JSON.stringify(result)}`);
+    assert(result.covered.length === 0, `${label}: something is drawn over the filter panel: ${JSON.stringify(result.covered)}`);
+    assert(result.rows === 1 && result.listReachesTheBottom, `${label}: the list pane does not take the grid the hidden Now Playing left behind — ${result.deadSpace}px of dead space below it: ${JSON.stringify(result)}`);
     await page.close();
   }
 }
