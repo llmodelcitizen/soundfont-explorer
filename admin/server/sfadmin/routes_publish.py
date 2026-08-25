@@ -34,6 +34,8 @@ def remove(sid: str) -> dict:
     _no_active_run()
     try:
         return publishops.remove_track(sid)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e   # a malformed id is the caller's fault
     except Exception as e:
         raise HTTPException(500, f"remove failed: {e}") from e
 
@@ -55,7 +57,6 @@ def rebuild() -> dict:
     _guard()
     _no_active_run()
     try:
-        publishops.sync_down()
-        return publishops.rebuild_and_publish()
+        return publishops.resync_and_publish()   # holds OPS_LOCK across the pair
     except Exception as e:
         raise HTTPException(500, f"rebuild failed: {e}") from e
