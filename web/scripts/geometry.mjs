@@ -336,6 +336,96 @@ async function measure(theme, viewport, label) {
   return result;
 }
 
+/**
+ * Phone UI state that must not survive a song switch: the open filter panel hides Now Playing
+ * (`.filters-open .right { display: none }`) and its scrim covers everything below the bar, so
+ * the panel is rebuilt closed for the new song — the class and the scrim have to go with it.
+ * The App has no unit test (there is no DOM in the vitest toolchain), so it is checked here.
+ */
+async function filterPanelResetsOnSongSwitch() {
+  const label = 'phone';
+  const page = await browser.newPage({ viewport: viewports.phone, hasTouch: true });
+  page.on('pageerror', (error) => errors.push(`${label}/modern: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const opened = await page.evaluate(() => {
+    const toggle = Array.from(document.querySelectorAll('.filterrow .btn')).find((button) => (button.title ?? '').startsWith('filters'));
+    toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const right = document.querySelector('.right');
+    document.querySelector('.row.head')?.setAttribute('data-geometry-probe', 'before'); // survives only if the UI is not rebuilt
+    return {
+      open: document.querySelector('#app')?.classList.contains('filters-open') ?? false,
+      scrim: !!document.querySelector('.filter-scrim'),
+      nowPlayingHidden: !!right && getComputedStyle(right).display === 'none',
+      songs: Array.from(document.querySelector('.songpicker')?.options ?? []).map((option) => option.value),
+      song: document.querySelector('.songpicker')?.value ?? null,
+    };
+  });
+  assert(opened.open && opened.scrim && opened.nowPlayingHidden, `${label}/modern: the filter panel did not open over Now Playing: ${JSON.stringify(opened)}`);
+  const next = opened.songs.find((song) => song !== opened.song);
+  assert(!!next, `${label}/modern: only one song to switch between`);
+  if (next) {
+    await page.evaluate((song) => {
+      const picker = document.querySelector('.songpicker');
+      picker.value = song;
+      picker.dispatchEvent(new Event('change', { bubbles: true }));
+    }, next);
+    try {
+      await page.waitForFunction(() => {
+        const head = document.querySelector('.row.head');
+        return !!head && !head.hasAttribute('data-geometry-probe');
+      }, undefined, { timeout: 20000 });
+      const after = await page.evaluate(() => {
+        const right = document.querySelector('.right');
+        return {
+          song: document.querySelector('.songpicker')?.value ?? null,
+          open: document.querySelector('#app')?.classList.contains('filters-open') ?? false,
+          scrim: !!document.querySelector('.filter-scrim'),
+          nowPlayingVisible: !!right && getComputedStyle(right).display !== 'none' && right.getBoundingClientRect().height > 0,
+        };
+      });
+      assert(after.song === next && !after.open && !after.scrim && after.nowPlayingVisible, `${label}/modern: the filter panel survived the song switch: ${JSON.stringify(after)}`);
+    } catch (error) {
+      failures.push(`${label}/modern: the list was never rebuilt for the new song: ${String(error)}`);
+    }
+  }
+  await page.close();
+}
+
+await filterPanelResetsOnSongSwitch();
+
+/**
+ * Space on the Modern font title cycles the font and must not also reach the window keymap,
+ * where Space is play/pause: the handler stops propagation. Checked here for the same reason as
+ * the filter panel above — App is only exercisable in a real document.
+ */
+async function titleSpaceStaysOnTheTitle() {
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`desktop/modern: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const result = await page.evaluate(() => {
+    const title = document.querySelector('.top .title');
+    let reachedWindow = 0;
+    const spy = () => reachedWindow++;
+    window.addEventListener('keydown', spy); // stands in for installKeyboard(window, ...)
+    const before = document.documentElement.dataset.modernFont ?? null;
+    title?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+    window.removeEventListener('keydown', spy);
+    return { reachedWindow, before, after: document.documentElement.dataset.modernFont ?? null };
+  });
+  assert(result.reachedWindow === 0, `desktop/modern: Space on the title also reached the window keymap (play/pause): ${JSON.stringify(result)}`);
+  assert(result.after !== result.before, `desktop/modern: Space on the title did not cycle the font: ${JSON.stringify(result)}`);
+  await page.close();
+}
+
+await titleSpaceStaysOnTheTitle();
+
+
 for (const [label, viewport] of Object.entries(viewports)) {
   const modern = await measure('modern', viewport, label);
   const win95 = await measure('win95', viewport, label);
