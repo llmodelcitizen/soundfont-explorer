@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseCatalog } from '../../src/contracts/catalog';
 import { DEFAULT_PREFS } from '../../src/state/prefs';
-import { COLUMNS, cellText, columnDef, displayLabel, rowMinWidth, sortIds, visibleColumns, type CellContext, type ColKey } from '../../src/ui/columns';
+import { COLUMNS, cellText, columnDef, displayLabel, nextSort, rowMinWidth, sortIds, visibleColumns, type CellContext, type ColKey } from '../../src/ui/columns';
 import { makeSet } from './fakes';
 
 const catalog = parseCatalog({
@@ -50,6 +50,32 @@ describe('columns', () => {
     expect(sortIds(['a', 'b', 'c'], 'fav', 1, canonical, ctx)).toEqual(['c', 'a', 'b']);
     expect(sortIds(['a', 'b', 'c'], 'dot', 1, canonical, ctx)).toEqual(['b', 'a', 'c']);
     expect(sortIds(['a', 'b', 'c'], 'label', -1, canonical, ctx)).toEqual(['c', 'b', 'a']);
+  });
+});
+
+describe('header clicks', () => {
+  it('cycles a sortable column ascending, descending, catalog order', () => {
+    expect(nextSort({ key: null, dir: 1 }, 'size')).toEqual({ key: 'size', dir: 1 });
+    expect(nextSort({ key: 'size', dir: 1 }, 'size')).toEqual({ key: 'size', dir: -1 });
+    expect(nextSort({ key: 'size', dir: -1 }, 'size')).toEqual({ key: null, dir: 1 });
+    expect(nextSort({ key: 'size', dir: -1 }, 'decade')).toEqual({ key: 'decade', dir: 1 });
+  });
+
+  it('goes straight to the catalog order for # — row numbers are never reversed', () => {
+    expect(columnDef('idx').resetsSort).toBe(true);
+    expect(nextSort({ key: null, dir: 1 }, 'idx')).toEqual({ key: null, dir: 1 });
+    expect(nextSort({ key: 'size', dir: 1 }, 'idx')).toEqual({ key: null, dir: 1 });
+    expect(nextSort({ key: 'size', dir: -1 }, 'idx')).toEqual({ key: null, dir: 1 });
+  });
+
+  it('starts an ascending sort on a key it does not know instead of throwing', () => {
+    expect(nextSort({ key: null, dir: 1 }, 'nope' as ColKey)).toEqual({ key: 'nope', dir: 1 });
+  });
+
+  it('leaves every other column on the three-step cycle', () => {
+    for (const c of COLUMNS.filter((x) => x.key !== 'idx')) {
+      expect([c.key, nextSort({ key: null, dir: 1 }, c.key)]).toEqual([c.key, { key: c.key, dir: 1 }]);
+    }
   });
 });
 

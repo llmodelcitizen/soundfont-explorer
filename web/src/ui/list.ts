@@ -5,18 +5,13 @@
  */
 import type { CatalogDoc } from '../contracts/catalog';
 import type { SetDoc } from '../contracts/set';
-import { cellText, chipLabel, columnDef, columnTitle, displayLabel, rowMinWidth, visibleColumns, type CellContext, type ColKey, type ColumnDef } from './columns';
+import { cellText, chipLabel, columnDef, columnTitle, displayLabel, rowMinWidth, visibleColumns, type CellContext, type ColKey, type ColumnDef, type SortState } from './columns';
 import { clear, h } from './dom';
 
 export interface ListCallbacks {
   onClick(index: number): void;
   onStickyClick(variantId: string): void;
   onSort(key: ColKey): void;
-}
-
-export interface SortState {
-  key: ColKey | null;
-  dir: 1 | -1;
 }
 
 /** the sticky row shows #, chip and name at the same widths as the body rows */
@@ -83,17 +78,26 @@ export class VariantList {
   }
 
   private renderHead(): void {
+    // the head is rebuilt on every sort change, so the header just activated would otherwise
+    // lose the focus ring (and the caret of a screen reader) to <body>
+    const focused = document.activeElement;
+    const refocus = focused instanceof HTMLElement && this.head.contains(focused) ? focused.dataset.col : undefined;
     clear(this.head);
     for (const c of this.cols) {
       const active = this.sort.key === c.key;
+      // a resetsSort header ('#') restores the catalog order; in that order there is nothing
+      // left to restore, so it says so rather than offering a sort it will never perform
+      const spent = !!c.resetsSort && this.sort.key === null;
+      const hint = c.resetsSort ? (spent ? '' : ' — click for the catalog order') : ' — click to sort';
       const cell = h(
         'button',
-        { type: 'button', class: `cell col-${c.key} hcell${c.align ? ' ' + c.align : ''}${active ? ' sorted' : ''}`, title: `${columnTitle(c, this.set)} — click to sort`, 'aria-sort': active ? (this.sort.dir === 1 ? 'ascending' : 'descending') : 'none' },
+        { type: 'button', class: `cell col-${c.key} hcell${c.align ? ' ' + c.align : ''}${active ? ' sorted' : ''}`, dataset: { col: c.key }, title: `${columnTitle(c, this.set)}${hint}`, 'aria-sort': active ? (this.sort.dir === 1 ? 'ascending' : 'descending') : 'none', 'aria-disabled': spent ? 'true' : null },
         h('span', { class: 'hlabel' }, c.label),
         active && !c.noArrow ? h('span', { class: 'arrow' }, this.sort.dir === 1 ? '▲' : '▼') : '',
       );
       cell.addEventListener('click', () => this.cb.onSort(c.key));
       this.head.appendChild(cell);
+      if (refocus === c.key) cell.focus();
     }
   }
 

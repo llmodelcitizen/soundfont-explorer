@@ -427,6 +427,62 @@ async function titleSpaceStaysOnTheTitle() {
 
 await titleSpaceStaysOnTheTitle();
 
+/**
+ * Sorting from the header row: every other column cycles ascending → descending → catalog order,
+ * while '#' *is* the catalog order and restores it in one click, then stops offering anything.
+ * nextSort() is unit-tested; the wiring (App.toggleSort), the rebuilt header and the focus it
+ * must keep only exist in a real document, so they are checked here like the filter panel above.
+ */
+async function headerSorting() {
+  const label = 'desktop/modern';
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const result = await page.evaluate(() => {
+    const header = (key) => document.querySelector(`.row.head .hcell.col-${key}`);
+    const ids = () => Array.from(document.querySelectorAll('.rows .row')).map((row) => row.dataset.id).join(' ');
+    const state = (key) => ({ sort: header(key).getAttribute('aria-sort'), disabled: header(key).getAttribute('aria-disabled'), title: header(key).getAttribute('title') });
+    const click = (key) => header(key).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const catalog = ids();
+    const idle = state('idx');
+    click('engine');
+    const ascending = { order: ids(), engine: state('engine'), idx: state('idx') };
+    click('engine');
+    const descending = { order: ids(), engine: state('engine') };
+    header('engine').focus();
+    click('engine');
+    const cycled = { order: ids(), engine: state('engine'), focus: document.activeElement?.dataset.col ?? null };
+    click('engine');
+    click('engine');
+    click('idx'); // one click, from a descending sort straight back to the catalog order
+    const restored = { order: ids(), engine: state('engine'), idx: state('idx') };
+    // and again in the catalog order: nothing to do, so nothing may happen — re-applying the
+    // order would rebuild the head, scroll the cursor back into view and jump the prefetcher
+    const list = document.querySelector('.list');
+    list.scrollTop = 300;
+    header('idx').dataset.geometryProbe = 'before'; // survives only if the head is not rebuilt
+    click('idx');
+    const spent = { order: ids(), scrollTop: list.scrollTop, scrollable: list.scrollHeight - list.clientHeight, rebuilt: !header('idx').dataset.geometryProbe };
+    return { catalog, idle, ascending, descending, cycled, restored, spent };
+  });
+  assert(result.ascending.engine.sort === 'ascending' && result.descending.engine.sort === 'descending' && result.cycled.engine.sort === 'none', `${label}: the engine header does not cycle ascending, descending, catalog order: ${JSON.stringify([result.ascending.engine, result.descending.engine, result.cycled.engine])}`);
+  assert(result.cycled.order === result.catalog, `${label}: the third engine click did not restore the catalog order`);
+  assert(result.cycled.focus === 'engine', `${label}: sorting moved the focus off the header that was activated: ${result.cycled.focus}`);
+  // a catalogue whose engine order happens to be the catalog order cannot exercise the restore
+  if (result.descending.order === result.catalog) process.stderr.write(`${label}: the served catalogue sorts by engine into its own order — skipping the '#' restore check\n`);
+  else assert(result.restored.order === result.catalog && result.restored.engine.sort === 'none', `${label}: one '#' click did not restore the catalog order: ${JSON.stringify(result.restored.engine)}`);
+  assert(result.idle.disabled === 'true' && !result.idle.title.includes('click'), `${label}: '#' offers an order the list is already in: ${JSON.stringify(result.idle)}`);
+  assert(result.ascending.idx.disabled === null && result.ascending.idx.title.endsWith('click for the catalog order'), `${label}: '#' does not offer the catalog order while a sort is active: ${JSON.stringify(result.ascending.idx)}`);
+  assert(result.restored.idx.disabled === 'true', `${label}: '#' still claims to be actionable after restoring the catalog order: ${JSON.stringify(result.restored.idx)}`);
+  assert(!result.spent.rebuilt && result.spent.order === result.catalog && (result.spent.scrollable < 300 || result.spent.scrollTop === 300), `${label}: clicking '#' in the catalog order re-applied the order anyway: ${JSON.stringify({ ...result.spent, order: result.spent.order === result.catalog })}`);
+  await page.close();
+}
+
+await headerSorting();
+
 
 for (const [label, viewport] of Object.entries(viewports)) {
   const modern = await measure('modern', viewport, label);

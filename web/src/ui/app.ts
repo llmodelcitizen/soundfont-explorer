@@ -23,7 +23,7 @@ import { FilterBar } from './filters';
 import { showGate } from './gate';
 import { KeymapOverlay } from './keymapOverlay';
 import { VariantList } from './list';
-import { sortIds, visibleColumns, type CellContext, type ColKey } from './columns';
+import { nextSort, sortIds, visibleColumns, type CellContext, type ColKey, type SortState } from './columns';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { adjacentTrackId, TrackList } from './tracklist';
@@ -121,7 +121,7 @@ export class App {
   private theme: ThemeName;
   private modernFontId: ModernFontId = readModernFont();
   private pinnedA: string | null = null;
-  private sort: { key: ColKey | null; dir: 1 | -1 } = { key: null, dir: 1 };
+  private sort: SortState = { key: null, dir: 1 };
   private favoritesOnly = false;
   private canonicalIndex = new Map<string, number>();
   private url: UrlState;
@@ -794,9 +794,11 @@ export class App {
   }
 
   private toggleSort(key: ColKey): void {
-    if (this.sort.key !== key) this.sort = { key, dir: 1 };
-    else if (this.sort.dir === 1) this.sort = { key, dir: -1 };
-    else this.sort = { key: null, dir: 1 };
+    const next = nextSort(this.sort, key);
+    // '#' in the catalog order asks for the order the list is already in: applying it again
+    // would scroll the cursor back into view and send the prefetcher jumping for nothing
+    if (next.key === this.sort.key && next.dir === this.sort.dir) return;
+    this.sort = next;
     this.list.setSort(this.sort);
     this.applyFilters(this.filters.sel, this.filters.query);
   }
