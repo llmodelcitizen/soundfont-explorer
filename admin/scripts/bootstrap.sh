@@ -94,8 +94,12 @@ SFADMIN_STATUS=$STATUS
 AWS_DEFAULT_REGION=$REGION
 ENV
 
-# Caddy: seed persisted LE material (first-ever boot: empty, ~10 s issuance), our config
-aws s3 sync "s3://$SFADMIN_BUCKET/caddy/" /var/lib/caddy/ --size-only || true
+# Caddy: seed persisted LE material (first-ever boot: empty, ~10 s issuance), our config.
+# No --size-only in either direction: a renewed certificate and its regenerated key are the
+# same size as the pair they replace, and this unit runs on every boot — on a box whose
+# /var/lib/caddy holds the expired pair, a size-only restore keeps it and Caddy re-issues,
+# burning the LE rate limit this sync exists to protect (#19).
+aws s3 sync "s3://$SFADMIN_BUCKET/caddy/" /var/lib/caddy/ || true
 chown -R caddy:caddy /var/lib/caddy
 sed "s/__HOSTNAME__/$SFADMIN_HOSTNAME/" "$APP/admin/caddy/Caddyfile" > /etc/caddy/Caddyfile
 install -m 0755 "$APP/admin/scripts/sfadmin-update" /usr/local/sbin/sfadmin-update
