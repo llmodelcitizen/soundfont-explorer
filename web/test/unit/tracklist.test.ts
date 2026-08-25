@@ -45,7 +45,20 @@ describe('automatic next-track stepping', () => {
 
   it('steps to the next displayed track when the current one ends', () => {
     expect(autoAdvanceTarget(songs, 'a', 'ended', on)).toBe('b');
-    expect(autoAdvanceTarget(songs, 'c', 'ended', on)).toBe('a'); // wraps, like [ ]
+    expect(autoAdvanceTarget(songs, 'b', 'ended', on)).toBe('c');
+  });
+
+  it('follows the displayed order across folders', () => {
+    const foldered = [song('root', null), song('x', 'demos'), song('y', 'demos')];
+    expect(autoAdvanceTarget(foldered, 'root', 'ended', on)).toBe('x');
+    expect(autoAdvanceTarget(foldered, 'x', 'ended', on)).toBe('y');
+  });
+
+  // [ and ] wrap because the user pressed them; stepping nobody asked for stops at the end of the
+  // list instead of replaying the whole catalog for as long as the tab is open
+  it('stops at the end of the list instead of wrapping round', () => {
+    expect(autoAdvanceTarget(songs, 'c', 'ended', on)).toBeUndefined();
+    expect(autoAdvanceTarget([song('solo', null)], 'solo', 'ended', on)).toBeUndefined();
   });
 
   it('stays put for every status other than the end of the song', () => {
@@ -59,8 +72,8 @@ describe('automatic next-track stepping', () => {
     expect(autoAdvanceTarget(songs, 'a', 'ended', { loop: false, autoNext: false })).toBeUndefined();
   });
 
-  it('never re-loads the only track there is', () => {
-    expect(autoAdvanceTarget([song('solo', null)], 'solo', 'ended', on)).toBeUndefined();
+  it('stays put when the list does not hold the current track', () => {
     expect(autoAdvanceTarget([], 'solo', 'ended', on)).toBeUndefined();
+    expect(autoAdvanceTarget(songs, 'gone', 'ended', on)).toBeUndefined();
   });
 });

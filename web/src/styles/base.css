@@ -688,11 +688,21 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
 }
-/* Tracks caption: both options when they fit, neither when they do not (Settings always has them) */
+/* Tracks caption: both options spelled out when they fit, shortened when they nearly fit, neither
+   when they do not (Settings always carries both, in full, at every window size) */
 .track-toggles {
   display: inline-flex;
   align-items: center;
   gap: 14px;
+}
+.np-head .lbl-short {
+  display: none;
+}
+.np-head.short .lbl-full {
+  display: none;
+}
+.np-head.short .lbl-short {
+  display: inline;
 }
 .np-head.cramped .track-toggles {
   display: none;

@@ -39,7 +39,9 @@ export function adjacentTrackId(songs: SongEntry[], current: string, delta: numb
 /**
  * The track to step to when the engine reports the end of the current one, or undefined when
  * nothing should move: any other status, LOOP on (the song never ends), the preference off, or
- * a one-track list (whose "next" track is the one that just finished).
+ * the end of the list. Unlike `[` and `]` this does not wrap: stepping the user did not ask for
+ * has to stop somewhere, or a tab left open walks the whole catalog and then plays it again for
+ * ever, fetching every set and every audio segment each time round.
  */
 export function autoAdvanceTarget(
   songs: SongEntry[],
@@ -48,8 +50,9 @@ export function autoAdvanceTarget(
   opts: { loop: boolean; autoNext: boolean },
 ): string | undefined {
   if (kind !== 'ended' || opts.loop || !opts.autoNext) return undefined;
-  const next = adjacentTrackId(songs, current, 1);
-  return next === current ? undefined : next;
+  const ids = trackOrder(songs).map((s) => s.id);
+  const i = ids.indexOf(current);
+  return i < 0 ? undefined : ids[i + 1];
 }
 
 export function trackMetadata(s: Pick<SongEntry, 'duration_s' | 'variant_count' | 'composer'>): string {
@@ -63,6 +66,15 @@ export function trackMetadata(s: Pick<SongEntry, 'duration_s' | 'variant_count' 
 export interface TrackToggle {
   value: boolean;
   onChange: (v: boolean) => void;
+}
+
+/**
+ * A caption toggle's text in two lengths. Both toggles fit the default split on a desktop only
+ * in the short wording; the full wording appears on a wide pane, and `title` carries the whole
+ * explanation either way. Settings always spells both options out in full.
+ */
+function captionLabel(full: string, short: string): HTMLElement {
+  return h('span', { class: 'toglabel' }, h('span', { class: 'lbl-full' }, ` ${full}`), h('span', { class: 'lbl-short' }, ` ${short}`));
 }
 
 export class TrackList {
@@ -103,8 +115,8 @@ export class TrackList {
       h(
         'span',
         { class: 'track-toggles' },
-        h('label', { class: 'preserve', for: 'auto-next-track', title: AUTO_NEXT_TIP }, this.autoNextBox, ' Automatically step to next track'),
-        h('label', { class: 'preserve', for: 'preserve-pos', title: PRESERVE_TIP }, this.preserveBox, ' Preserve track position'),
+        h('label', { class: 'preserve', for: 'auto-next-track', title: AUTO_NEXT_TIP }, this.autoNextBox, captionLabel('Automatically step to next track', 'Auto-next')),
+        h('label', { class: 'preserve', for: 'preserve-pos', title: PRESERVE_TIP }, this.preserveBox, captionLabel('Preserve track position', 'Preserve position')),
       ),
     );
     this.el = h('section', { class: 'tracks' }, this.head, this.body);
@@ -123,17 +135,28 @@ export class TrackList {
   }
 
   /**
-   * Drop both toggles from the caption when the pane is too narrow to hold them (a dragged-in
-   * split, a small window, iOS mobile-landscape). Measuring beats a breakpoint: the pane width
-   * is the user's, not the viewport's. Hiding them cannot change the caption's own box — it is
-   * a fixed-height row stretched to the pane, and `.tracks { min-width: 0 }` makes the pane set
-   * the caption's width rather than the other way round — so this never feeds itself a new
-   * observation, and the overflow it looks for can actually happen.
+   * Fit the caption to its pane in three steps: full labels, short labels, then no toggles at all
+   * (a dragged-in split, a small window, iOS mobile-landscape — Settings still has both). The
+   * middle step is what keeps them on show at ordinary laptop widths: the full wording needs
+   * ~490 px of caption in the Modern face and ~585 px in Topaz, where the default split gives
+   * about 410 px at 1280×800, so all-or-nothing would hide them for most desktop users.
+   *
+   * Measuring beats a breakpoint: the pane width is the user's, not the viewport's. Neither step
+   * can change the caption's own box — it is a fixed-height row stretched to the pane, and
+   * `.tracks { min-width: 0 }` makes the pane set the caption's width rather than the other way
+   * round — so this never feeds itself a new observation, and the overflow it looks for can
+   * actually happen.
    */
   private fitCaption(): void {
     if (this.disposed) return;
-    this.head.classList.remove('cramped');
-    if (this.head.clientWidth && this.head.scrollWidth > this.head.clientWidth) this.head.classList.add('cramped');
+    this.head.classList.remove('short', 'cramped');
+    if (!this.head.clientWidth || !this.overflowing()) return;
+    this.head.classList.add('short');
+    if (this.overflowing()) this.head.classList.add('cramped');
+  }
+
+  private overflowing(): boolean {
+    return this.head.scrollWidth > this.head.clientWidth;
   }
 
   /**
