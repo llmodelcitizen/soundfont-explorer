@@ -117,7 +117,8 @@
 [data-theme='amiga'] .search,
 [data-theme='amiga'] .songpicker,
 [data-theme='amiga'] .themepick,
-[data-theme='amiga'] .settings .num {
+[data-theme='amiga'] .settings .num,
+[data-theme='amiga'] .share-url {
   background: #ffffff;
   color: #000000;
   border-color: #000000;

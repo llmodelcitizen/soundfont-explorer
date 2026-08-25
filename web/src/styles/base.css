@@ -880,6 +880,11 @@ select:focus-visible {
 .keymap td {
   padding: 2px 10px 2px 0;
 }
+.share-foot {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
 kbd {
   background: var(--btn-bg);
   border: 1px solid var(--line);
@@ -957,9 +962,67 @@ kbd {
 @media (pointer: coarse) {
   /* iOS zooms into focused inputs smaller than 16 px */
   .settings .num,
-  .search {
+  .search,
+  .share-url {
     font-size: 16px;
   }
+}
+
+/* share (#30): the link, a copy button, and what every parameter means */
+.share {
+  min-width: min(560px, 92vw);
+}
+.share-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.share-url {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  font: var(--mono);
+}
+.share-copy {
+  flex: 0 0 auto;
+  padding: 4px 16px;
+}
+.share-opt {
+  display: block;
+}
+.share-note {
+  display: block;
+  min-height: 1.3em;
+}
+.share-heading {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  margin: 14px 0 6px;
+}
+.share-params {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 0;
+  font-size: 0.9em;
+}
+.share-params dt,
+.share-params dd {
+  margin: 0;
+  color: var(--fg-dim);
+}
+.share-params dt.on {
+  color: var(--accent);
+}
+.share-params dd.on {
+  color: var(--fg);
 }
 
 /* debug */
@@ -1152,6 +1215,12 @@ kbd {
     display: none;
   }
 
+  .share-row {
+    flex-wrap: wrap;
+  }
+  .share-copy {
+    flex: 1 1 100%;
+  }
   .debug {
     right: 4px;
     left: 4px;

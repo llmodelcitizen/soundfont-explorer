@@ -15,7 +15,7 @@ import { parseSongs, type SongEntry, type SongsDoc } from '../contracts/songs';
 import { installKeyboard } from '../input/keyboard';
 import { InputPolicy } from '../input/policy';
 import { FilterIndex, type Selection } from '../state/filterIndex';
-import { parseUrl, writeUrl, type UrlState } from '../state/urlstate';
+import { parseUrl, shareLinks, writeUrl, type UrlState } from '../state/urlstate';
 import { renderCredits } from './credits';
 import { DebugPanel } from './debug';
 import { clear, fmtBytes, h } from './dom';
@@ -28,6 +28,7 @@ import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { adjacentTrackId, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
+import { ShareDialog } from './share';
 import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
@@ -75,6 +76,7 @@ export class App {
   private rightPane!: HTMLElement;
   private debug = new DebugPanel();
   private keymap = new KeymapOverlay();
+  private share = new ShareDialog({ links: () => shareLinks(this.urlState()) });
   private prefs: Prefs = loadPrefs();
   private trackPositions = new TrackPositions();
   private ledger = new ListenedLedger();
@@ -415,6 +417,12 @@ export class App {
       '<path d="M12 20c-3.3 0-6-2.7-6-6v-3a6 6 0 0 1 12 0v3c0 3.3-2.7 6-6 6z"/>' +
       '<path d="M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>';
     dbgBtn.addEventListener('click', () => this.debug.toggle());
+    const shareBtn = h('button', { class: 'btn icon share-btn', type: 'button', title: 'share this link', 'aria-label': 'share this link' });
+    shareBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>' +
+      '<path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
+    shareBtn.addEventListener('click', () => this.share.toggle());
     const settingsBtn = h('button', { class: 'btn icon', type: 'button', title: 'settings (S)', 'aria-label': 'settings' });
     settingsBtn.innerHTML =
       '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -436,6 +444,7 @@ export class App {
       this.picker.el,
       h('div', { class: 'spacer' }),
       themeSel,
+      shareBtn,
       settingsBtn,
       dbgBtn,
       helpBtn,
@@ -456,7 +465,7 @@ export class App {
     this.main = h('main', { class: 'main' }, h('section', { class: 'left' }, this.filters.el, this.list.el), this.vSplitHandle(), this.hSplitHandle(), this.rightPane);
     this.applySplit();
     this.applyPaneSizes();
-    this.root.append(this.header, this.main, this.transport.el, this.debug.el, this.keymap.el, this.settings.el);
+    this.root.append(this.header, this.main, this.transport.el, this.debug.el, this.keymap.el, this.settings.el, this.share.el);
     this.tracks.restoreView(this.trackScrollTop);
     const trackScrollTop = this.trackScrollTop;
     // applySplit() measures on the next frame and can resize this pane; restore again after
@@ -488,6 +497,7 @@ export class App {
       escape: () => {
         this.keymap.toggle(false);
         this.settings.toggle(false);
+        this.share.toggle(false);
         this.filters.toggle(false);
         if (this.creditsEl) history.replaceState(null, '', location.pathname + location.search), this.onHashChange();
         this.focusList();
@@ -869,19 +879,24 @@ export class App {
     this.list.setLoading(s.kind === 'loading' ? (s.target ?? null) : null);
   }
 
+  /** the live state behind the address bar — also what the share dialog turns into links */
+  private urlState(): UrlState {
+    return {
+      song: this.song.id,
+      variant: this.engine.audible ?? undefined,
+      t: this.engine.position(),
+      filters: this.filters.sel,
+      q: this.filters.query,
+      theme: this.theme,
+      loop: this.engine.timeline.loop,
+    };
+  }
+
   private syncUrl(immediate = false): void {
     if (this.urlTimer) clearTimeout(this.urlTimer);
     const write = () => {
       this.urlTimer = null;
-      writeUrl({
-        song: this.song.id,
-        variant: this.engine.audible ?? undefined,
-        t: this.engine.position(),
-        filters: this.filters.sel,
-        q: this.filters.query,
-        theme: this.theme,
-        loop: this.engine.timeline.loop,
-      });
+      writeUrl(this.urlState());
     };
     if (immediate) write();
     else this.urlTimer = setTimeout(write, POLICY.settleMs + 30);
