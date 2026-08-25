@@ -165,10 +165,7 @@ class Library:
                 sid, title, _ = canon.import_labels("import/FILES/" + rel_path, smf.parse(blob), None)
             except Exception as e:
                 status, reason = "unparsed", f"{type(e).__name__}: {e}"
-                stem = re.sub(r"\.midi?$", "", rel_path, flags=re.I)
-                parent, _, leaf = stem.rpartition("/")
-                title = f"{parent}/{leaf}" if parent else leaf
-                sid = canon.slug(title)
+                sid, title = canon.fallback_labels(rel_path)
             base, n = sid, 2
             while sid in self.doc["entries"]:
                 sid = f"{base}-{n}"
