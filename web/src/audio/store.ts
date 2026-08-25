@@ -266,10 +266,13 @@ export class SegmentStore {
         // Mark it ingested only once the split succeeded: a pack whose bytes do not parse must
         // let every waiter see the parse error, not just the first one, with the rest reporting
         // a misleading 'member N missing from pack' (and overwriting lastError with it).
-        if (!this.ingested.has(pack)) {
+        // A member evicted from the compressed cache between the split and this waiter waking
+        // must be re-split from the bytes we already hold, not reported as missing from the pack.
+        const first = !this.ingested.has(pack);
+        if (first || !this.compressed.has(loc.cid)) {
           this.ingestPack(loc.url, pack);
           this.ingested.add(pack);
-          this.stats.wholePacks++;
+          if (first) this.stats.wholePacks++; // the same bytes split twice is not a second pack
         }
       } catch (e) {
         this.stats.fetchErrors++;

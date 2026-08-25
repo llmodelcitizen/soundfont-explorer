@@ -96,6 +96,30 @@ describe('SegmentStore', () => {
     expect(h.store.backoffMs(key)).toBe(2000); // second decode failure: the ratchet still climbs
   });
 
+  it('re-splits a pack whose member was evicted before its waiter woke up', async () => {
+    // the waiters behind the first one wake in later microtasks; cache pressure from another
+    // pack in between must not turn into 'member N missing from pack' (which the negative cache
+    // would then hold against a key whose bytes we are still holding)
+    const ids = Array.from({ length: 8 }, (_, i) => `v${i}`);
+    const h = storeFor(ids);
+    const url = packUrl(h.set, 'g0', 0);
+    const lru = h.store.compressed;
+    const set = lru.set.bind(lru);
+    let evicted = false;
+    lru.set = (k, v) => {
+      set(k, v);
+      if (!evicted && k === `${url}#7`) {
+        evicted = true; // once: right after the split, before member 1's waiter runs
+        lru.delete(`${url}#1`);
+      }
+    };
+    // priority 0 is urgent, so every request takes the whole pack and shares the one fetch
+    const settled = await Promise.allSettled(ids.map((v) => h.store.request({ v, tier: 's', i: 0 }, 0)));
+    expect(settled.map((r) => r.status)).toEqual(ids.map(() => 'fulfilled'));
+    expect(h.store.stats.wholePacks).toBe(1); // the same bytes split twice are still one pack
+    expect(h.store.lastError).toBeNull();
+  });
+
   it('splits a whole pack once, however many members were waiting on the same fetch', async () => {
     const ids = Array.from({ length: 24 }, (_, i) => `v${i}`);
     const h = storeFor(ids);
