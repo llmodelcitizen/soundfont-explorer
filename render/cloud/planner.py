@@ -24,7 +24,11 @@ def engine_availability(repo: pathlib.Path) -> tuple[dict[str, int], dict[str, s
     on the fleet -> why). The first is the selection sfr's plan_jobs applies there:
     published, no ROM (roms/ is empty on the fleet), completeness within the default
     include_classes, engine pinned in render/engines.json. Naming an engine from the second
-    set is still refused — nothing would render — but with the real reason (#19)."""
+    set is still refused — nothing would render — but with the real reason (#19).
+
+    plan_jobs itself does not test alias_of; the filter below mirrors sfr.config.load_variants,
+    which drops aliases before cli.py hands the list to plan_jobs. A byte-identical twin is
+    rendered once, under the canonical id, so counting it would over-estimate."""
     cat = json.loads((repo / "catalog" / "variants.json").read_text())
     engines = json.loads((repo / "render" / "engines.json").read_text())["engines"]
     counts: dict[str, int] = {}

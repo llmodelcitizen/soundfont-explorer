@@ -364,6 +364,8 @@ def write_repo(root: str) -> None:
                   "facets": {"completeness": "full_gm"}}]
     variants += [{"id": "sc55-1", "engine": "sc55", "publish": True, "requires_rom": True,
                   "facets": {"completeness": "full_gm"}}]
+    variants += [{"id": "sf2-twin", "engine": "fluidsynth", "publish": True,
+                  "alias_of": "sf2-0", "facets": {"completeness": "full_gm"}}]
     (p / "catalog" / "variants.json").write_text(json.dumps({"variants": variants}))
     (p / "render" / "engines.json").write_text(json.dumps({"engines": {
         "fluidsynth": {"version": "2"}, "adlmidi": {"version": "1"},
@@ -385,6 +387,14 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(est["jobs"], 10)
         self.assertEqual(len(est["shards"]), 2)
         self.assertEqual(est["cpu_h"], round(10 * planner.CPU_S_PER_JOB / 3600, 1))
+
+    def test_a_byte_identical_twin_is_not_counted(self):
+        """plan_jobs does not test alias_of, but sfr.config.load_variants drops aliases
+        before cli.py hands it the list — a twin renders once, under the canonical id. The
+        catalog has none today, so only this test keeps the two selections in step (#19)."""
+        counts, _ = planner.engine_availability(pathlib.Path(self.repo))
+        self.assertEqual(counts["fluidsynth"], 4)          # sf2-0..3; sf2-twin is an alias
+        self.assertEqual(self.m.plan(["a"], 1)["jobs"], 5)
 
     def test_engine_subset_shrinks_the_estimate(self):
         self.assertEqual(self.m.plan(["a", "b"], 1, engines=["adlmidi"])["jobs"], 2)

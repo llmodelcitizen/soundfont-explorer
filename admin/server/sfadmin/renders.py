@@ -34,6 +34,11 @@ POLL_S = 30
 # days after they end, e.g. a run whose terminal state was never recorded because the
 # server was down. Retrying that forever kept the run live and every submit/prune 409'd
 # (#19). Ten polls (5 min) also covers describe_jobs lagging a fresh submit_job.
+# An empty list is also the correct answer for a job id from ANOTHER region, so a box whose
+# region moved would call a live run failed here. Not guarded: the region comes from one
+# place (bundle.env, via config) for both submit and poll, and requiring an earlier
+# successful poll would bring back the forever-live run — the first poll after a restart,
+# which is exactly the case above, is the one that finds the job gone.
 MISSING_JOB_POLLS = 10
 STAGE_EXCLUDES = ["--exclude", "import/*", "--exclude", "*__pycache__/*", "--exclude", "*.pyc"]
 # how long the background finisher waits for the publish mutex before recording an error:
