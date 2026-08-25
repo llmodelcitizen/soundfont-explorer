@@ -92,6 +92,26 @@ describe('RunsView poll', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(ff.count('GET', '/api/runs')).toBe(6); // the load itself plus one tick — never two loops
   });
+
+  it('reports a tick that throws outside renderRuns and keeps polling', async () => {
+    // renderRuns catches its own GET, but the layout calls around it (scroll anchoring,
+    // fitLogBox) can still throw; an uncaught await there used to reject the timer
+    // callback and silently end the poll chain for the rest of the session.
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run()] }))
+      .on('GET', '/api/runs/r1/logs', () => ({ events: [{ t: 0, msg: 'hi' }] }));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click(); // an open log box makes the next render scroll-anchor
+    await until(() => ff.count('GET', '/api/runs/r1/logs') === 1);
+    vi.stubGlobal('scrollBy', () => { throw new Error('layout is gone'); });
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(status(v).textContent).toBe('runs refresh: layout is gone');
+    expect(status(v).classList.contains('error')).toBe(true);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(ff.count('GET', '/api/runs')).toBe(4); // load + 3 ticks: the chain survived
+  });
 });
 
 describe('RunsView actions', () => {

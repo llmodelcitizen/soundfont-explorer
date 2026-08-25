@@ -96,8 +96,15 @@ export class RunsView {
     const gen = this.pollGen;
     this.timer = window.setTimeout(async () => {
       this.timer = null;
-      const list = this.root.querySelector('.runlist');
-      if (list) await this.renderRuns(list as HTMLElement);
+      try {
+        const list = this.root.querySelector('.runlist');
+        if (list) await this.renderRuns(list as HTMLElement);
+      } catch (e) {
+        // renderRuns handles its own GET; what is left are the layout calls around it
+        // (scroll anchoring, fitLogBox). Rejecting here would end the poll chain for the
+        // rest of the session with nothing on screen to say so.
+        this.note(`runs refresh: ${(e as Error).message}`, true);
+      }
       // stop() (tab switch) or a fresh load() may have landed while renderRuns was in
       // flight; clearTimeout alone cannot catch that, so re-arm only for our generation
       if (gen === this.pollGen) this.poll();
