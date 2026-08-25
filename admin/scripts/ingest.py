@@ -26,7 +26,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
 
@@ -36,10 +35,10 @@ sys.path.insert(0, os.path.join(ROOT, "admin", "server"))
 import canon  # noqa: E402
 import smf as S  # noqa: E402
 from sfadmin.clock import now_iso  # noqa: E402
+from sfadmin.entries import MIDI_EXTS, canon_state  # noqa: E402
 
 FILES = os.path.join(ROOT, "songs", "import", "FILES")
 STAGE = os.path.join(ROOT, "work", "library-stage")
-MIDI_EXTS = {".mid", ".midi", ".rmi"}
 SCHEMA = 1
 
 
@@ -95,11 +94,7 @@ def mint(rel: str, spec: dict | None, taken: set) -> tuple:
         sid, title, _ = canon.import_labels(src, parsed, explicit)
     except Exception as e:  # wild files: RIFF-wrapped .rmi, truncated SMF, ...
         status, reason = "unparsed", f"{type(e).__name__}: {e}"
-        stem = re.sub(r"\.midi?$", "", rel, flags=re.I)  # same strip as import_labels
-        parent, _, leaf = stem.rpartition("/")
-        name = explicit or leaf
-        title = f"{parent}/{name}" if parent else name
-        sid = canon.slug(title)
+        sid, title = canon.fallback_labels(rel, explicit)
     base, n = sid, 2
     while sid in taken:
         sid = f"{base}-{n}"
@@ -138,8 +133,7 @@ def build_library() -> tuple:
             "notes": None,
             "added_at": ts,
             "modified_at": ts,
-            "canon": {"status": status, "reason": reason,
-                      "canonical_sha256": None, "duration_s": None, "checked_at": None},
+            "canon": canon_state(status, reason),
         }
         dup_sha.setdefault(sha, []).append(sid)
     doc = {"schema": SCHEMA, "updated_at": ts, "entries": entries}

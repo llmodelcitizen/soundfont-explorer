@@ -15,6 +15,7 @@ import { parseSongs, type SongEntry, type SongsDoc } from '../contracts/songs';
 import { installKeyboard } from '../input/keyboard';
 import { InputPolicy } from '../input/policy';
 import { FilterIndex, type Selection } from '../state/filterIndex';
+import { safeStorage } from '../state/storage';
 import { parseUrl, shareLinks, writeUrl, type UrlState } from '../state/urlstate';
 import { renderCredits } from './credits';
 import { DebugPanel } from './debug';
@@ -655,12 +656,12 @@ export class App {
       (delta, base) => {
         const w = Math.max(240, Math.min(this.main.clientWidth * 0.7, base + delta));
         this.main.style.setProperty('--right-w', `${Math.round(w)}px`);
-        this.save(App.RIGHT_W_KEY, `${Math.round(w)}px`);
+        safeStorage.set(App.RIGHT_W_KEY, `${Math.round(w)}px`);
       },
       () => this.rightPane.getBoundingClientRect().width,
       () => {
         this.main.style.removeProperty('--right-w');
-        this.save(App.RIGHT_W_KEY, null);
+        safeStorage.remove(App.RIGHT_W_KEY);
       },
     );
     return handle;
@@ -675,12 +676,12 @@ export class App {
       (delta, base) => {
         const hh = Math.max(60, Math.min(this.main.clientHeight - 120, base + delta));
         this.main.style.setProperty('--np-mobile-h', `${Math.round(hh)}px`);
-        this.save(App.NP_MOBILE_KEY, `${Math.round(hh)}px`);
+        safeStorage.set(App.NP_MOBILE_KEY, `${Math.round(hh)}px`);
       },
       () => this.rightPane.getBoundingClientRect().height,
       () => {
         this.main.style.removeProperty('--np-mobile-h');
-        this.save(App.NP_MOBILE_KEY, null);
+        safeStorage.remove(App.NP_MOBILE_KEY);
       },
     );
     // double-tap reset for touch
@@ -689,46 +690,30 @@ export class App {
       const now = performance.now();
       if (now - lastTap < 350) {
         this.main.style.removeProperty('--np-mobile-h');
-        this.save(App.NP_MOBILE_KEY, null);
+        safeStorage.remove(App.NP_MOBILE_KEY);
       }
       lastTap = now;
     });
     return handle;
   }
 
-  private save(key: string, value: string | null): void {
-    try {
-      if (value === null) localStorage.removeItem(key);
-      else localStorage.setItem(key, value);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private load(key: string): string | null {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  }
-
   private applyPaneSizes(): void {
-    const w = this.load(App.RIGHT_W_KEY);
+    const w = safeStorage.get(App.RIGHT_W_KEY);
     if (w) this.main.style.setProperty('--right-w', w);
-    const hh = this.load(App.NP_MOBILE_KEY);
+    const hh = safeStorage.get(App.NP_MOBILE_KEY);
     if (hh) this.main.style.setProperty('--np-mobile-h', hh);
   }
 
   // ---- right-pane split (tracks above, now-playing below) ------------------------------
   private static SPLIT_KEY = 'sfp.np-height.v1';
   /** the user's saved Now Playing height (null = size to content); mirrors localStorage so applySplit() never reads it */
-  private splitSaved: string | null = this.load(App.SPLIT_KEY);
+  private splitSaved: string | null = safeStorage.get(App.SPLIT_KEY);
   private splitMeasurePending = false;
 
   private rememberSplit(v: string | null): void {
     this.splitSaved = v;
-    this.save(App.SPLIT_KEY, v);
+    if (v === null) safeStorage.remove(App.SPLIT_KEY);
+    else safeStorage.set(App.SPLIT_KEY, v);
   }
 
   /** custom drag (no pointer capture, no pointercancel) kept as is; unlike dragHandle() it saves once, on release */

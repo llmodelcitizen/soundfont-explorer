@@ -1,6 +1,7 @@
 // Render-runs view: submit form (tree of canon-ok songs + tuning knobs, server-checked
 // estimate) and the run list with live status, log tail, terminate/finish.
 import { get, post } from './api';
+import { el, note, statusLine } from './dom';
 
 interface RenderSong {
   id: string;
@@ -23,18 +24,6 @@ interface Run {
   knobs: Record<string, unknown>;
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]
-): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') e.className = v;
-    else e.setAttribute(k, v);
-  }
-  e.append(...children);
-  return e;
-}
-
 function input(value: string, attrs: Record<string, string> = {}): HTMLInputElement {
   return el('input', { value, ...attrs });
 }
@@ -45,7 +34,7 @@ export class RunsView {
   private renderEnabled = false;
   private missingCanon = 0;
   private picked = new Set<string>();
-  private status = el('span', { class: 'statusline' });
+  private status = statusLine();
   private timer: number | null = null;
   private pollGen = 0; // bumped by stop(): a tick already in flight must not re-arm
   private openLogs = new Set<string>();
@@ -86,11 +75,6 @@ export class RunsView {
     this.timer = null;
   }
 
-  private note(msg: string, isError = false): void {
-    this.status.textContent = msg;
-    this.status.classList.toggle('error', isError);
-  }
-
   private poll(): void {
     // Clear the armed timer directly rather than through stop(): stop() also bumps pollGen,
     // and a re-arm that bumps it invalidates a load() that is still fetching — re-clicking
@@ -118,7 +102,7 @@ export class RunsView {
     try {
       await this.renderRuns(host);
     } catch (e) {
-      this.note(`runs refresh: ${(e as Error).message}`, true);
+      note(this.status, `runs refresh: ${(e as Error).message}`, true);
     }
   }
 
@@ -204,20 +188,20 @@ export class RunsView {
           '/api/render/plan', body());
         estOut.textContent = `${p.jobs} jobs · ${p.cpu_h} CPU-h · ~$${p.usd} across ${p.shards.length} shard(s)`;
       } catch (e) {
-        this.note((e as Error).message, true);
+        note(this.status, (e as Error).message, true);
       }
     };
     const submit = el('button', { class: 'danger' }, 'Submit to fleet');
     submit.onclick = async () => {
-      if (!this.picked.size) return this.note('no songs selected', true);
+      if (!this.picked.size) return note(this.status, 'no songs selected', true);
       if (!confirm(`Submit ${this.picked.size} song(s) to the burst fleet? This spends real money.`)) return;
       submit.disabled = true;
       try {
         const run = await post<Run>('/api/runs', body());
-        this.note(`submitted ${run.run_id}`);
+        note(this.status, `submitted ${run.run_id}`);
         await this.renderRuns(this.root.querySelector('.runlist') as HTMLElement);
       } catch (e) {
-        this.note((e as Error).message, true);
+        note(this.status, (e as Error).message, true);
       } finally {
         submit.disabled = false;
       }
@@ -291,7 +275,7 @@ export class RunsView {
           try {
             await post(`/api/runs/${r.run_id}/terminate`);
           } catch (e) {
-            this.note(`terminate: ${(e as Error).message}`, true);
+            note(this.status, `terminate: ${(e as Error).message}`, true);
           } finally {
             t.disabled = false;
           }
@@ -308,13 +292,13 @@ export class RunsView {
           // rejection left the status line stuck on "finisher running…", and a plain
           // "finisher done" claimed a rebuild that did not happen (#19).
           f.disabled = true;
-          this.note('finisher running…');
+          note(this.status, 'finisher running…');
           try {
             const rec = await post<Run>(`/api/runs/${r.run_id}/finish`);
-            if (rec.finisher.songs_json_published) this.note('finisher done');
-            else this.note(`finisher: ${rec.finisher.error ?? 'songs.json was not published'}`, true);
+            if (rec.finisher.songs_json_published) note(this.status, 'finisher done');
+            else note(this.status, `finisher: ${rec.finisher.error ?? 'songs.json was not published'}`, true);
           } catch (e) {
-            this.note(`finisher: ${(e as Error).message}`, true);
+            note(this.status, `finisher: ${(e as Error).message}`, true);
           } finally {
             f.disabled = false;
           }
