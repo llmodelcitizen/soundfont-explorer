@@ -108,6 +108,37 @@ class OpenStreamTests(unittest.TestCase):
         t.join()
         os.remove(preview.cache_path(SHA))
 
+    def test_a_queued_render_does_not_hold_the_route(self):
+        """preview_mp3 is a sync route, so this call sits on an anyio threadpool worker and
+        no client disconnect can break it out. Priming with next(follow(job)) blocked there
+        for as long as the render took (up to RENDER_TIMEOUT_S) — a burst of clicks pinned
+        the pool (#19). Past the prime window the response starts and follow() tails it."""
+        job = preview.Job(SHA)                   # queued for a render slot: no file at all
+        t0 = time.monotonic()
+        stream = preview.open_stream(job, prime_s=0.3)
+        self.assertLess(time.monotonic() - t0, 3)
+        with open(job.tmp, "wb") as fh:          # the render gets its slot after the headers
+            fh.write(b"late")
+        os.replace(job.tmp, preview.cache_path(SHA))
+        job.done.set()
+        self.assertEqual(b"".join(stream), b"late")
+        os.remove(preview.cache_path(SHA))
+
+    def test_a_failure_inside_the_prime_window_still_raises(self):
+        job = preview.Job(SHA)
+
+        def writer():
+            time.sleep(0.2)
+            job.error = "render failed (fluidsynth=1, ffmpeg=0)"
+            job.done.set()
+
+        t = threading.Thread(target=writer)
+        t.start()
+        with self.assertRaises(RuntimeError) as cm:
+            preview.open_stream(job, prime_s=5)
+        t.join()
+        self.assertIn("fluidsynth=1", str(cm.exception))
+
     def test_close_reaches_follow(self):
         job = preview.Job(SHA)
         with open(job.tmp, "wb") as fh:
