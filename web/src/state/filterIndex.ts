@@ -28,7 +28,8 @@ function facetValues(v: Variant, key: FacetKey): string[] {
   const f = v.facets ?? {};
   let raw: unknown = f[key];
   // the top-level engine/chip/type strings mirror single facet values; a multi-chip variant
-  // (edm-all: chip 'opll', facets.chip ['opll', 'scc']) keeps the full list only in facets.
+  // keeps the full list only in facets (edm-all publishes chip_family 'opll' and facets.chip
+  // ['opll', 'scc'], so Variant.chip is the joined 'opll,scc' — a value no filter offers).
   // An empty list carries no values (published catalogs do contain empty facet lists — every
   // SF2 variant has facets.quality []), so treat it like a missing facet rather than as "none"
   if (!Array.isArray(raw) || raw.length === 0) {
