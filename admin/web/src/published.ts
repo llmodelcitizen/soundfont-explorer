@@ -95,6 +95,9 @@ export class PublishedView {
     };
     const rebuild = el('button', {}, 'Republish songs.json');
     rebuild.onclick = async () => {
+      // minutes-long request: without this a double-click (or an impatient second click)
+      // fired two rebuilds, and the server has to refuse one of them with a 409 (#19)
+      rebuild.disabled = true;
       this.note('rebuilding songs.json…');
       try {
         await post('/api/published/rebuild');
@@ -102,6 +105,8 @@ export class PublishedView {
         await this.load();
       } catch (e) {
         this.note((e as Error).message, true);
+      } finally {
+        rebuild.disabled = false;
       }
     };
 

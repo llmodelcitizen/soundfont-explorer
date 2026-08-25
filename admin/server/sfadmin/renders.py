@@ -36,6 +36,17 @@ POLL_S = 30
 # (#19). Ten polls (5 min) also covers describe_jobs lagging a fresh submit_job.
 MISSING_JOB_POLLS = 10
 STAGE_EXCLUDES = ["--exclude", "import/*", "--exclude", "*__pycache__/*", "--exclude", "*.pyc"]
+# how long the background finisher waits for the publish mutex before recording an error:
+# long enough to sit out a Published-tab rebuild, short enough that a wedged writer cannot
+# hold a watcher thread for ever
+FINISH_LOCK_WAIT_S = 1800
+# staging is MIDI + JSON (tens of MB); an `aws s3 sync` still running after this is wedged,
+# and letting it run forever kept the run "submitting" — which exempts it from the crash
+# heuristic and blocks every later submit (#19)
+STAGE_TIMEOUT_S = 1800
+# backstop for that exemption: after this a submit still holding a record with no job id is
+# treated as crashed even if this process thinks its thread is alive
+SUBMIT_EXEMPT_S = 3600
 
 
 def _now() -> str:
@@ -87,7 +98,6 @@ class RunManager:
         self._watching: set[str] = set()
         self._submitting: set[str] = set()     # runs whose submit() is in flight in this process
         self._finishing: set[str] = set()      # runs whose finisher is rebuilding songs.json
-        self._finish_lock = threading.Lock()   # one songs.json rebuild at a time
         self._loaded = False
         threading.Thread(target=self._reconcile_loop, name="run-reconciler", daemon=True).start()
 
@@ -133,10 +143,10 @@ class RunManager:
         """The run holding the single-writer resources: a live one, or a terminal one whose
         finisher is still rebuilding songs.json — a new submit, a Published-tab remove/prune
         or rebuild must wait for that too, or two writers race on songs.json (#19)."""
-        with self.lock:
+        with self.lock:  # one snapshot: a finish() starting between the two reads was missed
             finishing = set(self._finishing)
-        return next((r for r in self.list()
-                     if r["state"] not in TERMINAL or r["run_id"] in finishing), None)
+            return next((r for r in self.list()
+                         if r["state"] not in TERMINAL or r["run_id"] in finishing), None)
 
     def finishing(self, rid: str) -> bool:
         with self.lock:
@@ -265,11 +275,16 @@ class RunManager:
             self._watching.add(rid)
         threading.Thread(target=self._watch, args=(rid,), name=f"run-{rid}", daemon=True).start()
 
-    def _watch(self, rid: str) -> None:
-        import boto3
+    def _watch(self, rid: str, batch=None) -> None:
+        """Poll to a terminal state, park the fleet, index what was published. `batch` is
+        injectable so a test can drive the whole sequence — the finisher's effect on the
+        record only shows when finish() runs after _poll, as it does here (#19)."""
         try:
             rec = self.get(rid)
-            self._poll(rec, boto3.client("batch"))
+            if batch is None:
+                import boto3
+                batch = boto3.client("batch")
+            self._poll(rec, batch)
             self._sleep_fleet(rec)
             try:
                 self.finish(rid)
@@ -397,26 +412,33 @@ class RunManager:
 
     # ------------------------------------------------------------ finisher
 
-    def finish(self, rid: str) -> dict:
+    def finish(self, rid: str, lock_wait: float = FINISH_LOCK_WAIT_S) -> dict:
         """Index what the shards published: rebuild + publish songs.json. Idempotent, never
-        concurrent: the watcher's finish and a click on "Run finisher" (shown while the
-        finisher has not reported yet) used to rewrite out/public/songs.json and the S3 key
-        side by side (#19). A second call for a run being finished raises RuntimeError."""
-        from . import publishops
+        concurrent: the watcher's finish, a click on "Run finisher" and the Published tab's
+        remove/prune/rebuild used to rewrite out/public/songs.json and the S3 key side by
+        side (#19). The cross-writer mutex is publocks — it guards those files, not this
+        method; _finishing only keeps a second finish for the SAME run out and tells the UI
+        the run is not done. A second call for a run being finished raises RuntimeError."""
+        from . import publishops, publocks
         rec = self.get(rid)
         with self.lock:
             if rid in self._finishing:
                 raise RuntimeError(f"the finisher for run {rid} is already running")
             self._finishing.add(rid)
         try:
-            with self._finish_lock:
-                try:
+            # a verdict recorded before the finisher ran (a job Batch forgot, a failed
+            # instance-type restore) is the operator's only explanation of the run, and
+            # replacing the whole dict here dropped it (#19)
+            prior = (rec.get("finisher") or {}).get("error")
+            try:
+                with publocks.exclusive(f"finisher for run {rid}", timeout=lock_wait):
                     publishops.sync_down()
                     publishops.rebuild_and_publish()
-                    rec["finisher"] = {"ran_at": _now(), "songs_json_published": True, "error": None}
-                except Exception as e:
-                    rec["finisher"] = {"ran_at": _now(), "songs_json_published": False, "error": str(e)}
-                self._put(rec)
+                rec["finisher"] = {"ran_at": _now(), "songs_json_published": True, "error": prior}
+            except Exception as e:
+                rec["finisher"] = {"ran_at": _now(), "songs_json_published": False,
+                                   "error": "; ".join(x for x in (prior, str(e)) if x)}
+            self._put(rec)
         finally:
             with self.lock:
                 self._finishing.discard(rid)

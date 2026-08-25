@@ -12,6 +12,8 @@ from .renders import get_manager
 
 router = APIRouter()
 
+FINISH_ROUTE_WAIT_S = 15  # how long a manual "Run finisher" waits for the publish mutex
+
 
 def _mgr():
     if not bootstrapstate.ready():
@@ -110,7 +112,10 @@ def terminate(rid: str) -> dict:
 @router.post("/api/runs/{rid}/finish")
 def finish(rid: str) -> dict:
     try:
-        return _mgr().finish(rid)
+        # a request thread must not sit on the publish mutex for the watcher's half hour:
+        # if another writer holds it, finish() records that as the finisher's error and the
+        # button is still there to retry
+        return _mgr().finish(rid, lock_wait=FINISH_ROUTE_WAIT_S)
     except KeyError:
         raise HTTPException(404, f"no run {rid}") from None
     except RuntimeError as e:  # already being finished

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from . import bootstrapstate, publishops
+from . import bootstrapstate, publishops, publocks
 from .config import get_config
-from .renders import get_manager
+from .renders import TERMINAL, get_manager
 
 router = APIRouter()
 
@@ -18,8 +18,18 @@ def _guard():
 
 
 def _no_active_run() -> None:
-    if get_config().render_enabled and get_manager().active():
-        raise HTTPException(409, "a render run is live — shards are publishing; try after it finishes")
+    """UX guard: a live run's shards are publishing sets this rebuild would index halfway.
+    It is check-then-act (the run can go terminal, or its finisher can start, right after
+    this returns), so it is not what keeps two writers off songs.json — publocks is (#19)."""
+    if not get_config().render_enabled:
+        return
+    cur = get_manager().active()
+    if not cur:
+        return
+    if cur["state"] in TERMINAL and get_manager().finishing(cur["run_id"]):
+        raise HTTPException(409, f"run {cur['run_id']} is finishing — it is indexing what it "
+                                 "published; try again in a moment")
+    raise HTTPException(409, "a render run is live — shards are publishing; try after it finishes")
 
 
 @router.get("/api/published")
@@ -33,7 +43,10 @@ def remove(sid: str) -> dict:
     _guard()
     _no_active_run()
     try:
-        return publishops.remove_track(sid)
+        with publocks.exclusive("DELETE /api/published/{sid}"):
+            return publishops.remove_track(sid)   # deletes a/ + s/, then republishes songs.json
+    except publocks.Busy as e:
+        raise HTTPException(409, str(e)) from e
     except Exception as e:
         raise HTTPException(500, f"remove failed: {e}") from e
 
@@ -44,7 +57,12 @@ def prune(body: dict | None = None) -> dict:
     _no_active_run()
     dry = bool((body or {}).get("dry_run", True))
     try:
-        return publishops.prune(dry_run=dry)
+        # even a dry run reads the live songs.json a finisher may be halfway through
+        # replacing; a real one deletes everything that read did not reference
+        with publocks.exclusive("POST /api/published/prune"):
+            return publishops.prune(dry_run=dry)
+    except publocks.Busy as e:
+        raise HTTPException(409, str(e)) from e
     except Exception as e:
         raise HTTPException(500, f"prune failed: {e}") from e
 
@@ -55,7 +73,10 @@ def rebuild() -> dict:
     _guard()
     _no_active_run()
     try:
-        publishops.sync_down()
-        return publishops.rebuild_and_publish()
+        with publocks.exclusive("POST /api/published/rebuild"):
+            publishops.sync_down()
+            return publishops.rebuild_and_publish()
+    except publocks.Busy as e:
+        raise HTTPException(409, str(e)) from e
     except Exception as e:
         raise HTTPException(500, f"rebuild failed: {e}") from e

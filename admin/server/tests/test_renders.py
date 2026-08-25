@@ -39,7 +39,6 @@ class FakeManager(renders.RunManager):
         self._watching: set = set()
         self._submitting: set = set()
         self._finishing: set = set()
-        self._finish_lock = threading.Lock()
         self._loaded = True
         self.puts: list = []
         self.slept: list = []
@@ -123,6 +122,23 @@ class WatchTests(unittest.TestCase):
         self.assertEqual(self.rec["state"], "failed")
         self.assertEqual(self.rec["status_summary"], {"FAILED": 1})
         self.assertIsNone(self.rec["finisher"]["error"])       # a real verdict, not "unknown"
+
+    def test_the_watcher_keeps_the_polls_verdict_through_the_finisher(self):
+        """_poll's "Batch forgot this job" note is the operator's only explanation of the
+        run; _watch calls finish() one line later and finish() used to replace the whole
+        finisher dict, so the SPA showed a failed run with a green finisher chip (#19)."""
+        from sfadmin import publishops
+        with unittest.mock.patch.object(renders, "POLL_S", 0), \
+                unittest.mock.patch.object(publishops, "sync_down", lambda: None), \
+                unittest.mock.patch.object(publishops, "rebuild_and_publish", lambda: {}):
+            self.m._watch("r1", FakeBatch([]))          # the real sequence: poll, park, finish
+        rec = self.m.runs["r1"]
+        self.assertEqual(rec["state"], "failed")
+        self.assertEqual(rec["status_summary"], {"UNKNOWN": 1})
+        self.assertIn("unknown to describe_jobs", rec["finisher"]["error"])
+        self.assertTrue(rec["finisher"]["songs_json_published"])   # it did still republish
+        self.assertIn("unknown to describe_jobs", self.m.puts[-1]["finisher"]["error"])
+        self.assertEqual(self.m.slept, ["r1"])
 
     def test_terminate_stops_the_poll(self):
         batch = FakeBatch([{"status": "RUNNING"}] * 5)
@@ -245,6 +261,43 @@ class FinisherTests(unittest.TestCase):
         self.assertFalse(rec["finisher"]["songs_json_published"])
         self.assertFalse(self.m.finishing("r1"))
         self.assertIsNone(self.m.active())
+
+    def test_a_published_tab_rebuild_cannot_run_beside_the_finisher(self):
+        """The mutex is the resource's, not finish()'s: the Published tab's routes take the
+        same publocks slot. Only _finishing did before, and the routes never looked at it —
+        so a rebuild that passed the "no active run" check a moment before the watcher
+        entered finish() rewrote songs.json beside it (#19)."""
+        from sfadmin import publocks
+        t = threading.Thread(target=self.m.finish, args=("r1",))
+        t.start()
+        self.assertTrue(self.entered.wait(5))
+        self.assertIsNotNone(publocks.held_by())
+        self.assertIn("r1", publocks.held_by()[0])
+        with self.assertRaises(publocks.Busy):        # exactly what routes_publish does
+            with publocks.exclusive("POST /api/published/rebuild"):
+                self.fail("two writers on songs.json")
+        self.release.set()
+        t.join(5)
+        self.assertIsNone(publocks.held_by())
+        with publocks.exclusive("POST /api/published/rebuild"):
+            pass                                      # freed once the finisher is done
+
+    def test_a_finisher_that_cannot_get_the_mutex_reports_it(self):
+        from sfadmin import publocks
+        self.release.set()
+        with publocks.exclusive("POST /api/published/prune"):
+            rec = self.m.finish("r1", lock_wait=0.2)  # bounded: no wedged watcher thread
+        self.assertFalse(rec["finisher"]["songs_json_published"])
+        self.assertIn("another publish is in progress", rec["finisher"]["error"])
+        self.assertEqual(self.rebuilds, 0)
+        self.assertFalse(self.m.finishing("r1"))
+
+    def test_a_verdict_recorded_before_the_finisher_survives_it(self):
+        self.release.set()
+        self.m.runs["r1"]["finisher"]["error"] = "instance-type restore failed: boom"
+        rec = self.m.finish("r1")
+        self.assertTrue(rec["finisher"]["songs_json_published"])
+        self.assertEqual(rec["finisher"]["error"], "instance-type restore failed: boom")
 
 
 def write_repo(root: str) -> None:
