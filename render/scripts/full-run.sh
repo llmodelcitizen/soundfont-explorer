@@ -8,6 +8,8 @@
 #   WORKERS=32 …
 #
 # Restartable: sfr skips finished jobs. Run it in tmux; log goes to work/full-run.log.
+# A song whose render aborted, whose manifest was refused (planned variants never rendered)
+# or whose publish failed is skipped, listed at the end, and makes the exit status 1 (#11).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 WORKERS=${WORKERS:-32}
@@ -36,23 +38,54 @@ fi
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$LOG"; }
 
+# run_logged <regex> <cmd…>: everything to the log, matching lines to the terminal, and the
+# status of <cmd> ITSELF. The pipeline's own status is grep's 1 whenever nothing matched, which
+# the old `|| true` hid — together with every real failure of the command in front of it.
+run_logged() {
+  local filter=$1 rc=0; shift
+  "$@" 2>&1 | tee -a "$LOG" | grep -E "$filter" | tail -n 3 || rc=${PIPESTATUS[0]}
+  return "$rc"
+}
+
+SKIPPED=()
 for song in "${SONGS[@]}"; do
   log "=== $song: render (workers=$WORKERS)"
-  "${SFR[@]}" render --song "$song" --workers "$WORKERS" 2>&1 | tee -a "$LOG" | grep -E '^\[sfr\] (finished|[0-9]+/[0-9]+)' | tail -n 3 || true
+  rc=0
+  run_logged '^\[sfr\] (finished|[0-9]+/[0-9]+)' "${SFR[@]}" render --song "$song" --workers "$WORKERS" || rc=$?
+  # `sfr render` exits 1 whenever any job failed and `silent` failures are normal, so 1 is not
+  # "aborted": the completeness check is `sfr manifest`, which refuses a song whose planned
+  # variants were never rendered. Anything else (2 usage, 125+ docker/OOM-kill/signal) is.
+  if (( rc != 0 && rc != 1 )); then
+    log "!!! $song: render aborted (rc=$rc) — not manifesting or publishing"
+    SKIPPED+=("$song")
+    continue
+  fi
   # manifest + publish are serialized across concurrent drivers (flock): two drivers publishing
   # at once could otherwise overwrite songs.json with each other's view of the world
   (
     flock 9
-    if [[ "$THOROUGH" == "1" ]]; then
-      log "=== $song: manifest --thorough"
-      "${SFR[@]}" manifest --song "$song" --thorough 2>&1 | tee -a "$LOG" | grep -E '^\[manifest\]'
-    else
-      log "=== $song: manifest"
-      "${SFR[@]}" manifest --song "$song" 2>&1 | tee -a "$LOG" | grep -E '^\[manifest\]'
+    MANIFEST=(manifest --song "$song")
+    if [[ "$THOROUGH" == "1" ]]; then MANIFEST+=(--thorough); fi
+    log "=== $song: ${MANIFEST[*]}"
+    rc=0
+    run_logged '^\[manifest\]' "${SFR[@]}" "${MANIFEST[@]}" || rc=$?
+    if (( rc != 0 )); then
+      log "!!! $song: manifest failed or refused (rc=$rc) — not publishing"
+      exit 3
     fi
     log "=== $song: publish"
-    (cd render && python3 -m sfr publish --out ../out --work ../work) 2>&1 | grep -vE '^(upload|Completed)' | tee -a "$LOG" | tail -n 2
+    rc=0
+    (cd render && python3 -m sfr publish --out ../out --work ../work) 2>&1 | grep -vE '^(upload|Completed)' | tee -a "$LOG" | tail -n 2 || rc=${PIPESTATUS[0]}
+    if (( rc != 0 )); then
+      log "!!! $song: publish failed (rc=$rc)"
+      exit 4
+    fi
     log "=== $song: live"
-  ) 9>work/publish.lock
+  ) 9>work/publish.lock || { SKIPPED+=("$song"); continue; }
 done
+if (( ${#SKIPPED[@]} )); then
+  log "!!! NOT published: ${SKIPPED[*]}"
+  log "done with failures: ${SONGS[*]}"
+  exit 1
+fi
 log "all done: ${SONGS[*]}"

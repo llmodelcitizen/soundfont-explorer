@@ -160,7 +160,17 @@ def validate_jobs(jobs: list[Job], paths: Paths, *, thorough: bool, workers: int
 
 def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], settings: RenderSettings,
                     engines_json: dict, jobs_by_song: dict[str, list[Job]], *, thorough: bool = False,
-                    workers: int = DEFAULT_WORKERS, defaults: dict | None = None, echo=print) -> dict:
+                    workers: int = DEFAULT_WORKERS, defaults: dict | None = None, echo=print,
+                    allow_partial: bool = False) -> dict:
+    """Validate, pack and write /c, /s/<song>/ and songs.json for the selected songs.
+
+    A selected song whose planned jobs include variants that were never rendered is REFUSED
+    unless allow_partial: its current published set (if any) is kept, it is listed under
+    report["refused"], and no set document is written. Every attempted render leaves a meta,
+    even a failed one, so a missing meta is the one signal that separates "excluded" from
+    "the render did not finish" — and a set built from whatever happens to exist would go live
+    as a quietly shrunken song (#11). Smoke runs that render a deliberate subset pass
+    allow_partial."""
     public = paths.public
     catalog = build_catalog(variants, engines_json)
     cblob = _dump(catalog)
@@ -190,6 +200,20 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
         verdicts = validate_jobs(jobs, paths, thorough=thorough, workers=workers)
         echo(f"[manifest] {sid}: validated {len(jobs)} renders{' (thorough)' if thorough else ''} "
              f"in {time.monotonic() - t0:.0f} s")
+        never = [job.variant_id for job, v in zip(jobs, verdicts) if v.reason == "no-meta"]
+        if never and not allow_partial:
+            entry: dict[str, Any] = {"refused": f"{len(never)} of {len(jobs)} planned variants never rendered",
+                                     "never_rendered": never[:25]}
+            existing = _existing_set(public, sid)
+            if existing is not None:
+                shash, sdoc = existing
+                song_entries.append(_song_entry(song, sdoc["duration_s"], len(sdoc["order"]), f"/s/{sid}/{shash}.json"))
+                entry["kept"] = f"/s/{sid}/{shash}.json"
+            echo(f"[manifest] {sid}: REFUSED — {entry['refused']} "
+                 f"(finish `sfr render --song {sid}`, or pass --allow-partial for a deliberate subset)")
+            report["songs"][sid] = entry
+            report.setdefault("refused", []).append(sid)
+            continue
         for job, v in zip(jobs, verdicts):
             if v.ok:
                 ok_meta[job.variant_id] = read_meta(job.meta_path(paths)) or {}

@@ -187,8 +187,9 @@ class TestManifest(unittest.TestCase):
         for j in jobs1[:2] + jobs2:
             _fake_render(j, self.paths)
         both = [self.song, song2]
+        # jobs1 is deliberately incomplete here (2 of 5 rendered): allow_partial, like a smoke run
         build_manifests(self.paths, both, self.variants, self.settings, ENGINES_JSON,
-                        {"freedoom-e1m1": jobs1, "joplin": jobs2}, echo=lambda *_: None)
+                        {"freedoom-e1m1": jobs1, "joplin": jobs2}, echo=lambda *_: None, allow_partial=True)
         pub = self.paths.public
         sj = json.loads((pub / "songs.json").read_text())
         self.assertEqual([s["id"] for s in sj["songs"]], ["freedoom-e1m1", "joplin"])
@@ -196,7 +197,7 @@ class TestManifest(unittest.TestCase):
         # now re-manifest only the first song with one more render: joplin must be untouched
         _fake_render(jobs1[2], self.paths)
         report = build_manifests(self.paths, both, self.variants, self.settings, ENGINES_JSON,
-                                 {"freedoom-e1m1": jobs1}, echo=lambda *_: None)
+                                 {"freedoom-e1m1": jobs1}, echo=lambda *_: None, allow_partial=True)
         sj2 = json.loads((pub / "songs.json").read_text())
         self.assertEqual([s["id"] for s in sj2["songs"]], ["freedoom-e1m1", "joplin"])
         self.assertEqual(sj2["songs"][1]["set"], joplin_set)
@@ -204,6 +205,38 @@ class TestManifest(unittest.TestCase):
         self.assertTrue((pub / joplin_set.lstrip("/")).exists())
         self.assertTrue((pub / "a" / "joplin" / "g").exists())
         self.assertIn("kept", report["songs"]["joplin"])
+
+    def test_refuses_a_song_whose_planned_variants_never_rendered(self):
+        """An interrupted render leaves planned jobs with no meta at all; the manifest must not
+        turn what happens to exist into a live set (issue #11)."""
+        jobs = self.jobs()
+        for j in jobs[:3]:
+            _fake_render(j, self.paths)
+        _fake_render(jobs[3], self.paths, status="failed")     # attempted and failed: fine to exclude
+        # jobs[4] never ran
+        lines = []
+        report = build_manifests(self.paths, [self.song], self.variants, self.settings, ENGINES_JSON,
+                                 {self.song["id"]: jobs}, echo=lines.append)
+        pub = self.paths.public
+        self.assertEqual(report["refused"], ["freedoom-e1m1"])
+        self.assertEqual(report["songs"]["freedoom-e1m1"]["never_rendered"], [jobs[4].variant_id])
+        self.assertIn("1 of 5 planned variants never rendered", report["songs"]["freedoom-e1m1"]["refused"])
+        self.assertTrue(any("REFUSED" in ln for ln in lines))
+        self.assertFalse((pub / "s" / "freedoom-e1m1").exists())            # no set document written
+        self.assertEqual(json.loads((pub / "songs.json").read_text())["songs"], [])   # nothing to publish
+        # the deliberate-subset escape hatch (smoke runs) still builds the set from what exists
+        report = build_manifests(self.paths, [self.song], self.variants, self.settings, ENGINES_JSON,
+                                 {self.song["id"]: jobs}, echo=lambda *_: None, allow_partial=True)
+        self.assertNotIn("refused", report)
+        self.assertEqual(report["songs"]["freedoom-e1m1"]["variants"], 3)
+        published = json.loads((pub / "songs.json").read_text())["songs"][0]["set"]
+        # once a set exists, a later refused rebuild keeps it rather than dropping the song
+        (jobs[0].meta_path(self.paths)).unlink()
+        report = build_manifests(self.paths, [self.song], self.variants, self.settings, ENGINES_JSON,
+                                 {self.song["id"]: jobs}, echo=lambda *_: None)
+        self.assertEqual(report["refused"], ["freedoom-e1m1"])
+        self.assertEqual(report["songs"]["freedoom-e1m1"]["kept"], published)
+        self.assertEqual(json.loads((pub / "songs.json").read_text())["songs"][0]["set"], published)
 
     def test_pack_song_skips_by_size_without_rereading_members(self):
         jobs = self.jobs()[:3]

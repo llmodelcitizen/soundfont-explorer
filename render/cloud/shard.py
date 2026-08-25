@@ -125,16 +125,18 @@ def expected(song: str, sel: list[str]) -> int:
     return n
 
 
-def publish_song(song: str) -> bool:
+def publish_song(song: str, partial_ok: bool = False) -> bool:
     """Manifest the song, then upload only if it really produced variants.
 
     The guard is the point: a manifest run against a partially rendered song writes a
     plausible-looking set document with a subset of the variants, and publishing that would
-    quietly degrade the song on the live site."""
+    quietly degrade the song on the live site. `sfr manifest` refuses exactly that (exit 3)
+    unless partial_ok — a smoke run with an engine filter or --limit renders a deliberate
+    subset and is allowed to publish it."""
     t = time.monotonic()
     r = subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", str(SONGS),
                         "--catalog", str(CATALOG), "--work", str(WORK), "--out", str(OUT),
-                        "manifest", "--song", song, "--thorough"],
+                        "manifest", "--song", song, "--thorough", *(["--allow-partial"] if partial_ok else [])],
                        capture_output=True, text=True)
     sys.stdout.write(r.stdout[-4000:])
     if r.returncode:
@@ -170,7 +172,7 @@ def publisher(songs: list[str], sel: list[str], done: threading.Event, state: di
 
     def attempt(song: str) -> None:
         try:
-            ok = publish_song(song)
+            ok = publish_song(song, partial_ok=bool(sel))
         except Exception:
             log(f"!! publishing {song} raised:\n{traceback.format_exc()}")
             ok = False

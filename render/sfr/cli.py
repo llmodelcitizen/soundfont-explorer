@@ -235,9 +235,10 @@ def cmd_manifest(args) -> int:
             by_song.setdefault(sid, [])   # selected but nothing planned → still rebuilt (possibly empty)
     report = build_manifests(paths, songs, variants, settings, engines_json, by_song, thorough=args.thorough,
                              workers=args.workers or DEFAULT_WORKERS,
-                             defaults={"song": args.default_song, "variant": args.default_variant})
+                             defaults={"song": args.default_song, "variant": args.default_variant},
+                             allow_partial=args.allow_partial)
     print(json.dumps(report, indent=1))
-    return 0
+    return 3 if report.get("refused") else 0
 
 
 def cmd_publish(args) -> int:
@@ -294,6 +295,9 @@ def build_parser() -> argparse.ArgumentParser:
         s = sub.add_parser(name, help="validate, pack and write /c /s /songs.json under out/public")
         add_path_args(s); add_select_args(s)
         s.add_argument("--thorough", action="store_true", help="decode every segment with opusdec")
+        s.add_argument("--allow-partial", action="store_true",
+                       help="write a set even when planned variants were never rendered (a deliberate "
+                            "subset, e.g. a smoke run); otherwise such a song is refused and exit is 3")
         s.add_argument("--workers", type=int, default=None,
                        help="parallel validation threads (default: min(24, cpus))")
         s.add_argument("--songs-json-only", action="store_true",
