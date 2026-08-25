@@ -35,9 +35,9 @@ class EnsureZipTests(unittest.TestCase):
         self.assertEqual(out, libzip.zip_path(self.cache, "2026-08-24T00:00:00Z"))
         self.check(out)
         self.assertEqual(sorted(os.listdir(self.cache)), [os.path.basename(out)])  # no temp left
-        mtime = os.path.getmtime(out)
+        ino = os.stat(out).st_ino
         self.assertEqual(libzip.ensure_zip(self.cache, "2026-08-24T00:00:00Z", []), out)
-        self.assertEqual(os.path.getmtime(out), mtime)                               # cached
+        self.assertEqual(os.stat(out).st_ino, ino)   # served, not rebuilt (a build replaces)
 
     def test_concurrent_first_requests_share_one_valid_build(self):
         n = 8
@@ -63,14 +63,27 @@ class EnsureZipTests(unittest.TestCase):
 
     def test_new_version_replaces_stale_zips(self):
         old = libzip.ensure_zip(self.cache, "v1", self.files)
+        os.utime(old, (0, 0))  # nobody has asked for this version in a long time
         with open(os.path.join(self.cache, "library-deadbeef.zip"), "wb") as fh:
             fh.write(b"stale")
+        os.utime(os.path.join(self.cache, "library-deadbeef.zip"), (0, 0))
         with open(os.path.join(self.cache, "other.zip"), "wb") as fh:
             fh.write(b"not ours")
         new = libzip.ensure_zip(self.cache, "v2", self.files)
         self.assertNotEqual(old, new)
         self.check(new)
         self.assertEqual(sorted(os.listdir(self.cache)), sorted([os.path.basename(new), "other.zip"]))
+
+    def test_a_version_just_handed_out_survives_the_next_build(self):
+        """ensure_zip returns a path the route opens a statement later (FileResponse stats
+        it at send time). A library edit in between used to delete it under that request —
+        FileNotFoundError, i.e. one of the two 500s this module removed (#19)."""
+        v1 = libzip.ensure_zip(self.cache, "v1", self.files)
+        libzip.ensure_zip(self.cache, "v2", self.files)     # library edited between the two
+        self.check(v1)                                      # still openable by that request
+        os.utime(v1, (0, 0))                                # ... until nobody wants it
+        libzip.ensure_zip(self.cache, "v3", self.files)
+        self.assertFalse(os.path.exists(v1))
 
     def test_failed_build_leaves_no_temp_and_no_zip(self):
         def files():
