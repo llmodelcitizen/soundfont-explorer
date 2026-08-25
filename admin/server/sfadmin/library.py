@@ -402,7 +402,15 @@ class Library:
         if p.returncode != 0:
             raise RuntimeError(f"canon.py failed: {p.stderr[-2000:]}")
         with open(os.path.join(repo, "songs", "canon-report.json")) as fh:
-            refused = {r["id"]: r["reason"] for r in json.load(fh)["refused"]}
+            report = json.load(fh)
+        refused = {r["id"]: r["reason"] for r in report["refused"]}
+        # songs canon.py --only took out of songs.json. The operator has to know: the
+        # publish path refuses to drop a track that is still live on the site, so from here
+        # on "Republish songs.json", the render-run finisher and the Published tab all fail
+        # until the track is fixed, hidden or removed. canon.py says so on stdout, which is
+        # inherited on purpose (progress lines land in the journal live) and so never
+        # reaches this UI (#19).
+        dropped = list(report.get("dropped") or [])
         with open(os.path.join(repo, "songs", "songs.json")) as fh:
             built = {e["id"]: e for e in json.load(fh)["songs"]}
         ts = now_iso()
@@ -434,6 +442,8 @@ class Library:
                 # a targeted run should report the tracks it ran, not the library totals
                 result["ran"] = {sid: dict(self.doc["entries"][sid]["canon"])
                                  for sid in only if sid in self.doc["entries"]}
+        if dropped:
+            result["dropped"] = dropped
         result["persisted"] = self._persist_canon_products()
         return result
 

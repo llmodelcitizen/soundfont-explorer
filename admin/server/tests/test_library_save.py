@@ -125,5 +125,56 @@ class SaveTests(unittest.TestCase):
             self.assertEqual(json.load(fh)["updated_at"], "first")   # mirror written after S3
 
 
+class CanonRunReportTests(unittest.TestCase):
+    """canon_run() hands the SPA what a targeted run cost. canon.py prints the songs it
+    dropped from songs.json, but library deliberately inherits its stdout (progress lines
+    go to the journal live), so the operator only ever saw that in `journalctl` — and
+    otherwise learned of it from the next failed "Republish songs.json" (#19)."""
+
+    def repo_with_report(self, report: dict, built: list[str]) -> str:
+        repo = tempfile.mkdtemp()
+        os.makedirs(os.path.join(repo, "songs"))
+        with open(os.path.join(repo, "songs", "canon-report.json"), "w") as fh:
+            json.dump(report, fh)
+        with open(os.path.join(repo, "songs", "songs.json"), "w") as fh:
+            json.dump({"songs": [{"id": s, "sha256": "x", "duration_s": 1} for s in built]}, fh)
+        return repo
+
+    def run_canon(self, repo: str, entries: list[str], only: list[str] | None):
+        data = tempfile.mkdtemp()
+        os.makedirs(os.path.join(data, "library"))
+        s3 = FakeS3(stored={"schema": 1, "updated_at": "t0", "entries": {
+            e: {"id": e, "hidden": False, "canon": {"status": "ok", "reason": None,
+                                                    "canonical_sha256": None, "duration_s": None,
+                                                    "checked_at": None}} for e in entries}})
+        config.get_config.cache_clear()
+        self.addCleanup(config.get_config.cache_clear)
+        with mock.patch.dict(os.environ, {"SFADMIN_BUCKET": "b", "SFADMIN_HOSTNAME": "h",
+                                          "SFADMIN_DATA": data, "SFADMIN_REPO": repo}), \
+                mock.patch.object(config, "_client", lambda service: s3), \
+                mock.patch.object(library.subprocess, "run",
+                                  return_value=mock.Mock(returncode=0, stderr="")), \
+                mock.patch.object(library.Library, "_persist_canon_products", lambda _self: True):
+            return library.Library().canon_run(only)
+
+    def test_a_dropped_song_is_reported_to_the_caller(self):
+        repo = self.repo_with_report({"schema": 1, "refused": [], "dropped": ["gone"]},
+                                     built=["kept"])
+        out = self.run_canon(repo, ["kept", "gone"], only=["gone"])
+        self.assertEqual(out["dropped"], ["gone"])
+
+    def test_nothing_dropped_says_nothing(self):
+        repo = self.repo_with_report({"schema": 1, "refused": [], "dropped": []},
+                                     built=["kept"])
+        out = self.run_canon(repo, ["kept"], only=["kept"])
+        self.assertNotIn("dropped", out)
+
+    def test_a_report_without_the_field_is_fine(self):
+        # canon-report.json restored from the bucket may predate the field
+        repo = self.repo_with_report({"schema": 1, "refused": []}, built=["kept"])
+        out = self.run_canon(repo, ["kept"], only=["kept"])
+        self.assertNotIn("dropped", out)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -526,6 +526,10 @@ export class LibraryView {
     interface CanonResult {
       totals: Record<string, number>;
       ran?: Record<string, { status: string; reason: string | null }>;
+      // ids a targeted run took out of songs.json. Until each is fixed, hidden or
+      // removed, the publish path (Republish songs.json, a render run's finisher, the
+      // Published tab) refuses to run at all while the track is live on the site (#19).
+      dropped?: string[];
     }
     const poll = async (): Promise<void> => {
       const s = await get<{ running: boolean; error?: string; result?: CanonResult }>('/api/library/canon/status');
@@ -534,13 +538,25 @@ export class LibraryView {
         setTimeout(poll, 3000);
         return;
       }
+      // canon.py prints the drop and what it costs, but its stdout is inherited into the
+      // sfadmin journal on purpose, so the operator only ever saw it there — and otherwise
+      // learned of it from the next failed publish. It rides in the result now (#19).
+      const dropped = s.result?.dropped?.length
+        ? ` · dropped from songs.json: ${s.result.dropped.join(', ')}`
+          + ' — publishing is blocked while one of those is live on the site (fix, hide, or'
+          + ' remove it on the Published tab)'
+        : '';
       if (s.error) this.note(`canon: ${s.error}`, true);
       else if (s.result?.ran) {
         const parts = Object.entries(s.result.ran)
           .map(([id, c]) => `${id}: ${c.status}${c.reason ? ` (${c.reason.slice(0, 80)})` : ''}`);
         const shown = parts.slice(0, 3).join(' · ') + (parts.length > 3 ? ` · +${parts.length - 3} more` : '');
-        this.note(`canon: ${shown}`, Object.values(s.result.ran).some((c) => c.status !== 'ok'));
-      } else this.note(`canon (library totals): ${JSON.stringify(s.result?.totals ?? s.result)}`);
+        this.note(`canon: ${shown}${dropped}`,
+          !!dropped || Object.values(s.result.ran).some((c) => c.status !== 'ok'));
+      } else {
+        this.note(`canon (library totals): ${JSON.stringify(s.result?.totals ?? s.result)}${dropped}`,
+          !!dropped);
+      }
       await this.load();
     };
     poll();
