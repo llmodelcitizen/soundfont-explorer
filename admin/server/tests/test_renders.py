@@ -772,7 +772,10 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(est["variants_per_song"], 5)
         self.assertEqual(est["jobs"], 10)
         self.assertEqual(len(est["shards"]), 2)
-        self.assertEqual(est["cpu_h"], round(10 * planner.CPU_S_PER_JOB / 3600, 1))
+        # priced per shard: LPT puts b (200 s) alone and a (100 s) alone, and a job on the
+        # longer song genuinely costs more — a fleet-wide average would misprice both
+        self.assertEqual(est["cpu_h"], round(
+            (5 * planner.job_cost_vcpu_s(200) + 5 * planner.job_cost_vcpu_s(100)) / 3600, 1))
 
     def test_a_byte_identical_twin_is_not_counted(self):
         """plan_jobs does not test alias_of, but sfr.config.load_variants drops aliases
@@ -808,7 +811,9 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(len(two["shards"]), 2)
         self.assertEqual(two["jobs"], 6)
         self.assertEqual(self.m.plan(["a"], 1, engines=["fluidsynth"], limit=3)["jobs"], 3)
-        self.assertEqual(one["cpu_h"], round(3 * planner.CPU_S_PER_JOB / 3600, 1))
+        # one shard holding both songs: the truncated job list is font-major across them,
+        # so the shard's mean duration (150 s) is the right price for a limited job too
+        self.assertEqual(one["cpu_h"], round(3 * planner.job_cost_vcpu_s(150) / 3600, 1))
 
     def test_explicit_variants_override_still_capped_by_limit(self):
         self.assertEqual(self.m.plan(["a"], 1, variants=40)["jobs"], 40)

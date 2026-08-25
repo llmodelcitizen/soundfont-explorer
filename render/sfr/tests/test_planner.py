@@ -123,10 +123,51 @@ class PlanShardsTests(unittest.TestCase):
         self.assertEqual(shards[0]["duration_total_s"], planner.DEFAULT_DURATION_S)
 
     def test_estimate(self):
-        shards = [{"songs": ["a", "b"], "duration_total_s": 1}]
+        shards = [{"songs": ["a", "b"], "duration_total_s": 300}]
         cpu_h, usd = planner.estimate(shards, 566)
-        self.assertAlmostEqual(cpu_h, 2 * 566 * 53.0 / 3600)
-        self.assertAlmostEqual(usd, cpu_h * 0.019)
+        self.assertAlmostEqual(cpu_h, 2 * 566 * planner.job_cost_vcpu_s(150) / 3600)
+        self.assertAlmostEqual(usd, cpu_h * planner.USD_PER_VCPU_HOUR)
+
+
+class CostModelTests(unittest.TestCase):
+    """Cost is overhead + DSP, not a flat per-job constant (measured on the two 2026-08-25
+    fleet runs; the old flat 53 vCPU-s overestimated them by 2.4x and 3.5x)."""
+
+    def test_the_two_runs_it_was_fitted_to(self):
+        for mean_s, per_job in ((237, 34.5), (90, 18.8)):
+            self.assertAlmostEqual(planner.job_cost_vcpu_s(mean_s), per_job, delta=0.15)
+
+    def test_a_longer_song_costs_more_per_job(self):
+        self.assertGreater(planner.job_cost_vcpu_s(240), planner.job_cost_vcpu_s(60))
+
+    def test_the_overhead_term_dominates_a_short_song(self):
+        """Half a 90 s song's job cost is process spawn, which is why the fleet ran at 37-60%
+        CPU with every worker busy (#45)."""
+        self.assertGreater(planner.VCPU_S_PER_JOB_FIXED / planner.job_cost_vcpu_s(90), 0.45)
+
+    def test_a_zero_length_song_still_costs_the_overhead(self):
+        self.assertAlmostEqual(planner.job_cost_vcpu_s(0), planner.VCPU_S_PER_JOB_FIXED)
+
+    def test_shards_are_priced_on_their_own_songs_not_a_fleet_average(self):
+        """plan_shards is longest-first, so shards differ in mean duration; pricing the fleet
+        on one average would undercharge the long shard and overcharge the short one."""
+        long_shard = [{"songs": ["a"], "duration_total_s": 300}]
+        short_shard = [{"songs": ["b"], "duration_total_s": 60}]
+        both = [{"songs": ["a"], "duration_total_s": 300}, {"songs": ["b"], "duration_total_s": 60}]
+        self.assertAlmostEqual(planner.estimate(both, 10)[0],
+                               planner.estimate(long_shard, 10)[0] + planner.estimate(short_shard, 10)[0])
+        self.assertGreater(planner.estimate(long_shard, 10)[0], planner.estimate(short_shard, 10)[0])
+
+    def test_a_limited_run_is_priced_at_the_shard_mean(self):
+        shards = [{"songs": ["a", "b"], "duration_total_s": 300}]
+        cpu_h, _ = planner.estimate(shards, 566, limit=3)
+        self.assertAlmostEqual(cpu_h, 3 * planner.job_cost_vcpu_s(150) / 3600)
+
+    def test_a_shard_with_no_duration_falls_back_rather_than_dividing_by_zero(self):
+        shards = [{"songs": ["a"]}]
+        self.assertAlmostEqual(planner.estimate(shards, 2)[0],
+                               2 * planner.job_cost_vcpu_s(planner.DEFAULT_DURATION_S) / 3600)
+        self.assertEqual(planner.estimate([{"songs": []}], 5), (0.0, 0.0))
 
 
 if __name__ == "__main__":

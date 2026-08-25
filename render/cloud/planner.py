@@ -9,9 +9,32 @@ from __future__ import annotations
 import json
 import pathlib
 
-# measured 2026-08-21 (docs/validation.md "M5"/"M7"): 116 CPU-h for 7935 jobs after
-# PIPELINE_VERSION 2, i.e. ~53 CPU-s per job. Spot c7a is ~$0.019/vCPU-h.
-CPU_S_PER_JOB = 53.0
+# Cost per job is NOT flat: it is a fixed process-overhead term plus one proportional to the
+# song's duration. Measured on the two PIPELINE_VERSION 3 fleet runs of 2026-08-25, from
+# wall time x allocated vCPU — what is actually billed, staging and publish tail included:
+#
+#     7,358 jobs, songs averaging 237 s of audio  ->  34.5 vCPU-s per job
+#    20,376 jobs, songs averaging  90 s of audio  ->  18.8 vCPU-s per job
+#
+# No single constant fits both. The old CPU_S_PER_JOB = 53 (measured 2026-08-21 under
+# PIPELINE_VERSION 2) overestimated them by 2.4x and 3.5x, which matters because `max_usd`
+# refuses a run against this number — an accurate ceiling is the whole point of it.
+#
+# Solving the two simultaneously:
+VCPU_S_PER_JOB_FIXED = 9.1     # engine + ffmpeg + ~150 short-lived opusenc, whatever the length
+VCPU_S_PER_AUDIO_S = 0.107     # the actual DSP, per second of song
+#
+# The fixed term is 49% of a 90 s song's job cost and 26% of a 237 s song's. That is not a
+# curve-fitting artefact — the same runs showed every worker busy with CPU at 37-60%, EBS at 2%
+# of provision and memory admission at 7% used, which is what per-job process overhead looks
+# like from the outside (#45's corrected diagnosis).
+#
+# CAVEAT: two runs, two unknowns, so these FIT the data rather than being validated by it. The
+# structure is physically justified but a third run at a different mean duration is the real
+# test. Erring high is the safer direction for a spend ceiling.
+#
+# $/vCPU-h re-checked against live Spot 2026-08-25: c7a.16xlarge $0.0198, c7i.16xlarge $0.0161,
+# c7a.8xlarge $0.0205.
 USD_PER_VCPU_HOUR = 0.019
 DEFAULT_DURATION_S = 180
 # what sfr.jobs.variant_allowed_for_song admits when a song names no include_classes (and
@@ -110,8 +133,30 @@ def plan_shards(songs: list[str], n: int, durations: dict[str, int]) -> list[dic
     return [{"songs": x["songs"], "duration_total_s": x["d"]} for x in shards if x["songs"]]
 
 
+def job_cost_vcpu_s(mean_duration_s: float) -> float:
+    """vCPU-seconds one job costs for a song of this length — overhead plus DSP."""
+    return VCPU_S_PER_JOB_FIXED + VCPU_S_PER_AUDIO_S * mean_duration_s
+
+
 def estimate(shards: list[dict], variants: int, limit: int | None = None) -> tuple[float, float]:
     """(cpu_hours, usd) for the planned shards at `variants` jobs per song, under the run's
-    per-shard `--limit`."""
-    cpu_h = job_count(shards, variants, limit) * CPU_S_PER_JOB / 3600
+    per-shard `--limit`.
+
+    Priced per shard rather than per fleet, because cost tracks the length of the songs a shard
+    actually holds: plan_shards() is longest-first greedy, so a shard of long songs costs more
+    per job than one of short songs and a fleet-wide average would misprice both.
+
+    `--limit` truncates the shard's flat job list ONCE, and that list is font-major across all
+    of the shard's songs, so a limited run samples them roughly evenly — the shard's mean
+    duration stays the right price for a truncated job too.
+    """
+    vcpu_s = 0.0
+    for shard in shards:
+        n = len(shard["songs"])
+        if not n:
+            continue
+        jobs = min(n * variants, limit) if limit else n * variants
+        total_s = shard.get("duration_total_s") or n * DEFAULT_DURATION_S
+        vcpu_s += jobs * job_cost_vcpu_s(total_s / n)
+    cpu_h = vcpu_s / 3600
     return cpu_h, cpu_h * USD_PER_VCPU_HOUR
