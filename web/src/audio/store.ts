@@ -37,6 +37,8 @@ export class SegmentStore {
   readonly compressed: ByteLRU<ArrayBuffer>;
   private decoding = new Map<string, Promise<BufferLike>>();
   private packHeaders = new Map<string, PackHeader>();
+  /** whole packs already split into the compressed cache (a re-fetch is a new ArrayBuffer) */
+  private ingested = new WeakSet<ArrayBuffer>();
   private listeners = new Set<(key: SegKey, buf: BufferLike) => void>();
   /** negative cache: key → {fails, until(ms)} so a 404/decoder error is not retried every tick */
   private failed = new Map<string, { fails: number; until: number }>();
@@ -224,8 +226,13 @@ export class SegmentStore {
     if (opts.whole || wholeInFlight) {
       try {
         const pack = await this.fetcher.get(loc.url, { priority, sticky: true, tag: 'pack' });
-        this.ingestPack(loc.url, pack);
-        this.stats.wholePacks++;
+        // every member waiting on this pack shares one fetch promise and wakes up here with the
+        // same ArrayBuffer: split it once, not once per waiter (24 splits of a 24-member pack)
+        if (!this.ingested.has(pack)) {
+          this.ingested.add(pack);
+          this.ingestPack(loc.url, pack);
+          this.stats.wholePacks++;
+        }
       } catch (e) {
         this.stats.fetchErrors++;
         throw e;

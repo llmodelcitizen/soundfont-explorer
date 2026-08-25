@@ -28,4 +28,22 @@ describe('SegmentStore', () => {
     expect(h.store.backoffMs(key)).toBeGreaterThan(0);
     expect(h.store.lastError).toMatch(/a\/s\/0/);
   });
+
+  it('splits a whole pack once, however many members were waiting on the same fetch', async () => {
+    const ids = Array.from({ length: 24 }, (_, i) => `v${i}`);
+    const h = storeFor(ids);
+    // ≥ wholePackThreshold members of one pack → a single whole-pack fetch shared by all waiters
+    h.store.want(ids.slice(0, 8).map((v, j) => ({ key: { v, tier: 's' as const, i: 0 }, priority: 1 + j })));
+    await flush(40);
+    expect(h.ff.log.filter((l) => l.url === packUrl(h.set, 'g0', 0) && !l.range).length).toBe(1);
+    expect(h.store.stats.wholePacks).toBe(1);
+    expect(h.store.stats.decodedOk).toBe(8);
+    for (const v of ids.slice(0, 8)) expect(h.store.peek({ v, tier: 's', i: 0 })).toBeDefined();
+    // a later re-fetch of the same pack (new bytes) is split again
+    h.store.compressed.clear();
+    h.store.decoded.clear();
+    h.store.want(ids.slice(0, 8).map((v) => ({ key: { v, tier: 's' as const, i: 0 }, priority: 1 })));
+    await flush(40);
+    expect(h.store.stats.wholePacks).toBe(2);
+  });
 });
