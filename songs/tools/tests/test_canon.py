@@ -1,7 +1,9 @@
 """Unit tests for songs/tools: SMF parser/writer, tempo map, midi_end, end marker, trim."""
 import os
+import shutil
 import struct
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -215,6 +217,66 @@ class TrimTests(unittest.TestCase):
     def test_hold_before_cut_rejected(self):
         with self.assertRaises(ValueError):
             canon.trim(self.make(), 960, hold_to_tick=100)
+
+
+class ImportNameTests(unittest.TestCase):
+    def test_out_name_keeps_extension_variants_apart(self):
+        self.assertEqual(canon.import_out_name("game/x.mid"), "game/x.mid")        # the common case: unchanged
+        self.assertEqual(canon.import_out_name("game/x.MID"), "game/x.MID.mid")
+        self.assertEqual(canon.import_out_name("game/x.midi"), "game/x.midi.mid")
+        self.assertEqual(canon.import_out_name("x.rmi"), "x.rmi.mid")
+        names = {canon.import_out_name("x" + ext) for ext in (".mid", ".MID", ".Mid", ".midi", ".MIDI", ".rmi")}
+        self.assertEqual(len(names), 6)
+        self.assertTrue(all(n.endswith(".mid") for n in names))
+
+    def test_import_labels_title_strips_the_extension_but_the_file_keeps_it(self):
+        m = build(tracks=[[], []])
+        sid, title, out = canon.import_labels("import/FILES/game/x.MID", m)
+        self.assertEqual((sid, title), ("game-x", "game/x"))
+        self.assertEqual(out, os.path.join(canon.RENDERED_DIR, "game", "x.MID.mid"))
+        self.assertEqual(canon.import_labels("import/FILES/game/x.mid", m)[2],
+                         os.path.join(canon.RENDERED_DIR, "game", "x.mid"))
+        self.assertEqual(canon.import_labels("import/FILES/x.midi", m)[1], "x")
+
+
+class StemCollisionTests(unittest.TestCase):
+    """x.mid and x.MID in one import directory are two songs; both used to be written to
+    rendered/game/x.mid, so the songs.json sha256 of whichever came first no longer matched
+    the file on disk (and its render was of the other file)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self._dirs = (canon.SONGS_DIR, canon.RENDERED_DIR)
+        canon.SONGS_DIR = self.tmp
+        canon.RENDERED_DIR = os.path.join(self.tmp, "rendered")
+        self.addCleanup(self._restore)
+        os.makedirs(os.path.join(self.tmp, "import/FILES/game"))
+        for name, note in (("x.mid", 60), ("x.MID", 67)):
+            with open(os.path.join(self.tmp, "import/FILES/game", name), "wb") as fh:
+                fh.write(S.serialize(build(tracks=[[tempo(0, 500000)],
+                                                  [ch(0, 0xC0, 1), ch(0, 0x90, note, 100), ch(480, 0x80, note, 0)]])))
+
+    def _restore(self):
+        canon.SONGS_DIR, canon.RENDERED_DIR = self._dirs
+
+    def test_each_entry_matches_its_own_file(self):
+        corpus = {
+            "schema": 1, "tail_s": 1.0, "default": "g-lower",
+            "licenses": {"owner-supplied": {"id": "owner-supplied", "url": None, "notice_text": "owner"}},
+            "songs": [{"id": "g-lower", "src": "import/FILES/game/x.mid", "title": "lower", "license": "owner-supplied"},
+                      {"id": "g-upper", "src": "import/FILES/game/x.MID", "title": "upper", "license": "owner-supplied"}],
+        }
+        entries, _, refused = canon.run_public(corpus, check=False)
+        self.assertEqual(refused, [])
+        files = []
+        for e in entries:
+            with open(os.path.join(self.tmp, e["file"]), "rb") as fh:
+                blob = fh.read()
+            self.assertEqual(canon.sha256_bytes(blob), e["sha256"], e["id"])
+            files.append(e["file"])
+        self.assertEqual(files, ["rendered/game/x.mid", "rendered/game/x.MID.mid"])
+        self.assertNotEqual(entries[0]["sha256"], entries[1]["sha256"])
 
 
 if __name__ == "__main__":

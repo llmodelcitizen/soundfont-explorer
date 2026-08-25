@@ -15,6 +15,7 @@ import hashlib
 import json
 import shutil
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -36,6 +37,8 @@ class Job:
     variant: dict[str, Any]
     settings: RenderSettings
     engine_meta: dict[str, Any]
+    # content digest of roms/<romset>/ (rom_digest()); only consulted for requires_rom variants
+    rom_sha256: str | None = None
 
     # ---- identity -------------------------------------------------------
     @property
@@ -69,11 +72,17 @@ class Job:
     def _source_identity(self) -> dict[str, Any]:
         src = self.variant.get("source") or {}
         bank = self.variant.get("bank") or {}
-        return {
+        ident = {
             "sha256": src.get("sha256"),
             "bank": {k: bank.get(k) for k in ("kind", "number", "file", "sha256") if k in bank},
             "rom": self.variant.get("romset"),
         }
+        if self.variant.get("requires_rom"):
+            # the romset NAME is just a directory; the audio comes from the ROM images inside it
+            # (MT-32 1.07 vs 2.04, SC-55mk2 1.00 vs 1.01 sound different). Added only for
+            # requires_rom variants so every other master_hash stays exactly as it was.
+            ident["rom_sha256"] = self.rom_sha256
+        return ident
 
     def _engine_identity(self) -> dict[str, Any]:
         e = self.engine_meta
@@ -235,8 +244,12 @@ def plan_jobs(songs: Iterable[dict[str, Any]], variants: Iterable[dict[str, Any]
               settings: RenderSettings, engines_json: dict[str, Any], *,
               song_ids: set[str] | None = None, variant_ids: set[str] | None = None,
               engines: set[str] | None = None, include_unpublished: bool = False,
-              available_roms: set[str] | None = None) -> list[Job]:
+              available_roms: Mapping[str, str] | set[str] | None = None) -> list[Job]:
+    """available_roms: the romsets present under roms/ — None = do not filter. As a mapping
+    (cli.available_roms(): romset -> rom_digest()) the digest also becomes part of every
+    requires_rom job's master_hash; a plain set only filters."""
     jobs: list[Job] = []
+    digests = available_roms if isinstance(available_roms, Mapping) else {}
     for song in songs:
         if song_ids and song["id"] not in song_ids:
             continue
@@ -254,13 +267,29 @@ def plan_jobs(songs: Iterable[dict[str, Any]], variants: Iterable[dict[str, Any]
             emeta = engines_json["engines"].get(v["engine"])
             if not emeta or not emeta.get("version"):
                 continue   # engine not installed/pinned yet (M2b)
-            jobs.append(Job(song, v, settings, emeta))
+            jobs.append(Job(song, v, settings, emeta, rom_sha256=digests.get(v.get("romset"))))
     return order_jobs(jobs)
 
 
 def order_jobs(jobs: list[Job]) -> list[Job]:
     """Font-major, biggest fonts first (page cache stays hot, no stragglers), FM last."""
     return sorted(jobs, key=lambda j: (-j.source_bytes, j.variant_id, j.song_id))
+
+
+def rom_digest(rom_dir: Path) -> str:
+    """Identity of one roms/<romset>/ directory: sha256 over the sorted sha256s of the regular
+    files directly inside it. File NAMES are deliberately left out — Nuked-SC55 and Munt both find
+    their ROMs by content hash, so renaming a file changes nothing about the render — and the
+    scan is non-recursive, matching what the engines look at."""
+    sums = []
+    for p in sorted(rom_dir.iterdir()):
+        if p.is_file():
+            h = hashlib.sha256()
+            with open(p, "rb") as f:
+                for block in iter(lambda: f.read(1 << 20), b""):
+                    h.update(block)
+            sums.append(h.hexdigest())
+    return hashlib.sha256("\n".join(sorted(sums)).encode()).hexdigest()
 
 
 def now_iso() -> str:

@@ -183,6 +183,14 @@ class YearTests(unittest.TestCase):
         self.assertEqual(build.year_and_confidence(info, "Orpheus_18.06.2020.sf2", NOW_YEAR), (2020, "low", "file"))
         self.assertEqual(build.year_and_confidence(info, "x.sf2", NOW_YEAR), (None, "unknown", None))
 
+    def test_rejected_four_digit_year_does_not_lend_its_confidence(self):
+        """"1985. 12. 25": the 4-digit year is out of range, so the year comes from the 2-digit
+        fallback (25 -> 2025) — that is a guess and must be "medium", not "high"."""
+        self.assertEqual(build.year_from_icrd("1985. 12. 25", NOW_YEAR), 2025)
+        self.assertEqual(build.year_and_confidence({"ICRD": "1985. 12. 25"}, "x.sf2", NOW_YEAR), (2025, "medium", "ICRD"))
+        # an in-range 4-digit year next to a rejected one is still a real date
+        self.assertEqual(build.year_and_confidence({"ICRD": "1998-2035"}, "x.sf2", NOW_YEAR), (1998, "high", "ICRD"))
+
     def test_decade(self):
         self.assertEqual(build.decade_of(1996), "1990s")
         self.assertEqual(build.decade_of(2000), "2000s")
@@ -350,6 +358,38 @@ class BuildTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 build.load_overrides(path)
             self.assertEqual(build.load_overrides(os.path.join(td, "missing.json"))["fonts"], {})
+
+    def test_override_values_are_validated(self):
+        """`"publish": "false"` used to keep a font published (bool("false") is True) and any
+        string went through as a facet value; both are refused now, by load_overrides() and by
+        build() itself."""
+        bad_entries = [
+            {"publish": "false"}, {"publish": 0},
+            {"completeness": "complete"}, {"bank_map": "GS"}, {"lineage": "Roland"}, {"license_flag": "GPL"},
+            {"year": "2001"}, {"year": True}, {"decade": "90s"}, {"decade": 1990},
+            {"instrument": "Bass Guitar"}, {"label": ""}, {"label": 3}, {"notes": ["x"]},
+        ]
+        for entry in bad_entries:
+            with self.assertRaises(ValueError, msg=entry) as cm:
+                build.build(self.scan(), {"lineage_regex": None, "fonts": {"Zeta GM.sf2": entry}}, now=NOW)
+            self.assertIn(next(iter(entry)), str(cm.exception))
+        good = {"publish": False, "completeness": "partial", "bank_map": "multi", "lineage": "roland",
+                "license_flag": "gpl", "year": 2001, "decade": "2000s", "instrument": "bass", "label": "Z", "notes": "n"}
+        doc = build.build(self.scan(), {"lineage_regex": None, "fonts": {"Zeta GM.sf2": good}}, now=NOW)
+        z = {f["file"]: f for f in doc["fonts"]}["Zeta GM.sf2"]
+        self.assertFalse(z["publish"])
+        self.assertEqual(z["facets"]["completeness"], "partial")
+        # a replaced lineage table changes the allowed lineage values
+        with self.assertRaises(ValueError):
+            build.build(self.scan(), {"lineage_regex": {"console": "nokia"}, "fonts": {"Zeta GM.sf2": {"lineage": "roland"}}}, now=NOW)
+        build.build(self.scan(), {"lineage_regex": {"console": "nokia"}, "fonts": {"Zeta GM.sf2": {"lineage": "generic"}}}, now=NOW)
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "o.json")
+            with open(path, "w") as fh:
+                json.dump({"fonts": {"x.sf2": {"publish": "false"}}}, fh)
+            with self.assertRaises(ValueError) as cm:
+                build.load_overrides(path)
+            self.assertIn("publish", str(cm.exception))
 
     def test_cli_roundtrip(self):
         with tempfile.TemporaryDirectory() as td:

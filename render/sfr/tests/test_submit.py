@@ -1,0 +1,50 @@
+"""render/cloud/submit.py song selection (no AWS: only song_ids is exercised)."""
+import json
+import os
+import pathlib
+import sys
+import tempfile
+import types
+import unittest
+from unittest import mock
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cloud"))
+import submit  # noqa: E402
+
+
+class SongIdsTests(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        repo = pathlib.Path(self.td.name)
+        (repo / "songs").mkdir()
+        (repo / "songs" / "songs.json").write_text(json.dumps({"songs": [{"id": "a"}, {"id": "b"}]}))
+        (repo / "songs" / "private").mkdir()
+        (repo / "songs" / "private" / "songs.json").write_text(json.dumps({"songs": [{"id": "private-c"}]}))
+        self.patch = mock.patch.object(submit, "REPO", repo)
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        self.td.cleanup()
+
+    @staticmethod
+    def args(all_=False, *song):
+        return types.SimpleNamespace(all=all_, song=list(song))
+
+    def test_known_ids_in_corpus_order(self):
+        self.assertEqual(submit.song_ids(self.args(True)), ["a", "b", "private-c"])
+        self.assertEqual(submit.song_ids(self.args(False, "private-c", "a")), ["a", "private-c"])
+
+    def test_unknown_id_refuses_instead_of_dropping_it(self):
+        """`--song freedom-e1m1` (typo) used to be dropped silently: the run went ahead with the
+        other songs, or died with the misleading "no songs selected" when it was the only one."""
+        with self.assertRaises(SystemExit) as cm:
+            submit.song_ids(self.args(False, "a", "freedom-e1m1"))
+        self.assertIn("freedom-e1m1", str(cm.exception))
+        self.assertNotIn("a,", str(cm.exception))
+        with self.assertRaises(SystemExit):
+            submit.song_ids(self.args(False, "nope"))
+
+
+if __name__ == "__main__":
+    unittest.main()

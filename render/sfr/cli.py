@@ -16,7 +16,7 @@ from pathlib import Path
 from . import __version__, engines
 from .config import Paths, load_engines, load_settings, load_songs, load_variants
 from .engines import MEM_UNIT_BYTES
-from .jobs import State, classify, plan_jobs, read_meta
+from .jobs import State, classify, plan_jobs, read_meta, rom_digest
 
 PATH_FLAGS = ("fonts", "songs", "catalog", "roms", "work", "out")
 # codec tools every engine shares (the engine binaries come from engines.json)
@@ -56,10 +56,11 @@ def paths_from(args) -> Paths:
     return Paths(**kw)
 
 
-def available_roms(paths: Paths) -> set[str]:
+def available_roms(paths: Paths) -> dict[str, str]:
+    """romset -> content digest of roms/<romset>/ (jobs.rom_digest); the digest keys the master."""
     if not paths.roms.exists():
-        return set()
-    return {p.name for p in paths.roms.iterdir() if p.is_dir()}
+        return {}
+    return {p.name: rom_digest(p) for p in paths.roms.iterdir() if p.is_dir()}
 
 
 def select_jobs(args, paths: Paths):

@@ -138,7 +138,13 @@ def check_programs(smf: S.Smf) -> List[int]:
             if ev.kind != "channel":
                 continue
             if ev.is_note_on():
-                first_note.setdefault(ev.channel, (ev.tick, ti, i))
+                # earliest (tick, track, index), not the first track that happens to use the
+                # channel: a channel played from several tracks (format-1 exports do that for
+                # doubled parts) must be judged at its real first note, or a program change that
+                # lands between the later track's first note and the earlier one's passes the gate
+                cur = first_note.get(ev.channel)
+                if cur is None or (ev.tick, ti, i) < cur:
+                    first_note[ev.channel] = (ev.tick, ti, i)
             elif ev.type == 0xC0:
                 cur = first_prog.get(ev.channel)
                 if cur is None or (ev.tick, ti, i) < cur:

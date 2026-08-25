@@ -31,6 +31,7 @@ SCHEMA = 1
 INFO_CAP = 1 << 20  # 1 MiB: never slurp more of LIST/INFO than this
 PHDR_RECORD = 38  # sfPresetHeader: name[20] preset u16 bank u16 bagNdx u16 lib u32 genre u32 morph u32
 PHDR_STRUCT = struct.Struct("<20sHHHIII")
+PHDR_CAP = PHDR_RECORD * 65536  # u16 bag indices bound the preset count; anything larger is corruption
 HASH_CHUNK = 8 << 20
 DEFAULT_THREADS = 8
 
@@ -142,6 +143,10 @@ def _walk_riff(fh, file_size: int) -> dict:
         (size,) = struct.unpack_from("<I", chunk_hdr, 4)
         body_start = pos + 8
         if fourcc == b"LIST":
+            if size < 4:
+                # a LIST cannot even hold its type; `size - 4` below would go negative, and
+                # fh.read(-1) slurps the whole file (fh.read(-2..-4) is a ValueError)
+                raise SF2Error(f"LIST chunk at {pos} declares {size} bytes (needs >= 4 for its type)")
             list_type = _read_exact(fh, 4, "LIST type")
             seen.append(list_type.decode("latin-1"))
             if list_type == b"INFO":
@@ -151,7 +156,9 @@ def _walk_riff(fh, file_size: int) -> dict:
                     warnings.append(f"LIST/INFO is {size - 4} bytes; parsed only the first {INFO_CAP}")
                 info = parse_info(buf)
             elif list_type == b"pdta":
-                phdr = _find_phdr(fh, body_start + 4, body_start + size, warnings)
+                # the parent's declared end is a u32 from the file: clamp it to the real EOF so a
+                # lying size cannot license a multi-GiB read further down
+                phdr = _find_phdr(fh, body_start + 4, min(body_start + size, file_size), warnings)
             # sdta (and anything unknown) is skipped without reading.
         else:
             seen.append(fourcc.decode("latin-1"))
@@ -178,6 +185,10 @@ def _find_phdr(fh, start: int, end: int, warnings: list) -> bytes:
             if pos + 8 + size > end:
                 warnings.append("phdr chunk overruns its LIST/pdta parent; truncated")
                 size = max(0, end - pos - 8)
+            if size > PHDR_CAP:
+                # bag indices are u16, so no SoundFont has more than 65535 presets; a bigger
+                # size is corruption, and fh.read() would preallocate it (up to 4 GiB) first
+                raise SF2Error(f"phdr chunk is {size} bytes (more than {PHDR_CAP // PHDR_RECORD} records)")
             return _read_exact(fh, size, "phdr")
         pos += 8 + size + (size & 1)
     raise SF2Error("LIST/pdta has no phdr sub-chunk")
@@ -262,8 +273,23 @@ def sha256_file(path: str) -> str:
 
 
 def list_soundfonts(root: str) -> list[str]:
-    """Return the sorted base names of every *.sf2 / *.SF2 (case-insensitive) in root."""
+    """Return the sorted base names of every *.sf2 / *.SF2 (case-insensitive) in root.
+
+    Raises ValueError for a name that is not valid UTF-8: os.listdir smuggles such bytes through
+    as lone surrogates, which json.dump(ensure_ascii=False) cannot write — and it would only fail
+    in write_json, after the sha256 pass over the whole collection. The name is the catalog's
+    key for the font, so the owner has to rename the file; say so up front.
+    """
     names = [n for n in os.listdir(root) if n.lower().endswith(".sf2") and os.path.isfile(os.path.join(root, n))]
+    bad = []
+    for n in names:
+        try:
+            n.encode("utf-8")
+        except UnicodeEncodeError:
+            bad.append(n.encode("utf-8", "surrogateescape").decode("utf-8", "replace"))
+    if bad:
+        raise ValueError(f"{len(bad)} file name(s) under {root} are not valid UTF-8 and cannot be catalogued; "
+                         f"rename them: {sorted(bad)[:5]}")
     return sorted(names)
 
 
@@ -325,7 +351,11 @@ def main(argv=None) -> int:
         print(f"error: {args.root} is not a directory", file=sys.stderr)
         return 2
     log = (lambda *_: None) if args.quiet else (lambda *a: print(*a, file=sys.stderr))
-    doc = scan_dir(args.root, limit=args.limit, threads=args.threads, do_hash=not args.no_hash, log=log)
+    try:
+        doc = scan_dir(args.root, limit=args.limit, threads=args.threads, do_hash=not args.no_hash, log=log)
+    except ValueError as exc:   # un-catalogable file names (list_soundfonts); nothing was hashed yet
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     write_json(doc, args.out)
     for rec in doc["fonts"]:
         if not rec["parse_ok"]:
