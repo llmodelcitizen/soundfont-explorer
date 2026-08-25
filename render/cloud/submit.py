@@ -37,7 +37,14 @@ def song_ids(args) -> list[str]:
         f = REPO / p
         if f.exists():
             ids += [s["id"] for s in json.loads(f.read_text())["songs"]]
-    return ids if args.all else [s for s in ids if s in set(args.song)]
+    if args.all:
+        return ids
+    # a mistyped --song used to vanish from the selection: the run went ahead with the rest
+    # (or died with "no songs selected" when it was the only one) and nobody rendered the song
+    unknown = sorted(set(args.song) - set(ids))
+    if unknown:
+        sys.exit(f"[submit] unknown song id(s): {', '.join(unknown)} (ids come from songs/songs.json)")
+    return [s for s in ids if s in set(args.song)]
 
 
 def set_state(ce: str, state: str) -> None:
