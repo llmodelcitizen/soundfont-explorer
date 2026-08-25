@@ -218,11 +218,11 @@ describe('fleet capacity (#25/#42)', () => {
     });
     const v = mount(ff);
     await v.load();
-    const field = (placeholder: string) =>
-      v.root.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`)!;
-    field('90').value = '30';
-    field('170000').value = '56000';
-    field('c7a.48xlarge,… (terraform default)').value = 'c7a.8xlarge,c7i.8xlarge';
+    const field = (name: string) =>
+      v.root.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+    field('shard_vcpus').value = '30';
+    field('shard_memory_mib').value = '56000';
+    field('instance_types').value = 'c7a.8xlarge,c7i.8xlarge';
 
     button(v, 'Estimate').click();
     await until(() => ff.count('POST', '/api/render/capacity') === 1);
@@ -257,6 +257,46 @@ describe('fleet capacity (#25/#42)', () => {
     await until(() => !!v.root.querySelector('.capbox'));
     expect(v.root.querySelector('.capbox')!.textContent)
       .toContain('c7a.24xlarge is not offered in us-east-1b');
+  });
+
+  it('ships the 320 vCPU fleet shape as the default, pre-filled', async () => {
+    // 5 x c7a.16xlarge = 320 vCPU, the whole regional Spot quota, with one shard per instance.
+    // Fewer/bigger shards beat more/smaller ones because a song cannot be split: the longest
+    // single song floors the run at its own render time, and a 64-vCPU shard halves that.
+    const ff = withSongs();
+    const v = mount(ff);
+    await v.load();
+    const field = (name: string) =>
+      v.root.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+    expect(field('shards').value).toBe('5');
+    expect(field('instance_types').value).toBe('c7a.16xlarge,c7i.16xlarge');
+    expect(field('shard_vcpus').value).toBe('60');
+    expect(field('shard_memory_mib').value).toBe('120000');
+  });
+
+  it('sends the defaults without the operator retyping them', async () => {
+    const ff = withSongs();
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Estimate').click();
+    // the capacity POST follows the plan POST, so wait for the one being asserted
+    await until(() => ff.count('POST', '/api/render/capacity') === 1);
+    const body = ff.calls.find((c) => c.path === '/api/render/capacity')!.body as Record<string, unknown>;
+    expect(body.shards).toBe(5);
+    expect(body.instance_types).toEqual(['c7a.16xlarge', 'c7i.16xlarge']);
+    expect(body.shard_vcpus).toBe('60');
+    expect(body.shard_memory_mib).toBe('120000');
+  });
+
+  it('a cleared shards field falls back to the default, not to a stale literal', async () => {
+    const ff = withSongs();
+    const v = mount(ff);
+    await v.load();
+    v.root.querySelector<HTMLInputElement>('input[name="shards"]')!.value = '';
+    button(v, 'Estimate').click();
+    await until(() => ff.count('POST', '/api/render/plan') === 1);
+    const body = ff.calls.find((c) => c.path === '/api/render/plan')!.body as Record<string, unknown>;
+    expect(body.shards).toBe(5);
   });
 
   it('never blocks the estimate when the preflight itself fails', async () => {

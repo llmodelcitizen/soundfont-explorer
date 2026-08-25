@@ -24,6 +24,31 @@ interface Run {
   knobs: Record<string, unknown>;
 }
 
+// Fleet defaults, sized for this account's 320 vCPU regional Spot quota (L-34B43A08).
+//
+// The binding constraint is NOT the shard count. A song cannot be split across shards — shard.py
+// renders whole songs and publishes per song — so the LONGEST SINGLE SONG sets a floor on any
+// run. Measured on the 2026-08-25 run, that song took 570 s on a 32-vCPU shard, which means no
+// number of 32-vCPU shards can ever finish faster than 570 s. Doubling the shard halves the
+// floor. That is why the answer is fewer, bigger shards rather than more of them; replaying the
+// real per-song render times through the planner's longest-first greedy:
+//
+//    5 x c7a.16xlarge (64 vCPU/shard)   572 s render, 10% idle, 232 GiB staged   <- this
+//   10 x c7a.8xlarge  (32 vCPU/shard)   660 s render, 22% idle, 464 GiB staged
+//   13 x c7a.4xlarge  (16 vCPU/shard)  1140 s render, 31% idle, 603 GiB staged
+//
+// 5 x 64 = 320 vCPU, the quota exactly. Staging is ~46 GiB of SF2 per SHARD and does not shrink
+// as shards multiply, so halving the shards halves the staging bill too.
+//
+// To re-derive after a quota change: pick the largest instance whose vCPU divides the quota into
+// enough shards to keep the song list balanced, then leave the ECS agent its headroom. Pressing
+// Estimate checks the arithmetic against the LIVE quota, so a stale default here is reported
+// rather than silently obeyed.
+const DEFAULT_SHARDS = '5';
+const DEFAULT_INSTANCE_TYPES = 'c7a.16xlarge,c7i.16xlarge';
+const DEFAULT_SHARD_VCPUS = '60';          // of 64 — the ECS agent needs the remainder
+const DEFAULT_SHARD_MEMORY_MIB = '120000'; // of 131072, same headroom ratio that worked at 8xlarge
+
 function input(value: string, attrs: Record<string, string> = {}): HTMLInputElement {
   return el('input', { value, ...attrs });
 }
@@ -246,20 +271,22 @@ export class RunsView {
     }
     const count = el('span', { class: 'count' }, '0 selected');
 
-    const shards = input('8', { size: '3' });
-    const maxUsd = input('60', { size: '5' });
-    const engines = input('', { placeholder: 'all engines', size: '18' });
-    const limit = input('', { placeholder: 'no limit', size: '6' });
-    const itypes = input('', { placeholder: 'c7a.48xlarge,… (terraform default)', size: '28' });
-    const vcpus = input('', { placeholder: '90', size: '4' });
-    const mem = input('', { placeholder: '170000', size: '7' });
+    // `name` is the stable handle for these: tests used to select them by placeholder, which
+    // broke the moment a default was filled in and the placeholder stopped existing.
+    const shards = input(DEFAULT_SHARDS, { size: '3', name: 'shards' });
+    const maxUsd = input('60', { size: '5', name: 'max_usd' });
+    const engines = input('', { placeholder: 'all engines', size: '18', name: 'engines' });
+    const limit = input('', { placeholder: 'no limit', size: '6', name: 'limit' });
+    const itypes = input(DEFAULT_INSTANCE_TYPES, { size: '28', name: 'instance_types' });
+    const vcpus = input(DEFAULT_SHARD_VCPUS, { size: '4', name: 'shard_vcpus' });
+    const mem = input(DEFAULT_SHARD_MEMORY_MIB, { size: '7', name: 'shard_memory_mib' });
     const estOut = el('span', { class: 'count estimate-out' });
     // the fleet-capacity answer sits with the estimate: both are "before you spend money"
     const capOut = el('div', { class: 'capacity' });
 
     const body = () => (this.lastBody = {
       songs: [...this.picked],
-      shards: Number(shards.value) || 8,
+      shards: Number(shards.value) || Number(DEFAULT_SHARDS),
       max_usd: Number(maxUsd.value) || 60,
       engines: engines.value.trim() ? engines.value.split(',').map((s) => s.trim()) : null,
       limit: limit.value.trim() || null,
