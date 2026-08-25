@@ -83,6 +83,13 @@ export class LibraryView {
   private autoplay = false;
   private autoplayTimer: number | null = null;
   private status = el('span', { class: 'statusline' });
+  // The toolbar is built once and stays in the DOM; render() only swaps the columns
+  // below it. Rebuilding the filter box on every render — i.e. on every keystroke —
+  // replaced the focused element and dropped focus after the first character.
+  private search = el('input', { type: 'search', placeholder: 'filter…' });
+  private canonBtn = el('button', {}, 'Canon check');
+  private trackCount = el('span', { class: 'count' });
+  private cols = el('div', { class: 'cols' });
   private audio = el('audio', { controls: '', preload: 'none' });
   private audioFor: string | null = null;
 
@@ -349,7 +356,11 @@ export class LibraryView {
     // re-rendering must not move the list under the mouse: restore the tree's scroll
     // position, and only chase the cursor when navigation came from the keyboard
     const prevScroll = (this.root.querySelector('.tree') as HTMLElement | null)?.scrollTop ?? 0;
-    this.root.replaceChildren(this.toolbar(refused.length), el('div', { class: 'cols' }, tree, panel));
+    if (this.cols.parentNode !== this.root) this.root.replaceChildren(this.toolbar(), this.cols);
+    this.canonBtn.textContent = refused.length ? `Canon check (${refused.length} refused)` : 'Canon check';
+    const pvWarn = this.doc.preview.gm_sf2 ? '' : ' — no gm.sf2, previews off';
+    this.trackCount.textContent = `${this.doc.entries.length} tracks${pvWarn}`;
+    this.cols.replaceChildren(tree, panel);
     tree.scrollTop = prevScroll;
     if (this.keyboardNav) {
       this.keyboardNav = false;
@@ -357,10 +368,9 @@ export class LibraryView {
     }
   }
 
-  private toolbar(refusedCount: number): HTMLElement {
-    const search = el('input', { type: 'search', placeholder: 'filter…', value: this.filter });
-    search.oninput = () => {
-      this.filter = search.value;
+  private toolbar(): HTMLElement {
+    this.search.oninput = () => {
+      this.filter = this.search.value;
       this.render();
     };
     const auto = el('input', { type: 'checkbox', id: 'autoplay' });
@@ -375,16 +385,12 @@ export class LibraryView {
     const upload = el('button', {}, 'Upload…');
     upload.onclick = () => this.uploadDialog();
     const zip = el('a', { href: '/api/library.zip', class: 'btnish' }, 'Download all');
-    const canon = el('button', {}, refusedCount ? `Canon check (${refusedCount} refused)` : 'Canon check');
-    canon.onclick = () => this.canonRun();
-    const n = this.doc!.entries.length;
-    const pv = this.doc!.preview;
-    const pvWarn = pv.gm_sf2 ? '' : ' — no gm.sf2, previews off';
+    this.canonBtn.onclick = () => this.canonRun();
     return el('div', { class: 'toolbar' },
-      search, upload, canon, zip,
+      this.search, upload, this.canonBtn, zip,
       el('label', { class: 'autoplay', for: 'autoplay', title: 'preview the selected track automatically' },
         auto, ' play on click'),
-      el('span', { class: 'count' }, `${n} tracks${pvWarn}`),
+      this.trackCount,
       this.status);
   }
 
