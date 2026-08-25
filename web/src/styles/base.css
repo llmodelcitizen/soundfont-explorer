@@ -136,6 +136,7 @@ pre {
 }
 .btn:focus-visible,
 .opt:focus-visible,
+.facet-help-btn:focus-visible,
 input:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--accent);
@@ -244,11 +245,80 @@ select:focus-visible {
   overflow: auto;
 }
 .facet-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.75em;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--fg-dim);
-  margin: 4px 0 2px;
+  /* the bottom margin clears the help gadget's enlarged hit area below (see .facet-help-btn::after),
+     so the pad it gains never covers the first chip of the row underneath */
+  margin: 4px 0;
+}
+/* category help: a "?" gadget beside the heading, and the bubble it opens. The bubble is fixed,
+   so the scrolling facet panel cannot clip it; filters.ts anchors it under its own trigger. */
+.facet-help {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.facet-help-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: var(--btn-bg);
+  color: var(--fg-dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+/* The gadget is drawn small enough to sit inside a 0.75em heading; the area it answers to is not.
+   This pad takes the target to the 24x24 minimum of WCAG 2.5.8 without growing the panel: the inset
+   is measured from the padding box, so with border-box sizing it grows the 16px gadget to
+   14 + 2 x 5 = 24. The heading's own margin above keeps it off the first chip of the row below. */
+.facet-help-btn::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+.facet-help-btn:hover,
+.facet-help-btn[data-open='true'] {
+  background: var(--btn-hover);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.facet-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  /* above the mobile close-the-panel scrim (4), below the modal overlays (10) */
+  z-index: 6;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  /* a landscape phone is barely taller than this copy: scroll the overflow rather than hang it
+     off the bottom of the screen, where the caveat the reader came for is cut off. dvh is the
+     visible height that filters.ts clamps against, with vh left as the fallback for browsers
+     without it — 100vh includes the mobile URL bar, and would overflow by its height. */
+  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  padding: 6px 9px;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  /* the heading around it is small, uppercase and tracked out; running text is not */
+  font: var(--font);
+  text-transform: none;
+  letter-spacing: normal;
 }
 .opts {
   display: flex;
@@ -959,6 +1029,16 @@ kbd {
   .settings .num,
   .search {
     font-size: 16px;
+  }
+  /* a 16 px "?" is a poor tap target: on a touch screen the gadget itself is the 24x24 minimum of
+     WCAG 2.5.8, so the pad it carries on desktop would only reach into the chips below */
+  .facet-help-btn {
+    width: 24px;
+    height: 24px;
+    line-height: 22px;
+  }
+  .facet-help-btn::after {
+    inset: 0;
   }
 }
 

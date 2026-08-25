@@ -147,6 +147,44 @@
   color: #000000;
 }
 
+/* Category help: a square Workbench gadget, and a white requester panel for the text. */
+[data-theme='amiga'] .facet-help-btn {
+  background: #0050a0;
+  color: #ffffff;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+  border-radius: 0;
+  /* Topaz is a bitmap face: keep the glyph at the size the rest of the theme draws it, and give
+     the gadget the two extra pixels that keeps the "?" off its own border */
+  font-size: 14px;
+  line-height: 14px;
+  width: 18px;
+  height: 18px;
+}
+@media (pointer: coarse) {
+  /* A media query adds no specificity, so the 18px above would beat base.css's coarse-pointer rule
+     and leave the one theme with a deliberately larger glyph as the only one with a small tap
+     target. Same 24x24 as every other theme (WCAG 2.5.8). */
+  [data-theme='amiga'] .facet-help-btn {
+    width: 24px;
+    height: 24px;
+  }
+}
+[data-theme='amiga'] .facet-help-btn:hover,
+[data-theme='amiga'] .facet-help-btn[data-open='true'] {
+  background: #f08000;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--amiga-in);
+}
+[data-theme='amiga'] .facet-tip {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+  border-radius: 0;
+}
+
 [data-theme='amiga'] .row:hover,
 [data-theme='amiga'] .track:hover,
 [data-theme='amiga'] .track-folder:hover {
@@ -337,6 +375,7 @@
 }
 [data-theme='amiga'] .btn:focus-visible,
 [data-theme='amiga'] .opt:focus-visible,
+[data-theme='amiga'] .facet-help-btn:focus-visible,
 [data-theme='amiga'] input:focus-visible,
 [data-theme='amiga'] select:focus-visible {
   outline-color: #ffffff;

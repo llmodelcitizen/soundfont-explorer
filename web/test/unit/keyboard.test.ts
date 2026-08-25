@@ -60,4 +60,11 @@ describe('keyboard shortcuts', () => {
     expect(KEYMAP).toContainEqual(['X', 'stop and rewind']);
     expect(KEYMAP).toContainEqual(['V', 'favorite / unfavorite current variant']);
   });
+
+  it('says in the key guide that Tab moves focus inside the filter bar', () => {
+    // the guide is the only place the shortcut is documented, and Tab is focus movement — not A/B —
+    // while the filter panel has focus, so that its help triggers and chips can be reached at all
+    const tab = KEYMAP.find(([k]) => k === 'Tab');
+    expect(tab?.[1]).toMatch(/filter/);
+  });
 });

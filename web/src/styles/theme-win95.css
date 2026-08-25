@@ -307,6 +307,31 @@
   color: #808080;
 }
 
+/* The category help gadget is the title-bar "?" button; its balloon is the yellow system tooltip. */
+[data-theme='win95'] .facet-help-btn {
+  background: #c0c0c0;
+  color: #000000;
+  border-color: var(--w95-edge-raised);
+  box-shadow: var(--w95-raised);
+  border-radius: 0;
+}
+[data-theme='win95'] .facet-help-btn:hover {
+  background: #c0c0c0;
+  color: #000000;
+}
+[data-theme='win95'] .facet-help-btn:active,
+[data-theme='win95'] .facet-help-btn[data-open='true'] {
+  border-color: var(--w95-edge-pressed);
+  box-shadow: var(--w95-pressed);
+}
+[data-theme='win95'] .facet-tip {
+  background: #ffffe1;
+  color: #000000;
+  border: 1px solid #000000;
+  box-shadow: none;
+  border-radius: 0;
+}
+
 /* The variant list is a white window well; ListView column headers are raised face buttons. */
 [data-theme='win95'] .list {
   background: #ffffff;
@@ -603,6 +628,10 @@
 [data-theme='win95'] .opt:focus-visible {
   outline: 1px dotted #000000;
   outline-offset: -4px;
+}
+[data-theme='win95'] .facet-help-btn:focus-visible {
+  outline: 1px dotted #000000;
+  outline-offset: -3px;
 }
 [data-theme='win95'] input:focus-visible,
 [data-theme='win95'] select:focus-visible {

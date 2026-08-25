@@ -9,6 +9,7 @@ import { tagNames, type CatalogDoc, type Variant } from '../contracts/catalog';
 export const FACET_KEYS = ['engine', 'chip', 'type', 'completeness', 'bank_map', 'size', 'lineage', 'decade', 'quality'] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
 
+/** heading for each category; its help copy is FACET_HELP in ui/facetHelp.ts */
 export const FACET_LABELS: Record<FacetKey, string> = {
   engine: 'Engine',
   chip: 'Chip',
