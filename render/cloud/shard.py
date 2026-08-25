@@ -9,7 +9,7 @@ Shape (docs/RENDER.md "Cloud runs"):
   - the process exits as soon as the queue drains and uploads flush; Batch scales the
     instance in, and spot bills by the second.
 """
-import json, os, pathlib, subprocess, sys, threading, time
+import json, os, pathlib, subprocess, sys, threading, time, traceback
 
 FONTS_BUCKET = os.environ["SFR_FONTS_BUCKET"]
 SITE_BUCKET = os.environ["SFR_SITE_BUCKET"]
@@ -158,24 +158,43 @@ def publish_song(song: str) -> bool:
     return True
 
 
-def publisher(songs: list[str], sel: list[str], done: threading.Event, failed: list) -> None:
-    """Poll for songs whose jobs have all landed and publish them while rendering continues."""
-    want = {s: expected(s, sel) for s in songs}
-    left = list(songs)
-    while left:
-        for song in list(left):
-            n = len(list((WORK / "renders" / song).glob("*/meta.json"))) if (WORK / "renders" / song).exists() else 0
-            if n >= want[song]:
-                left.remove(song)
-                if not publish_song(song):
-                    failed.append(song)
-        if left and not done.wait(20):
-            continue
-        if done.is_set():
-            break
-    for song in left:            # renderer finished; publish whatever remains
-        if not publish_song(song):
+def publisher(songs: list[str], sel: list[str], done: threading.Event, state: dict) -> None:
+    """Poll for songs whose jobs have all landed and publish them while rendering continues.
+
+    `state` is shared with main(): "left" = songs not yet attempted, "failed" = songs that did
+    not publish. Every failure has to land in "failed": a publish that raised (s5cmd, the
+    manifest subprocess, a bad plan count) used to kill this daemon thread silently, and
+    main() — which looked only at `failed` — exited 0 with the songs simply missing from the
+    site (#12)."""
+    left, failed = state["left"], state["failed"]
+
+    def attempt(song: str) -> None:
+        try:
+            ok = publish_song(song)
+        except Exception:
+            log(f"!! publishing {song} raised:\n{traceback.format_exc()}")
+            ok = False
+        if not ok:
             failed.append(song)
+
+    try:
+        want = {s: expected(s, sel) for s in songs}
+        while left:
+            for song in list(left):
+                n = len(list((WORK / "renders" / song).glob("*/meta.json"))) if (WORK / "renders" / song).exists() else 0
+                if n >= want[song]:
+                    left.remove(song)
+                    attempt(song)
+            if left and not done.wait(20):
+                continue
+            if done.is_set():
+                break
+        while left:                  # renderer finished; publish whatever remains
+            attempt(left.pop(0))
+    except Exception:
+        log(f"!! publisher died, {len(left)} song(s) will not be published:\n{traceback.format_exc()}")
+        while left:
+            failed.append(left.pop(0))
 
 
 def unexpected_failures(songs: list[str]) -> list[tuple]:
@@ -212,8 +231,8 @@ def main() -> int:
         sel += ["--limit", str(shards[INDEX]["limit"])]
 
     done = threading.Event()
-    failed: list[str] = []
-    pub = threading.Thread(target=publisher, args=(songs, sel, done, failed), daemon=True)
+    state = {"left": list(songs), "failed": []}
+    pub = threading.Thread(target=publisher, args=(songs, sel, done, state), daemon=True)
     pub.start()
 
     t = time.monotonic()
@@ -224,6 +243,11 @@ def main() -> int:
 
     done.set()
     pub.join(timeout=3600)
+    failed = list(state["failed"])
+    if pub.is_alive():
+        # the process is about to exit and take the daemon thread with it mid-upload
+        log(f"!! publisher still running after 3600 s; unpublished: {' '.join(state['left'])}")
+        failed += [s for s in state["left"] if s not in failed]
 
     bad = unexpected_failures(songs)
     if bad:
