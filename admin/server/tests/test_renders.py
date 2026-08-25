@@ -207,14 +207,87 @@ class SleepFleetTests(unittest.TestCase):
                          instance_types_restored=False)
         renders._note_verdict(rec, "Batch job job-1 is unknown to describe_jobs")
         batch = unittest.mock.MagicMock()
-        batch.update_compute_environment.side_effect = [RuntimeError("boom"), None]
+        batch.describe_compute_environments.return_value = {"computeEnvironments": [{"status": "VALID"}]}
+        # every attempt fails: one transient refusal is now retried past (#42), so a verdict
+        # note only appears when the restore genuinely cannot be done
+        batch.update_compute_environment.side_effect = RuntimeError("boom")
         boto3 = unittest.mock.MagicMock()
         boto3.client.return_value = batch
-        with unittest.mock.patch.dict(sys.modules, {"boto3": boto3}):
+        with unittest.mock.patch.dict(sys.modules, {"boto3": boto3}), \
+             unittest.mock.patch.object(renders.time, "sleep", lambda _: None):
             renders.RunManager._sleep_fleet(m, rec)     # the real one; FakeManager stubs it
         self.assertIn("unknown to describe_jobs", rec["verdict"])
         self.assertIn("instance-type restore failed: boom", rec["verdict"])
         self.assertEqual(rec["finisher"]["error"], rec["verdict"])
+
+
+class CeSettleTests(unittest.TestCase):
+    """Batch refuses a second change while one is in flight, so every update has to wait (#42).
+
+    The live symptom: submitting with an instance-type override failed with "Cannot update,
+    compute environment ... is being modified", and the restore that runs on the failure path
+    hit the same wall — leaving the fleet on the run's instance types.
+    """
+
+    def batch_with(self, statuses):
+        batch = unittest.mock.MagicMock()
+        batch.describe_compute_environments.side_effect = [
+            {"computeEnvironments": [{"status": st}]} for st in statuses]
+        return batch
+
+    def test_waits_while_the_environment_is_updating(self):
+        m = FakeManager()
+        batch = self.batch_with(["UPDATING", "UPDATING", "VALID"])
+        slept = []
+        status = renders.RunManager._wait_ce_settled(m, batch, sleep=slept.append)
+        self.assertEqual(status, "VALID")
+        self.assertEqual(batch.describe_compute_environments.call_count, 3)
+        self.assertEqual(len(slept), 2)
+
+    def test_returns_immediately_when_already_settled(self):
+        m = FakeManager()
+        batch = self.batch_with(["VALID"])
+        self.assertEqual(renders.RunManager._wait_ce_settled(m, batch, sleep=lambda _: None), "VALID")
+        self.assertEqual(batch.describe_compute_environments.call_count, 1)
+
+    def test_gives_up_rather_than_blocking_for_ever(self):
+        m = FakeManager()
+        batch = unittest.mock.MagicMock()
+        batch.describe_compute_environments.return_value = {"computeEnvironments": [{"status": "UPDATING"}]}
+        status = renders.RunManager._wait_ce_settled(m, batch, timeout_s=0.05, sleep=lambda _: None)
+        self.assertEqual(status, "UPDATING")
+
+    def test_the_restore_retries_past_a_still_settling_environment(self):
+        """The failure path runs right after a refused update, so the first try often loses."""
+        m = FakeManager()
+        rec = run_record("r1", "failed", instance_types_before=["c7a.24xlarge"],
+                         instance_types_restored=False)
+        batch = unittest.mock.MagicMock()
+        batch.describe_compute_environments.return_value = {"computeEnvironments": [{"status": "VALID"}]}
+        boom = RuntimeError("Cannot update, compute environment is being modified.")
+        batch.update_compute_environment.side_effect = [boom, None, None]
+        boto3 = unittest.mock.MagicMock()
+        boto3.client.return_value = batch
+        with unittest.mock.patch.dict(sys.modules, {"boto3": boto3}), \
+             unittest.mock.patch.object(renders.time, "sleep", lambda _: None):
+            renders.RunManager._sleep_fleet(m, rec)
+        self.assertTrue(rec["instance_types_restored"], rec.get("verdict"))
+        self.assertNotIn("restore failed", rec.get("verdict") or "")
+
+    def test_a_restore_that_never_succeeds_is_still_reported(self):
+        m = FakeManager()
+        rec = run_record("r1", "failed", instance_types_before=["c7a.24xlarge"],
+                         instance_types_restored=False)
+        batch = unittest.mock.MagicMock()
+        batch.describe_compute_environments.return_value = {"computeEnvironments": [{"status": "VALID"}]}
+        batch.update_compute_environment.side_effect = RuntimeError("still modifying")
+        boto3 = unittest.mock.MagicMock()
+        boto3.client.return_value = batch
+        with unittest.mock.patch.dict(sys.modules, {"boto3": boto3}), \
+             unittest.mock.patch.object(renders.time, "sleep", lambda _: None):
+            renders.RunManager._sleep_fleet(m, rec)
+        self.assertFalse(rec["instance_types_restored"])
+        self.assertIn("instance-type restore failed", rec["verdict"])
 
 
 class ActivePhaseTests(unittest.TestCase):

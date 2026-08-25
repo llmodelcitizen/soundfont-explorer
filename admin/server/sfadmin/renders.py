@@ -65,6 +65,12 @@ STAGE_TIMEOUT_S = 1800
 # with a finished_at in the past (which empties the run's Logs box for ever) (#19).
 SUBMIT_EXEMPT_S = 2 * STAGE_TIMEOUT_S + 600
 
+# Batch applies a compute-environment change asynchronously and refuses a second one while it is
+# in flight. Instance-type changes settle in seconds; the timeout is a backstop, not a target.
+CE_SETTLE_TIMEOUT_S = 180.0
+CE_SETTLE_POLL_S = 2.0
+CE_RESTORE_ATTEMPTS = 3
+
 
 def _ms(iso: str) -> int:
     return int(datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000)
@@ -295,10 +301,12 @@ class RunManager:
                     computeEnvironments=[self.cfg.compute_env])["computeEnvironments"][0]
                 rec["instance_types_before"] = ce["computeResources"].get("instanceTypes")
                 rec["instance_types_restored"] = False
+                self._wait_ce_settled(batch)      # a CE mid-update refuses the next change
                 batch.update_compute_environment(
                     computeEnvironment=self.cfg.compute_env,
                     computeResources={"instanceTypes": instance_types})
                 self._put(rec)
+                self._wait_ce_settled(batch)      # ... including the state change below
             batch.update_compute_environment(computeEnvironment=self.cfg.compute_env, state="ENABLED")
             kwargs: dict = {"jobName": "soundfont-explorer-render", "jobQueue": self.cfg.job_queue,
                             "jobDefinition": self.cfg.job_definition}
@@ -439,23 +447,60 @@ class RunManager:
                 if len(parts) == 3 and parts[1] in want and o["LastModified"] >= since:
                     rec["published_sets"][parts[1]] = o["Key"]
 
+    def _wait_ce_settled(self, batch, timeout_s: float = CE_SETTLE_TIMEOUT_S, sleep=time.sleep) -> str:
+        """Block until the compute environment leaves UPDATING/CREATING.
+
+        Batch serialises changes to a compute environment: a second update_compute_environment
+        while the first is still applying is refused outright with `ClientException: Cannot
+        update, compute environment ... is being modified`. The submit path issues two in a row
+        (instance types, then state=ENABLED), so without this the instance-type override could
+        never work — and the restore in _sleep_fleet hit the same wall, leaving the fleet on the
+        run's types (#42). Returns the final status; the caller decides what to do about it.
+        """
+        deadline = time.monotonic() + timeout_s
+        status = "UNKNOWN"
+        while time.monotonic() < deadline:
+            try:
+                ce = batch.describe_compute_environments(
+                    computeEnvironments=[self.cfg.compute_env])["computeEnvironments"][0]
+            except Exception:
+                sleep(CE_SETTLE_POLL_S)
+                continue
+            status = ce.get("status", "UNKNOWN")
+            if status not in ("UPDATING", "CREATING"):
+                return status
+            sleep(CE_SETTLE_POLL_S)
+        return status
+
     def _sleep_fleet(self, rec: dict) -> None:
         """DISABLE the CE and restore Terraform's instance types if this run changed them."""
         import boto3
         batch = boto3.client("batch")
         try:
             if rec.get("instance_types_before") and not rec.get("instance_types_restored"):
-                batch.update_compute_environment(
-                    computeEnvironment=self.cfg.compute_env,
-                    computeResources={"instanceTypes": rec["instance_types_before"]})
-                rec["instance_types_restored"] = True
-                self._put(rec)
+                # the failure path runs straight after a refused update, so the CE is usually
+                # still settling; restoring is the one step that must not be skipped (#42)
+                last = None
+                for _ in range(CE_RESTORE_ATTEMPTS):
+                    self._wait_ce_settled(batch)
+                    try:
+                        batch.update_compute_environment(
+                            computeEnvironment=self.cfg.compute_env,
+                            computeResources={"instanceTypes": rec["instance_types_before"]})
+                        rec["instance_types_restored"] = True
+                        self._put(rec)
+                        break
+                    except Exception as e:      # noqa: PERF203 — retried deliberately
+                        last = e
+                if not rec.get("instance_types_restored") and last is not None:
+                    raise last
         except Exception as e:
             # appended, not assigned: this runs one line after _poll, and overwriting the
             # dict dropped the poll's verdict before finish() could carry it over (#19)
             _note_verdict(rec, f"instance-type restore failed: {e}")
             self._put(rec)
         try:
+            self._wait_ce_settled(batch)
             batch.update_compute_environment(computeEnvironment=self.cfg.compute_env, state="DISABLED")
         except Exception:
             pass  # the reconciler and the watchdog both retry this
