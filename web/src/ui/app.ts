@@ -28,7 +28,7 @@ import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { adjacentTrackId, autoAdvanceTarget, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
-import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
+import { Favorites, ListenedLedger, TrackPositions, applyPreservePreference, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
 import { audioSession, createContext, installResumeOnGesture, unlock } from '../audio/unlock';
@@ -80,7 +80,7 @@ export class App {
   private ledger = new ListenedLedger();
   private settings = new SettingsModal(this.prefs, {
     onChange: (p) => {
-      if (this.prefs.preserveTrackPosition && !p.preserveTrackPosition) this.trackPositions.clear();
+      applyPreservePreference(this.prefs.preserveTrackPosition, p.preserveTrackPosition, this.trackPositions, () => this.rewindPlayhead());
       this.prefs = p;
       savePrefs(p);
       this.refreshListened();
@@ -461,7 +461,7 @@ export class App {
       preserve: {
         value: this.prefs.preserveTrackPosition,
         onChange: (v) => {
-          if (!v) this.trackPositions.clear();
+          applyPreservePreference(this.prefs.preserveTrackPosition, v, this.trackPositions, () => this.rewindPlayhead());
           this.prefs = { ...this.prefs, preserveTrackPosition: v };
           savePrefs(this.prefs);
           this.settings.setPrefs(this.prefs);
@@ -798,6 +798,13 @@ export class App {
 
   private effectiveColumns(): ColKey[] {
     return (isCompact() ? this.prefs.mobileColumns : this.prefs.columns) as ColKey[];
+  }
+
+  /** the live playhead is a saved position too: zero it, and the `t=` a reload would resume from */
+  private rewindPlayhead(): void {
+    if (!this.engine) return;
+    this.engine.seek(0);
+    this.syncUrl(true);
   }
 
   private setLoop(on: boolean): void {

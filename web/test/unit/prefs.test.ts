@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, loadPrefs, sanitizeLedger } from '../../src/state/prefs';
+import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, applyPreservePreference, loadPrefs, sanitizeLedger } from '../../src/state/prefs';
 
 describe('prefs + listened ledger', () => {
   it('defaults without localStorage', () => {
@@ -75,6 +75,34 @@ describe('per-track positions', () => {
     positions.remember('one', 12.5);
     positions.clear();
     expect(positions.recall('one')).toBe(0);
+  });
+});
+
+describe('turning "preserve track position" off', () => {
+  /** a TrackPositions with two visited tracks, plus a rewind spy for the live playhead */
+  const scenario = () => {
+    const positions = new TrackPositions();
+    positions.remember('one', 12.5);
+    positions.remember('two', 47);
+    let rewinds = 0;
+    return { positions, rewind: () => { rewinds += 1; }, rewound: () => rewinds };
+  };
+
+  it('zeroes every remembered position and the live playhead, not just future ones', () => {
+    const s = scenario();
+    applyPreservePreference(true, false, s.positions, s.rewind);
+    expect(s.positions.recall('one')).toBe(0);
+    expect(s.positions.recall('two')).toBe(0);
+    expect(s.rewound()).toBe(1);
+  });
+
+  it('leaves positions alone unless the option actually goes off', () => {
+    for (const [was, now] of [[true, true], [false, true], [false, false]] as const) {
+      const s = scenario();
+      applyPreservePreference(was, now, s.positions, s.rewind);
+      expect(s.positions.recall('one')).toBe(12.5);
+      expect(s.rewound()).toBe(0);
+    }
   });
 });
 
