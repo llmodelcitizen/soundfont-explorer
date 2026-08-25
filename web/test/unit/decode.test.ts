@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAX_CONSECUTIVE_FAILURES, WasmDecoder } from '../../src/audio/decode/wasm';
+import { EMPTY_POOL_PROBE_MS, MAX_CONSECUTIVE_FAILURES, WasmDecoder } from '../../src/audio/decode/wasm';
 import { FakeAudioContext, flush } from './fakes';
 
 /** a worker stand-in: the test decides when (and whether) it answers or crashes */
@@ -48,32 +48,33 @@ describe('WasmDecoder worker pool', () => {
       await flush(3);
       for (const w of spawned) if (!w.terminated) w.crash();
     }
-    // pool of 2, each allowed MAX_CONSECUTIVE_FAILURES replacements, then dropped
-    expect(spawned.length).toBeLessThanOrEqual(2 * (1 + MAX_CONSECUTIVE_FAILURES));
+    // pool of 2, each slot retired on its MAX_CONSECUTIVE_FAILURES'th crash without a reply
+    expect(spawned.length).toBe(2 * MAX_CONSECUTIVE_FAILURES);
     expect(spawned.every((w) => w.terminated)).toBe(true);
-    expect(decoder.stats.errors).toBe(2 * (1 + MAX_CONSECUTIVE_FAILURES));
+    expect(decoder.stats.errors).toBe(2 * MAX_CONSECUTIVE_FAILURES);
     await expect(decoder.decode(new ArrayBuffer(8), 0)).rejects.toThrow(/no decode workers/);
+    expect(spawned.length).toBe(2 * MAX_CONSECUTIVE_FAILURES); // and no respawn for that job
   });
 
   it('a crash mid-decode fails that job, and a replacement that answers resets the count', async () => {
     let crashes = 0;
     const { spawned, decoder } = pool((w, id) => {
-      if (crashes < MAX_CONSECUTIVE_FAILURES) {
+      if (crashes < MAX_CONSECUTIVE_FAILURES - 1) {
         crashes++;
         queueMicrotask(() => w.crash());
       } else queueMicrotask(() => w.answer(id));
     }, 1);
-    for (let i = 0; i < MAX_CONSECUTIVE_FAILURES; i++) {
+    for (let i = 0; i < MAX_CONSECUTIVE_FAILURES - 1; i++) {
       await expect(decoder.decode(new ArrayBuffer(8), 0)).rejects.toThrow(/worker error/);
     }
     const buf = await decoder.decode(new ArrayBuffer(8), 0);
     expect(buf.length).toBe(48);
-    expect(spawned.length).toBe(1 + MAX_CONSECUTIVE_FAILURES);
+    expect(spawned.length).toBe(MAX_CONSECUTIVE_FAILURES); // the last crash before the bound
     // it answered: the slot is healthy again and survives a further crash without being dropped
     const alive = spawned.at(-1)!;
     alive.crash();
     await flush();
-    expect(spawned.length).toBe(2 + MAX_CONSECUTIVE_FAILURES);
+    expect(spawned.length).toBe(MAX_CONSECUTIVE_FAILURES + 1);
     expect(decoder.stats.decoded).toBe(1);
   });
 
@@ -113,11 +114,73 @@ describe('WasmDecoder worker pool', () => {
     };
     const decoder = new WasmDecoder(new FakeAudioContext(), 2, factory);
     for (let round = 0; round < 10; round++) await flush(3);
-    expect(spawned.length).toBe(2 + MAX_CONSECUTIVE_FAILURES); // slot 0 retired, slot 1 untouched
+    expect(spawned.length).toBe(1 + MAX_CONSECUTIVE_FAILURES); // slot 0 retired, slot 1 untouched
 
     const settled = await Promise.allSettled([decoder.decode(new ArrayBuffer(8), 0), decoder.decode(new ArrayBuffer(8), 1)]);
     expect(settled.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
     expect(decoder.stats.decoded).toBe(2);
+  });
+
+  it('re-grows a retired slot once a surviving worker answers', async () => {
+    // a lineage can die for reasons other than a broken script (memory pressure, a transient
+    // chunk fetch); a worker that answers proves the script loads, so the pool must come back
+    // instead of staying shrunk for the life of the page
+    const spawned: FakeWorker[] = [];
+    const healthy = new Set<FakeWorker>();
+    let pressure = true;
+    const factory = () => {
+      const w = new FakeWorker((self, id) => {
+        if (healthy.has(self)) queueMicrotask(() => self.answer(id));
+      });
+      spawned.push(w);
+      if (pressure && spawned.length !== 2) queueMicrotask(() => w.crash()); // slot 1 survives
+      else healthy.add(w);
+      return w;
+    };
+    const decoder = new WasmDecoder(new FakeAudioContext(), 2, factory);
+    for (let round = 0; round < 10; round++) await flush(3);
+    expect(spawned.length).toBe(1 + MAX_CONSECUTIVE_FAILURES); // slot 0 gave up
+
+    pressure = false; // whatever killed that lineage has passed
+    expect((await decoder.decode(new ArrayBuffer(8), 0)).length).toBe(48);
+    await flush(3);
+    expect(spawned.length).toBe(2 + MAX_CONSECUTIVE_FAILURES); // the retired slot is back
+    const settled = await Promise.allSettled([decoder.decode(new ArrayBuffer(8), 0), decoder.decode(new ArrayBuffer(8), 1)]);
+    expect(settled.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+    expect(spawned.length).toBe(2 + MAX_CONSECUTIVE_FAILURES); // and it is a working slot, not a churn
+  });
+
+  it('probes one fresh worker once an empty pool has had time to recover', async () => {
+    // every slot retired means playback is over until a page reload, so the decoder tries a
+    // single worker every EMPTY_POOL_PROBE_MS — a bounded probe, not the respawn loop again
+    let broken = true;
+    const spawned: FakeWorker[] = [];
+    const factory = () => {
+      const w = new FakeWorker((self, id) => {
+        if (!broken) queueMicrotask(() => self.answer(id));
+      });
+      spawned.push(w);
+      if (broken) queueMicrotask(() => w.crash());
+      return w;
+    };
+    const decoder = new WasmDecoder(new FakeAudioContext(), 1, factory);
+    for (let round = 0; round < 10; round++) await flush(3);
+    expect(spawned.length).toBe(MAX_CONSECUTIVE_FAILURES); // the one slot is retired
+    await expect(decoder.decode(new ArrayBuffer(8), 0)).rejects.toThrow(/no decode workers/);
+    expect(spawned.length).toBe(MAX_CONSECUTIVE_FAILURES); // jobs in between cost nothing
+
+    await vi.advanceTimersByTimeAsync(EMPTY_POOL_PROBE_MS);
+    const probe = decoder.decode(new ArrayBuffer(8), 0);
+    probe.catch(() => undefined);
+    await flush(5);
+    expect(spawned.length).toBe(MAX_CONSECUTIVE_FAILURES + 1); // exactly one probe
+    await expect(probe).rejects.toThrow(/no decode workers/); // it died too, and fails fast
+    await expect(decoder.decode(new ArrayBuffer(8), 0)).rejects.toThrow(/no decode workers/);
+    expect(spawned.length).toBe(MAX_CONSECUTIVE_FAILURES + 1); // and the probe is not repeated
+
+    broken = false; // the machine recovers
+    await vi.advanceTimersByTimeAsync(EMPTY_POOL_PROBE_MS);
+    expect((await decoder.decode(new ArrayBuffer(8), 0)).length).toBe(48);
   });
 
   it('a timeout followed by the crash it caused replaces the worker once, not twice', async () => {

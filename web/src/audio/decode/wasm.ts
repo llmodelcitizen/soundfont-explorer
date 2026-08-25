@@ -18,8 +18,10 @@ interface Slot {
 }
 
 const DECODE_TIMEOUT_MS = 15000;
-/** a slot whose replacements keep dying too is given up, not respawned forever */
+/** consecutive crashes with no reply in between after which a slot is retired, not respawned */
 export const MAX_CONSECUTIVE_FAILURES = 3;
+/** an empty pool is allowed one fresh worker this often (see acquireSlot) */
+export const EMPTY_POOL_PROBE_MS = 30000;
 
 export type WorkerFactory = () => WorkerLike;
 
@@ -35,10 +37,14 @@ export class WasmDecoder implements Decoder {
   /** jobs parked until a slot frees up (see acquireSlot) */
   private freeWaiters: (() => void)[] = [];
   private waiting = new Map<number, { resolve: (v: { channelData: Float32Array[]; sampleRate: number }) => void; reject: (e: unknown) => void }>();
+  /** when the pool last went empty, so a dead pool is probed rather than hammered */
+  private retiredAt = 0;
+  private disposed = false;
 
-  constructor(private readonly ctx: ContextLike, poolSize = 4, private readonly factory: WorkerFactory = defaultFactory) {
-    for (let i = 0; i < poolSize; i++) this.workers.push(this.spawn());
+  constructor(private readonly ctx: ContextLike, private readonly poolSize = 4, private readonly factory: WorkerFactory = defaultFactory) {
+    // the queue first: spawning can reach replace() (a worker's onerror), which resizes it
     this.q = new DecodeQueue(poolSize);
+    for (let i = 0; i < poolSize; i++) this.workers.push(this.spawn());
   }
 
   private spawn(failures = 0): Slot {
@@ -51,6 +57,7 @@ export class WasmDecoder implements Decoder {
       slot.busy = false;
       slot.current = null;
       slot.failures = 0; // it answered, so the worker itself is alive (a decode error is not a crash)
+      this.regrow(); // and the script loads, so any slot retired while it did not comes back
       if (!p) return;
       if (error || !channelData) p.reject(new Error(error ?? 'decode failed'));
       else p.resolve({ channelData, sampleRate: sampleRate ?? 48000 });
@@ -85,17 +92,32 @@ export class WasmDecoder implements Decoder {
     // here) or disposed — spawning would grow the pool past its size, or revive a dead decoder
     if (idx < 0) return;
     const failures = slot.failures + (crashed ? 1 : 0);
-    if (failures > MAX_CONSECUTIVE_FAILURES) {
-      // the replacements died without ever answering (worker script blocked, wasm will not
+    if (failures >= MAX_CONSECUTIVE_FAILURES) {
+      // the whole lineage died without ever answering (worker script blocked, wasm will not
       // instantiate, ...): another one would only die too, so drop the slot instead of looping
       this.workers.splice(idx, 1);
       // the pool is smaller now: stop admitting jobs no worker can run
+      if (!this.workers.length) this.retiredAt = Date.now();
       this.q.setConcurrency(this.workers.length);
       this.wakeFreeWaiters();
       return;
     }
     this.workers[idx] = this.spawn(failures);
     this.wakeFreeWaiters(); // the fresh slot is idle
+  }
+
+  /**
+   * Grow the pool back to its original size. A slot is retired when its whole lineage died
+   * without ever answering, which usually means a worker script that will never load — but
+   * memory pressure or a transient chunk/CSP failure looks exactly the same, and a decoder that
+   * stays shrunk (or dead) until the page is reloaded is the worse failure. So a worker that
+   * answers, which proves the script loads, re-arms whatever was retired while it did not.
+   */
+  private regrow(failures = 0): void {
+    if (this.disposed || this.workers.length >= this.poolSize) return;
+    while (this.workers.length < this.poolSize) this.workers.push(this.spawn(failures));
+    this.q.setConcurrency(this.workers.length);
+    this.wakeFreeWaiters();
   }
 
   /** let every parked job re-examine the pool: a slot was freed, replaced or retired */
@@ -114,7 +136,17 @@ export class WasmDecoder implements Decoder {
    */
   private async acquireSlot(): Promise<Slot> {
     for (;;) {
-      if (!this.workers.length) throw new Error('no decode workers left (they kept crashing)');
+      if (!this.workers.length) {
+        // Every slot was retired. A script that will never load must stay dead rather than
+        // spin, but the pressure that killed the last lineage may have passed, so try a single
+        // fresh worker at most once every EMPTY_POOL_PROBE_MS. It starts one crash short of the
+        // bound, so a probe that dies retires again immediately instead of costing a lineage;
+        // one that answers re-arms the whole pool through regrow().
+        if (this.disposed || Date.now() - this.retiredAt < EMPTY_POOL_PROBE_MS) throw new Error('no decode workers left (they kept crashing)');
+        this.retiredAt = Date.now();
+        this.workers.push(this.spawn(MAX_CONSECUTIVE_FAILURES - 1));
+        this.q.setConcurrency(this.workers.length);
+      }
       const free = this.workers.find((s) => !s.busy);
       if (free) {
         free.busy = true; // claimed synchronously, so two admitted jobs cannot take one slot
@@ -126,7 +158,11 @@ export class WasmDecoder implements Decoder {
 
   decode(bytes: ArrayBuffer, priority: number): Promise<BufferLike> {
     return this.q.submit(priority, async () => {
-      const slot = await this.acquireSlot();
+      let slot = await this.acquireSlot();
+      // a worker can crash between the claim and the first postMessage — its onerror is a task
+      // of its own, and that replacement has no job to fail because none was registered yet.
+      // Re-acquire instead of posting into a terminated worker and waiting out the 15 s timeout.
+      while (!this.workers.includes(slot)) slot = await this.acquireSlot();
       const id = this.nextId++;
       slot.current = id;
       const t0 = Date.now();
@@ -162,6 +198,7 @@ export class WasmDecoder implements Decoder {
   }
 
   dispose(): void {
+    this.disposed = true;
     for (const s of this.workers) s.w.terminate();
     this.workers = [];
     this.wakeFreeWaiters(); // parked jobs reject with 'no decode workers left' rather than hanging
