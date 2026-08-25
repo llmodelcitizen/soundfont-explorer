@@ -1,5 +1,5 @@
 # One-time bootstrap: the S3 bucket that holds the live Terraform state.
-# Applied once from bimmer with LOCAL state (this directory's terraform.tfstate is gitignored).
+# Applied once from the workstation with LOCAL state (this directory's terraform.tfstate is gitignored).
 terraform {
   required_version = ">= 1.11"
   required_providers {

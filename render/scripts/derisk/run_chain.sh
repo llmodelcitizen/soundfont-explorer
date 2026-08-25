@@ -1,5 +1,5 @@
 #!/bin/sh
-# M0b item 1 driver — run from the repo root on bimmer. Everything executes inside sfr-render.
+# M0b item 1 driver — run from the repo root on the workstation. Everything executes inside sfr-render.
 #   render/scripts/derisk/run_chain.sh [fluid|adl58|all]
 set -eu
 cd "$(dirname "$0")/../../.."

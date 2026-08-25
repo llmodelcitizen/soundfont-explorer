@@ -239,7 +239,7 @@
         "sc55-sc155": "sc155",
         "sc55-sc155mk2": "sc155mk2"
       },
-      "notes": "-r gs is applied automatically for mk2 romsets (firmware pitch workaround); -n 2 doubles polyphony at 2x CPU. Untested: no ROMs on bimmer (roms/ empty).",
+      "notes": "-r gs is applied automatically for mk2 romsets (firmware pitch workaround); -n 2 doubles polyphony at 2x CPU. Untested: no ROMs on the workstation (roms/ empty).",
       "start_offset_s": null,
       "drift_ppm": null
     },
@@ -277,7 +277,7 @@
         "cm32l": "-i cm32l (cm32l_1_00 / cm32l_1_02 / cm32ln_1_00 pin a version)"
       },
       "romset_dirs": "roms/mt32/ = MT-32 control ROM (64 KiB v1.xx or 128 KiB v2.xx, or the two 32 KiB halves) + MT32_PCM.ROM (512 KiB); roms/cm32l/ = CM-32L control ROM (64 KiB) + CM32L_PCM.ROM (1 MiB). Any file names. Variant id == romset == directory name (mt32, cm32l).",
-      "notes": "Untested: no ROMs on bimmer (roms/ empty).",
+      "notes": "Untested: no ROMs on the workstation (roms/ empty).",
       "start_offset_s": null,
       "drift_ppm": null
     }

@@ -1,7 +1,7 @@
 """Published-site operations: overview, remove a track, prune — always against S3 listings.
 
 The site bucket is the only truth about what is published. Local out/public on any host is
-just a working copy (bimmer's is already missing cloud-published audio), so every keep/
+just a working copy (the workstation's is already missing cloud-published audio), so every keep/
 delete decision here starts from list_objects_v2, and songs.json is rebuilt via
 `sfr manifest --songs-json-only` after syncing /s and /c down WITH --delete.
 

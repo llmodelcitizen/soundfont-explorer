@@ -1,4 +1,4 @@
-# local-only data on bimmer's /home volume (never in git)
+# local-only data on the workstation's /home volume (never in git)
 roms/
 soundfonts/
 work/

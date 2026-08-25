@@ -1,6 +1,6 @@
 """Shard planning + cost estimate for burst-fleet runs.
 
-One implementation, two callers: render/cloud/submit.py (operator CLI on bimmer) and the
+One implementation, two callers: render/cloud/submit.py (operator CLI on the workstation) and the
 admin server (admin/server/sfadmin/renders.py). Pure functions — no AWS, no I/O beyond
 reading the two songs.json documents.
 """

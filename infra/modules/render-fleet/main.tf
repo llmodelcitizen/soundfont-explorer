@@ -115,7 +115,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fonts" {
   }
 }
 
-# SF2s are re-uploadable from bimmer, so single-AZ durability is the right trade.
+# SF2s are re-uploadable from the workstation, so single-AZ durability is the right trade.
 resource "aws_s3_bucket_lifecycle_configuration" "fonts" {
   bucket = aws_s3_bucket.fonts.id
   rule {

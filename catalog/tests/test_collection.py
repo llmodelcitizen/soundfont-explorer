@@ -2,7 +2,7 @@
 
 These read the committed ``catalog/soundfonts.json`` / ``soundfonts.facets.json``
 (fast: no SoundFont is opened).  The count assertions only run on a machine that
-has the ``soundfonts/`` directory (bimmer); the consistency check that the two
+has the ``soundfonts/`` directory (the workstation); the consistency check that the two
 committed artifacts agree with the code runs everywhere, including CI.
 """
 
