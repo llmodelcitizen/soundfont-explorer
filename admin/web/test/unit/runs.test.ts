@@ -73,3 +73,33 @@ describe('RunsView poll', () => {
     expect(ff.count('GET', '/api/runs')).toBe(6); // the load itself plus one tick — never two loops
   });
 });
+
+describe('RunsView actions', () => {
+  it('reports a finisher failure instead of "done"', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run()] }))
+      .on('POST', '/api/runs/r1/finish', () => { throw new Fail(500, 'publisher exploded'); });
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Run finisher').click();
+    await until(() => ff.count('POST', '/api/runs/r1/finish') === 1);
+    await until(() => status(v).textContent !== 'finisher running…');
+    expect(status(v).textContent).toBe('finisher: publisher exploded');
+    expect(status(v).classList.contains('error')).toBe(true);
+    await until(() => ff.count('GET', '/api/runs') === 2); // the list is still refreshed
+  });
+
+  it('reports a terminate failure', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running', status_summary: { RUNNING: 1 } })] }))
+      .on('POST', '/api/runs/r1/terminate', () => { throw new Fail(502, 'batch says no'); });
+    const v = mount(ff);
+    await v.load();
+    vi.stubGlobal('confirm', () => true);
+    button(v, 'Terminate').click();
+    await until(() => ff.count('POST', '/api/runs/r1/terminate') === 1);
+    await until(() => status(v).textContent !== '');
+    expect(status(v).textContent).toBe('terminate: batch says no');
+    expect(status(v).classList.contains('error')).toBe(true);
+  });
+});

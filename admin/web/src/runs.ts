@@ -262,18 +262,25 @@ export class RunsView {
       if (!['succeeded', 'failed', 'terminated'].includes(r.state)) {
         const t = el('button', { class: 'danger' }, 'Terminate');
         t.onclick = async () => {
-          if (confirm(`Terminate run ${r.run_id}?`)) {
+          if (!confirm(`Terminate run ${r.run_id}?`)) return;
+          try {
             await post(`/api/runs/${r.run_id}/terminate`);
-            await this.renderRuns(host);
+          } catch (e) {
+            this.note(`terminate: ${(e as Error).message}`, true);
           }
+          await this.renderRuns(host);
         };
         actions.append(t);
       } else if (!r.finisher.songs_json_published) {
         const f = el('button', {}, 'Run finisher');
         f.onclick = async () => {
           this.note('finisher running…');
-          await post(`/api/runs/${r.run_id}/finish`);
-          this.note('finisher done');
+          try {
+            await post(`/api/runs/${r.run_id}/finish`);
+            this.note('finisher done');
+          } catch (e) {
+            this.note(`finisher: ${(e as Error).message}`, true);
+          }
           await this.renderRuns(host);
         };
         actions.append(f);

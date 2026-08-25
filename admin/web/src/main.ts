@@ -77,16 +77,34 @@ function shell(me: Me): void {
   }
   (tabs.firstChild as HTMLButtonElement).classList.add('active');
   views[0]![1]();
+  const status = el('span', { class: 'statusline' });
+  const note = (msg: string, isError = false): void => {
+    status.textContent = msg;
+    status.classList.toggle('error', isError);
+  };
   const update = el('button', {}, 'Update & restart');
   update.onclick = async () => {
     update.disabled = true;
-    await post('/api/update');
+    try {
+      await post('/api/update');
+    } catch (e) {
+      // nothing is restarting, so the button must come back rather than stay stuck
+      update.disabled = false;
+      note(`update: ${(e as Error).message}`, true);
+      return;
+    }
+    note('update requested — reloading in a few seconds…');
     setTimeout(() => location.reload(), 4000);
   };
   const shutdown = el('button', { class: 'danger' }, 'Shut down box');
   shutdown.onclick = async () => {
     if (!confirm('Terminate the admin instance? Everything is saved in S3; relaunch with up.sh.')) return;
-    await post('/api/shutdown');
+    try {
+      await post('/api/shutdown');
+    } catch (e) {
+      note(`shutdown: ${(e as Error).message}`, true);
+      return;
+    }
     app.replaceChildren(el('div', { class: 'wait' },
       el('h1', {}, 'Terminating'),
       el('div', { class: 'msg' }, 'The box is going away. Bye.')));
@@ -96,7 +114,7 @@ function shell(me: Me): void {
       el('h1', {}, 'Soundfont Explorer admin'),
       tabs,
       el('div', { class: 'spacer' }),
-      update, shutdown,
+      status, update, shutdown,
       el('span', { class: 'who' }, me.email),
       el('a', { href: '/auth/logout' }, 'log out'),
     ),
@@ -109,4 +127,5 @@ async function boot(): Promise<void> {
   shell(await get<Me>('/api/me'));
 }
 
-boot();
+boot().catch((e: Error) => app.replaceChildren(
+  el('div', { class: 'notice' }, `admin failed to start: ${e.message}`)));
