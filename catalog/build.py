@@ -24,7 +24,7 @@ import os
 import re
 import sys
 
-from ._util import count_values, decade_of, write_json
+from ._util import count_values, decade_of, now_iso, utc_now, write_json
 
 SCHEMA = 1
 
@@ -296,7 +296,7 @@ def overrides_for(fonts: dict, sha256: str | None, file: str) -> tuple[dict, lis
 
 
 def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
-    now = now or _dt.datetime.now(_dt.timezone.utc)
+    now = now or utc_now()
     now_year = now.year
     regex_table = overrides.get("lineage_regex") or DEFAULT_LINEAGE_REGEX
     compiled = compile_lineage_regex(regex_table)
@@ -388,7 +388,7 @@ def build(scan: dict, overrides: dict, now: _dt.datetime | None = None) -> dict:
     unused = sorted(k for k in override_fonts if k not in used_override_keys)
     return {
         "schema": SCHEMA,
-        "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": now_iso(now),
         "scan_generated_at": scan.get("generated_at"),
         "count": len(out_fonts),
         "canonical_count": len(out_fonts) - sum(len(d["twins"]) for d in duplicates),
