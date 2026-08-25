@@ -43,6 +43,16 @@ KEY=$(aws s3 cp "s3://$SFADMIN_BUCKET/app/current" -)
 rm -rf "$APP.new" && mkdir -p "$APP.new"
 aws s3 cp "s3://$SFADMIN_BUCKET/$KEY" - | tar -xz -C "$APP.new"
 rm -rf "$APP" && mv "$APP.new" "$APP"
+# Root's own copy of the things root itself will run, taken while the tree is still
+# root-owned: $APP is chowned to sfadmin below, and on a REBOOT sfadmin.service starts
+# alongside this unit (both are WantedBy=multi-user.target, with nothing ordering them),
+# so the app could rewrite a unit file between that chown and the install further down and
+# have root activate it. Same boundary as sfadmin-update's, same reasoning (#9, #19).
+ROOTSTAGE=$(mktemp -d)
+trap 'rm -rf "$ROOTSTAGE"' EXIT
+mkdir -p "$ROOTSTAGE/systemd"
+cp -r "$APP/admin/systemd/." "$ROOTSTAGE/systemd/"
+cp -r "$APP/admin/scripts/sfadmin-update" "$ROOTSTAGE/sfadmin-update"
 # hostname + zone id, written by deploy.sh from infra/live/outputs.json
 # shellcheck source=/dev/null
 . "$APP/admin/bundle.env"
@@ -102,9 +112,9 @@ ENV
 aws s3 sync "s3://$SFADMIN_BUCKET/caddy/" /var/lib/caddy/ || true
 chown -R caddy:caddy /var/lib/caddy
 sed "s/__HOSTNAME__/$SFADMIN_HOSTNAME/" "$APP/admin/caddy/Caddyfile" > /etc/caddy/Caddyfile
-install -m 0755 "$APP/admin/scripts/sfadmin-update" /usr/local/sbin/sfadmin-update
-cp "$APP"/admin/systemd/sfadmin*.service "$APP"/admin/systemd/sfadmin*.timer \
-   "$APP"/admin/systemd/sfadmin*.path /etc/systemd/system/
+# from $ROOTSTAGE, never from $APP: see the copy made before the chown above
+install -o root -g root -m 0755 "$ROOTSTAGE/sfadmin-update" /usr/local/sbin/sfadmin-update
+install -o root -g root -m 0644 -t /etc/systemd/system "$ROOTSTAGE"/systemd/*
 systemctl daemon-reload
 systemctl enable -q caddy sfadmin.service sfadmin-caddy-sync.timer sfadmin-update.path
 systemctl restart caddy sfadmin.service
