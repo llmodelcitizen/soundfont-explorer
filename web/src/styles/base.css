@@ -136,6 +136,7 @@ pre {
 }
 .btn:focus-visible,
 .opt:focus-visible,
+.facet-help-btn:focus-visible,
 input:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--accent);
@@ -244,11 +245,61 @@ select:focus-visible {
   overflow: auto;
 }
 .facet-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.75em;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--fg-dim);
   margin: 4px 0 2px;
+}
+/* category help: a "?" gadget beside the heading, and the bubble it opens. The bubble is fixed,
+   so the scrolling facet panel cannot clip it; filters.ts anchors it under its own trigger. */
+.facet-help {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.facet-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: var(--btn-bg);
+  color: var(--fg-dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+.facet-help-btn:hover,
+.facet-help-btn[aria-expanded='true'] {
+  background: var(--btn-hover);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.facet-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  /* above the mobile close-the-panel scrim (4), below the modal overlays (10) */
+  z-index: 6;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 6px 9px;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  /* the heading around it is small, uppercase and tracked out; running text is not */
+  font: var(--font);
+  text-transform: none;
+  letter-spacing: normal;
 }
 .opts {
   display: flex;
@@ -959,6 +1010,12 @@ kbd {
   .settings .num,
   .search {
     font-size: 16px;
+  }
+  /* a 16 px "?" is a poor tap target */
+  .facet-help-btn {
+    width: 22px;
+    height: 22px;
+    line-height: 20px;
   }
 }
 

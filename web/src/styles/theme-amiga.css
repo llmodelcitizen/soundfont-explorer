@@ -147,6 +147,32 @@
   color: #000000;
 }
 
+/* Category help: a square Workbench gadget, and a white requester panel for the text. */
+[data-theme='amiga'] .facet-help-btn {
+  background: #0050a0;
+  color: #ffffff;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+  border-radius: 0;
+  /* Topaz is a bitmap face: keep the glyph at the size the rest of the theme draws it */
+  font-size: 14px;
+  line-height: 14px;
+}
+[data-theme='amiga'] .facet-help-btn:hover,
+[data-theme='amiga'] .facet-help-btn[aria-expanded='true'] {
+  background: #f08000;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--amiga-in);
+}
+[data-theme='amiga'] .facet-tip {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+  border-radius: 0;
+}
+
 [data-theme='amiga'] .row:hover,
 [data-theme='amiga'] .track:hover,
 [data-theme='amiga'] .track-folder:hover {
@@ -337,6 +363,7 @@
 }
 [data-theme='amiga'] .btn:focus-visible,
 [data-theme='amiga'] .opt:focus-visible,
+[data-theme='amiga'] .facet-help-btn:focus-visible,
 [data-theme='amiga'] input:focus-visible,
 [data-theme='amiga'] select:focus-visible {
   outline-color: #ffffff;

@@ -1,6 +1,7 @@
 /** Filter bar: facet groups with live counts, OR within / AND across; search box; hidden chip. */
 import { FACET_KEYS, FACET_LABELS, type FacetKey, type FilterIndex, type Selection } from '../state/filterIndex';
 import { clear, h, setPressed } from './dom';
+import { FACET_HELP, HelpTips } from './facetHelp';
 
 export interface FilterCallbacks {
   onChange(sel: Selection, query: string): void;
@@ -45,6 +46,21 @@ export const VALUE_LABELS: Record<string, string> = {
 
 export const label = (v: string): string => VALUE_LABELS[v] ?? v.replace(/_/g, ' ');
 
+/** anchor a help bubble under its trigger, nudged to stay inside the viewport (it is position: fixed) */
+function placeTip(btn: HTMLElement, tip: HTMLElement): void {
+  tip.style.left = '0px';
+  tip.style.top = '0px';
+  const anchor = btn.getBoundingClientRect();
+  const box = tip.getBoundingClientRect();
+  if (!box.width || !box.height) return; // never laid out: nothing sensible to anchor to
+  const pad = 8;
+  const gap = 6;
+  const below = anchor.bottom + gap;
+  const above = anchor.top - gap - box.height;
+  tip.style.left = `${Math.round(Math.min(Math.max(pad, anchor.left), Math.max(pad, window.innerWidth - pad - box.width)))}px`;
+  tip.style.top = `${Math.round(below + box.height > window.innerHeight - pad && above >= pad ? above : below)}px`;
+}
+
 export class FilterBar {
   readonly el: HTMLElement;
   readonly search: HTMLInputElement;
@@ -54,6 +70,9 @@ export class FilterBar {
   query = '';
   favoritesOnly = false;
   private favBtn!: HTMLButtonElement;
+  /** the per-category "?" trigger and its bubble, rebuilt with the panel */
+  private helpEls = new Map<FacetKey, { btn: HTMLElement; tip: HTMLElement }>();
+  private help = new HelpTips((open) => this.paintHelp(open));
   private open = false;
   /** the facet panel is rebuilt lazily: only while open, or on opening if filters changed meanwhile */
   private stale = true;
@@ -89,6 +108,8 @@ export class FilterBar {
       this.favBtn.blur();
     });
     this.groups = h('div', { class: 'facets hidden' });
+    // the bubble is fixed, so the panel's own scrolling has to be passed on to it
+    this.groups.addEventListener('scroll', () => this.trackHelp());
     this.el = h('div', { class: 'filterbar' }, h('div', { class: 'filterrow' }, toggle, this.favBtn, this.hiddenChip, this.search), this.groups);
   }
 
@@ -97,6 +118,7 @@ export class FilterBar {
     if (next === this.open) return;
     this.open = next;
     if (next && this.stale) this.render();
+    else if (!next) this.help.close(); // a bubble must not come back with the panel
     this.groups.classList.toggle('hidden', !next);
     this.cb.onOpenChange?.(next);
   }
@@ -128,8 +150,59 @@ export class FilterBar {
     this.hiddenChip.classList.toggle('hidden', hidden <= 0);
   }
 
+  /** the "?" beside a category heading: hover, keyboard focus or tap shows the same description */
+  private helpFor(key: FacetKey): HTMLElement {
+    const id = `facet-help-${key}`;
+    const btn = h('button', { type: 'button', class: 'facet-help-btn', 'aria-expanded': 'false', 'aria-describedby': id, 'aria-label': `about the ${FACET_LABELS[key]} filter` }, '?');
+    const tip = h('div', { class: 'facet-tip hidden', role: 'tooltip', id }, FACET_HELP[key]);
+    const wrap = h('span', { class: 'facet-help' }, btn, tip);
+    // on the wrapper, so reading the bubble itself keeps it open
+    wrap.addEventListener('mouseenter', () => this.help.pointerEnter(key));
+    wrap.addEventListener('mouseleave', () => this.help.pointerLeave(key));
+    btn.addEventListener('focus', () => this.help.focus(key));
+    btn.addEventListener('blur', () => this.help.blur(key));
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.help.activate(key);
+    });
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        // an Escape that closed a bubble stops here; one with nothing open still closes the panel
+        if (this.help.escape()) e.stopPropagation();
+      } else if (e.key === ' ' || e.key === 'Enter') {
+        // the button's own activation is enough: the global keymap must not also play/pause
+        e.stopPropagation();
+      }
+    });
+    this.helpEls.set(key, { btn, tip });
+    return wrap;
+  }
+
+  /** one bubble visible at a time, and every trigger's state announced */
+  private paintHelp(open: FacetKey | null): void {
+    for (const [key, { btn, tip }] of this.helpEls) {
+      const on = key === open;
+      btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+      tip.classList.toggle('hidden', !on);
+      if (on) placeTip(btn, tip);
+    }
+  }
+
+  /** keep the open bubble on its trigger while the panel scrolls; drop it once the trigger is gone */
+  private trackHelp(): void {
+    const key = this.help.open;
+    const els = key && this.helpEls.get(key);
+    if (!els) return;
+    const btn = els.btn.getBoundingClientRect();
+    const panel = this.groups.getBoundingClientRect();
+    if (btn.bottom <= panel.top || btn.top >= panel.bottom) this.help.close();
+    else placeTip(els.btn, els.tip);
+  }
+
   private render(): void {
     this.stale = false;
+    this.help.reset();
+    this.helpEls.clear();
     clear(this.groups);
     const all = this.index.allCounts(this.sel, this.query);
     for (const key of FACET_KEYS) {
@@ -142,7 +215,7 @@ export class FilterBar {
         b.addEventListener('click', () => this.toggleValue(key, value));
         return b;
       });
-      this.groups.appendChild(h('div', { class: 'facet' }, h('div', { class: 'facet-name' }, FACET_LABELS[key]), h('div', { class: 'opts' }, opts)));
+      this.groups.appendChild(h('div', { class: 'facet' }, h('div', { class: 'facet-name' }, FACET_LABELS[key], this.helpFor(key)), h('div', { class: 'opts' }, opts)));
     }
   }
 
