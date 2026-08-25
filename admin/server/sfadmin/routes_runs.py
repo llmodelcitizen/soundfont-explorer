@@ -113,3 +113,5 @@ def finish(rid: str) -> dict:
         return _mgr().finish(rid)
     except KeyError:
         raise HTTPException(404, f"no run {rid}") from None
+    except RuntimeError as e:  # already being finished
+        raise HTTPException(409, str(e)) from e

@@ -51,6 +51,8 @@ class RunManager:
         self.lock = threading.RLock()
         self.runs: dict[str, dict] = {}
         self._watching: set[str] = set()
+        self._finishing: set[str] = set()      # runs whose finisher is rebuilding songs.json
+        self._finish_lock = threading.Lock()   # one songs.json rebuild at a time
         self._loaded = False
         threading.Thread(target=self._reconcile_loop, name="run-reconciler", daemon=True).start()
 
@@ -93,7 +95,17 @@ class RunManager:
             return self.runs[rid]
 
     def active(self) -> dict | None:
-        return next((r for r in self.list() if r["state"] not in TERMINAL), None)
+        """The run holding the single-writer resources: a live one, or a terminal one whose
+        finisher is still rebuilding songs.json — a new submit, a Published-tab remove/prune
+        or rebuild must wait for that too, or two writers race on songs.json (#19)."""
+        with self.lock:
+            finishing = set(self._finishing)
+        return next((r for r in self.list()
+                     if r["state"] not in TERMINAL or r["run_id"] in finishing), None)
+
+    def finishing(self, rid: str) -> bool:
+        with self.lock:
+            return rid in self._finishing
 
     # ------------------------------------------------------------ plan + submit
 
@@ -125,8 +137,10 @@ class RunManager:
                variants: int | None = None) -> dict:
         if not self.cfg.render_enabled:
             raise RuntimeError("render fleet is not deployed (empty render config)")
-        if self.active():
-            raise RuntimeError(f"run {self.active()['run_id']} is still {self.active()['state']}")
+        cur = self.active()
+        if cur:
+            phase = "finishing (indexing what it published)" if cur["state"] in TERMINAL else cur["state"]
+            raise RuntimeError(f"run {cur['run_id']} is still {phase}")
         est = self.plan(songs, shards, variants, engines, limit)
         if est["usd"] > max_usd:
             raise ValueError(f"estimate ${est['usd']:.2f} exceeds max ${max_usd:.2f} — raise it deliberately")
@@ -232,7 +246,10 @@ class RunManager:
                     break
                 time.sleep(POLL_S)
             self._sleep_fleet(rec)
-            self.finish(rid)
+            try:
+                self.finish(rid)
+            except RuntimeError:
+                pass  # a manual "Run finisher" is already indexing this run
         finally:
             with self.lock:
                 self._watching.discard(rid)
@@ -314,16 +331,28 @@ class RunManager:
     # ------------------------------------------------------------ finisher
 
     def finish(self, rid: str) -> dict:
-        """Index what the shards published: rebuild + publish songs.json. Idempotent."""
+        """Index what the shards published: rebuild + publish songs.json. Idempotent, never
+        concurrent: the watcher's finish and a click on "Run finisher" (shown while the
+        finisher has not reported yet) used to rewrite out/public/songs.json and the S3 key
+        side by side (#19). A second call for a run being finished raises RuntimeError."""
         from . import publishops
         rec = self.get(rid)
+        with self.lock:
+            if rid in self._finishing:
+                raise RuntimeError(f"the finisher for run {rid} is already running")
+            self._finishing.add(rid)
         try:
-            publishops.sync_down()
-            publishops.rebuild_and_publish()
-            rec["finisher"] = {"ran_at": _now(), "songs_json_published": True, "error": None}
-        except Exception as e:
-            rec["finisher"] = {"ran_at": _now(), "songs_json_published": False, "error": str(e)}
-        self._put(rec)
+            with self._finish_lock:
+                try:
+                    publishops.sync_down()
+                    publishops.rebuild_and_publish()
+                    rec["finisher"] = {"ran_at": _now(), "songs_json_published": True, "error": None}
+                except Exception as e:
+                    rec["finisher"] = {"ran_at": _now(), "songs_json_published": False, "error": str(e)}
+                self._put(rec)
+        finally:
+            with self.lock:
+                self._finishing.discard(rid)
         return rec
 
     # ------------------------------------------------------------ control

@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
@@ -36,6 +37,8 @@ class FakeManager(renders.RunManager):
         self.lock = threading.RLock()
         self.runs: dict = {}
         self._watching: set = set()
+        self._finishing: set = set()
+        self._finish_lock = threading.Lock()
         self._loaded = True
         self.puts: list = []
         self.slept: list = []
@@ -48,6 +51,73 @@ class FakeManager(renders.RunManager):
 
     def _scan_published(self, rec):
         pass
+
+
+def run_record(rid: str, state: str, **kw) -> dict:
+    rec = {"schema": 1, "run_id": rid, "state": state, "songs": ["a"], "shards": [],
+           "knobs": {}, "estimate": {}, "batch_job_id": "job-1",
+           "submitted_at": "2026-08-24T00:00:00Z", "finished_at": None,
+           "status_summary": {}, "published_sets": {},
+           "instance_types_before": None, "instance_types_restored": True,
+           "finisher": {"ran_at": None, "songs_json_published": False, "error": None}}
+    rec.update(kw)
+    return rec
+
+
+class FinisherTests(unittest.TestCase):
+    """finish() is single-writer and a finishing run still counts as active (#19)."""
+
+    def setUp(self):
+        from sfadmin import publishops
+        self.m = FakeManager()
+        self.m.runs["r1"] = run_record("r1", "succeeded", finished_at="2026-08-24T01:00:00Z")
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.rebuilds = 0
+
+        def sync_down():
+            self.entered.set()
+            self.release.wait(5)
+
+        def rebuild_and_publish():
+            self.rebuilds += 1
+            return {}
+
+        for name, fn in (("sync_down", sync_down), ("rebuild_and_publish", rebuild_and_publish)):
+            patcher = unittest.mock.patch.object(publishops, name, fn)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_finishing_run_is_active_and_a_second_finish_is_refused(self):
+        self.assertIsNone(self.m.active())                      # terminal, nothing running
+        t = threading.Thread(target=self.m.finish, args=("r1",))
+        t.start()
+        self.assertTrue(self.entered.wait(5))
+        self.assertEqual(self.m.active()["run_id"], "r1")       # finishing ⇒ still active
+        self.assertTrue(self.m.finishing("r1"))
+        with self.assertRaises(RuntimeError):
+            self.m.finish("r1")                                 # no concurrent rewrite
+        with self.assertRaises(RuntimeError) as cm:
+            self.m.submit(["a"], 1, 60.0)                       # and no new run meanwhile
+        self.assertIn("finishing", str(cm.exception))
+        self.release.set()
+        t.join(5)
+        self.assertEqual(self.rebuilds, 1)
+        self.assertIsNone(self.m.active())
+        self.assertFalse(self.m.finishing("r1"))
+        self.assertTrue(self.m.runs["r1"]["finisher"]["songs_json_published"])
+        self.assertEqual(self.m.puts[-1]["finisher"]["error"], None)
+
+    def test_finisher_error_is_recorded_and_the_slot_freed(self):
+        from sfadmin import publishops
+        self.release.set()
+        with unittest.mock.patch.object(publishops, "rebuild_and_publish",
+                                        side_effect=RuntimeError("manifest failed")):
+            rec = self.m.finish("r1")
+        self.assertEqual(rec["finisher"]["error"], "manifest failed")
+        self.assertFalse(rec["finisher"]["songs_json_published"])
+        self.assertFalse(self.m.finishing("r1"))
+        self.assertIsNone(self.m.active())
 
 
 def write_repo(root: str) -> None:
