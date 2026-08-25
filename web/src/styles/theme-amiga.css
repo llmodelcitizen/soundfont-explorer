@@ -332,9 +332,16 @@
 /* The settings window keeps ~20 px more room below its last section than the base layout, with
    the closing buttons centred in it: 29 px above them to the "reset font" row (the section's
    14 px bottom margin collapses into this margin) and the same 29 px below them to the bottom
-   window edge — 28 px of padding plus the window's own 1 px border. */
+   window edge — 28 px of padding plus the window's own 1 px border.
+   The overlay centres its box, so those 21 px would otherwise appear half above the window: an
+   equal top margin holds the top edge where it was and puts all of the new room at the bottom.
+   The margin counts against the space the box is centred in, so the height cap gives the same
+   21 px back — on a short viewport the window scrolls instead of hanging off the bottom. */
 [data-theme='amiga'] .settings {
   padding-bottom: 28px;
+  margin-top: 21px;
+  max-height: calc(100vh - 45px);
+  max-height: calc(100dvh - 45px);
 }
 [data-theme='amiga'] .settings .footrow {
   margin-top: 29px;
