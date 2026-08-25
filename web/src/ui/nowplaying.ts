@@ -4,6 +4,11 @@ import type { SetDoc } from '../contracts/set';
 import { songTitle, type SongEntry } from '../contracts/songs';
 import { clear, fmtBytes, h, setPressed } from './dom';
 
+/** Downloads are off; the disabled button's tooltip is the whole explanation the listener gets. */
+export function downloadButton(): HTMLButtonElement {
+  return h('button', { class: 'btn', type: 'button', disabled: true, title: 'Downloads are not available for this session' }, '⤓ download') as HTMLButtonElement;
+}
+
 export interface NowPlayingActions {
   isFavorite(id: string): boolean;
   toggleFavorite(id: string): boolean;
@@ -50,8 +55,7 @@ export class NowPlaying {
       this.paintFav(fav, id);
       fav.blur();
     });
-    const dl = h('button', { class: 'btn', type: 'button', disabled: true, title: 'downloads are coming in a later release' }, '⤓ download') as HTMLButtonElement;
-    return h('div', { class: 'np-actions' }, fav, dl);
+    return h('div', { class: 'np-actions' }, fav, downloadButton());
   }
 
   refreshFavorite(id: string): void {
