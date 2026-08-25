@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, loadPrefs, sanitizeLedger } from '../../src/state/prefs';
+import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, applyPreservePreference, bootPosition, loadPrefs, sanitizeLedger, urlPosition } from '../../src/state/prefs';
 
 describe('prefs + listened ledger', () => {
   it('defaults without localStorage', () => {
@@ -26,6 +26,39 @@ describe('prefs + listened ledger', () => {
   });
 });
 
+describe('prefs: stored shape', () => {
+  /** run fn with a localStorage stub holding `items` (node has no localStorage at all) */
+  function withPrefs(raw: string, fn: () => void): void {
+    const g = globalThis as { localStorage?: unknown };
+    g.localStorage = { getItem: (k: string) => (k === 'sfp.prefs.v1' ? raw : null), setItem: () => undefined, removeItem: () => undefined };
+    try {
+      fn();
+    } finally {
+      delete g.localStorage;
+    }
+  }
+
+  it('steps to the next track by default', () => {
+    expect(DEFAULT_PREFS.autoNextTrack).toBe(true);
+  });
+
+  it('gives a pre-existing prefs object the automatic-stepping default', () => {
+    // exactly what a browser that last ran the previous build has stored
+    withPrefs(JSON.stringify({ listenedAfterS: 4, preserveTrackPosition: false, columns: ['chip'], mobileColumns: ['chip'] }), () => {
+      const p = loadPrefs();
+      expect(p.autoNextTrack).toBe(true);
+      expect(p.listenedAfterS).toBe(4);
+      expect(p.preserveTrackPosition).toBe(false);
+      expect(p.columns).toEqual(['chip']);
+    });
+  });
+
+  it('keeps a stored choice and ignores a non-boolean one', () => {
+    withPrefs(JSON.stringify({ autoNextTrack: false }), () => expect(loadPrefs().autoNextTrack).toBe(false));
+    withPrefs(JSON.stringify({ autoNextTrack: 'no' }), () => expect(loadPrefs().autoNextTrack).toBe(true));
+  });
+});
+
 describe('per-track positions', () => {
   it('starts unseen tracks at zero and recalls each visited track independently', () => {
     const positions = new TrackPositions();
@@ -42,6 +75,57 @@ describe('per-track positions', () => {
     positions.remember('one', 12.5);
     positions.clear();
     expect(positions.recall('one')).toBe(0);
+  });
+});
+
+describe('changing "preserve track position"', () => {
+  /** a TrackPositions with two visited tracks, plus a spy for the URL's saved position */
+  const scenario = () => {
+    const positions = new TrackPositions();
+    positions.remember('one', 12.5);
+    positions.remember('two', 47);
+    let syncs = 0;
+    return { positions, sync: () => { syncs += 1; }, synced: () => syncs };
+  };
+
+  it('zeroes every remembered position, not just future ones, and drops the URL position', () => {
+    const s = scenario();
+    applyPreservePreference(true, false, s.positions, s.sync);
+    expect(s.positions.recall('one')).toBe(0);
+    expect(s.positions.recall('two')).toBe(0);
+    expect(s.synced()).toBe(1);
+  });
+
+  // the symmetric case: nothing to clear, but the URL must carry a position again or a reload
+  // straight after re-enabling the option would start the audible track from zero
+  it('puts the URL position back when the option goes on again', () => {
+    const s = scenario();
+    applyPreservePreference(false, true, s.positions, s.sync);
+    expect(s.synced()).toBe(1);
+    expect(s.positions.recall('one')).toBe(12.5);
+  });
+
+  it('does nothing at all when the option did not change', () => {
+    for (const both of [true, false]) {
+      const s = scenario();
+      applyPreservePreference(both, both, s.positions, s.sync);
+      expect(s.positions.recall('one')).toBe(12.5);
+      expect(s.synced()).toBe(0);
+    }
+  });
+});
+
+describe('which position survives a reload', () => {
+  it('restores a shared or bookmarked t= only while positions are preserved', () => {
+    expect(bootPosition(true, 90)).toBe(90);
+    expect(bootPosition(true, undefined)).toBe(0);
+    expect(bootPosition(false, 90)).toBe(0);
+  });
+
+  it('writes no position for a track that ran to its end, or when positions are not preserved', () => {
+    expect(urlPosition(true, false, 188)).toBe(188);
+    expect(urlPosition(true, true, 188)).toBeUndefined();
+    expect(urlPosition(false, false, 188)).toBeUndefined();
   });
 });
 

@@ -372,6 +372,34 @@
 [data-theme='amiga'] input[type='range'] {
   accent-color: #f08000;
 }
+/* The settings window keeps ~20 px more room below its last section than the base layout, with
+   the closing buttons centred in it: 29 px above them to the "reset font" row (the section's
+   14 px bottom margin collapses into this margin) and the same 29 px below them to the bottom
+   window edge — 28 px of padding plus the window's own 1 px border.
+   The overlay centres its box, so those 21 px would otherwise appear half above the window: an
+   equal top margin holds the top edge where it was and puts all of the new room at the bottom.
+   The margin counts against the space the box is centred in, so the height cap gives the same
+   21 px back — on a short viewport the window scrolls instead of hanging off the bottom. */
+[data-theme='amiga'] .settings {
+  padding-bottom: 28px;
+  margin-top: 21px;
+  max-height: calc(100vh - 45px);
+  max-height: calc(100dvh - 45px);
+}
+[data-theme='amiga'] .settings .footrow {
+  margin-top: 29px;
+}
+/* ● is not in Topaz, so it arrives from the fallback face on that face's own metrics: its ink
+   sits 3.5 px above the baseline at 14 px where Topaz's tall parentheses centre on 8.5 px, which
+   is why the dot reads as level with the bottom of the brackets. Lift it by the difference.
+   The 5 px is measured against the face this stack's own `monospace` resolves to (DejaVu Sans
+   Mono); a platform whose ● comes from another face may want a pixel more or less, which is why
+   scripts/geometry.mjs measures the ink of the faces the page really resolved rather than reading
+   this number back: on such a platform the check fails and asks for the value it wants here. */
+[data-theme='amiga'] .settings .listened-glyph {
+  position: relative;
+  top: -5px;
+}
 /* The ♥ / ● column toggles come from fallback glyphs: full-size, centred on their checkbox. */
 [data-theme='amiga'] .settings .col-fav,
 [data-theme='amiga'] .settings .col-dot {

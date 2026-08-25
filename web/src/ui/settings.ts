@@ -2,6 +2,7 @@
 import { clear, h } from './dom';
 import { DEFAULT_PREFS, type Prefs } from '../state/prefs';
 import { COLUMNS, columnTitle } from './columns';
+import { AUTO_NEXT_TIP, PRESERVE_TIP } from './tracklist';
 import { isCompact } from '../config';
 import { clearAllSiteData } from '../state/wipe';
 
@@ -63,6 +64,16 @@ export class SettingsModal {
     };
     input.addEventListener('change', () => commit(Number(input.value)));
     range.addEventListener('input', () => commit(Number(range.value)));
+    // Both track options live here at every window size; the Tracks caption only shows them when it fits.
+    const flag = (key: 'autoNextTrack' | 'preserveTrackPosition', label: string, title: string): HTMLElement => {
+      const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
+      box.checked = this.prefs[key];
+      box.addEventListener('change', () => {
+        this.prefs = { ...this.prefs, [key]: box.checked };
+        this.cb.onChange(this.prefs);
+      });
+      return h('label', { class: 'preserve', title }, box, ` ${label}`);
+    };
     const resetTrack = h('button', { class: 'btn', type: 'button' }, `reset for this track`);
     resetTrack.addEventListener('click', () => this.cb.onResetTrack());
     const resetAll = h('button', { class: 'btn', type: 'button' }, 'reset for all tracks');
@@ -89,10 +100,21 @@ export class SettingsModal {
       h(
         'section',
         { class: 'setting' },
-        h('label', null, 'Mark a variant as listened (●) after ', input, ' s of playback'),
+        h('label', null, 'Mark a variant as listened (', h('span', { class: 'listened-glyph' }, '●'), ') after ', input, ' s of playback'),
         range,
         h('div', { class: 'btnrow' }, resetTrack, resetAll),
         h('p', { class: 'muted small' }, `current track: ${this.cb.trackTitle()}`),
+      ),
+      h(
+        'section',
+        { class: 'setting' },
+        h('div', { class: 'setting-title' }, 'Tracks'),
+        h(
+          'div',
+          { class: 'trackopts' },
+          flag('autoNextTrack', 'Automatically step to next track', AUTO_NEXT_TIP),
+          flag('preserveTrackPosition', 'Preserve track position', PRESERVE_TIP),
+        ),
       ),
       h(
         'section',
@@ -119,7 +141,7 @@ export class SettingsModal {
         h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order — # restores it in one click.')),
         h('div', { class: 'btnrow colfoot fontfoot' }, resetFont, h('span', { class: 'muted small' }, 'Click or tap the title bar to cycle font selection (modern theme only)')),
       ),
-      h('div', { class: 'btnrow' }, close, wipe),
+      h('div', { class: 'btnrow footrow' }, close, wipe),
     );
   }
 }

@@ -26,9 +26,10 @@ import { VariantList } from './list';
 import { nextSort, sortIds, visibleColumns, type CellContext, type ColKey, type SortState } from './columns';
 import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
-import { adjacentTrackId, TrackList } from './tracklist';
+import { adjacentTrackId, autoAdvanceTarget, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
-import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
+import { captureFocus, restoreFocus, type FocusMemento } from './focus';
+import { Favorites, ListenedLedger, TrackPositions, applyPreservePreference, bootPosition, loadPrefs, savePrefs, urlPosition, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
 import { audioSession, createContext, installResumeOnGesture, unlock } from '../audio/unlock';
@@ -80,11 +81,16 @@ export class App {
   private ledger = new ListenedLedger();
   private settings = new SettingsModal(this.prefs, {
     onChange: (p) => {
-      if (this.prefs.preserveTrackPosition && !p.preserveTrackPosition) this.trackPositions.clear();
+      const wasPreserving = this.prefs.preserveTrackPosition;
+      // the URL is rewritten from `this.prefs`: adopt the new preference before reacting to it
       this.prefs = p;
       savePrefs(p);
+      applyPreservePreference(wasPreserving, p.preserveTrackPosition, this.trackPositions, () => this.syncUrlPosition());
       this.refreshListened();
-      if (this.tracks) this.tracks.preserveBox.checked = p.preserveTrackPosition;
+      if (this.tracks) {
+        this.tracks.autoNextBox.checked = p.autoNextTrack;
+        this.tracks.preserveBox.checked = p.preserveTrackPosition;
+      }
       // the 'listened after' slider fires this on every tick: rebuild the rows only when the column set changed
       const cols = this.effectiveColumns();
       if (this.list && !sameKeys(this.list.columns, visibleColumns(cols).map((c) => c.key))) {
@@ -104,6 +110,7 @@ export class App {
       this.modernFontId = clearModernFontPreference();
       applyModernFont(this.modernFontId);
       this.syncFontCycler();
+      if (this.tracks) this.tracks.refit();
     },
     trackTitle: () => this.song?.title ?? '',
   });
@@ -134,6 +141,8 @@ export class App {
   private header!: HTMLElement;
   private title!: HTMLElement;
   private uninstallKeys: (() => void) | null = null;
+  /** ticket of the newest song switch: an older one that finishes later must not rebuild over it */
+  private loadSeq = 0;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -175,7 +184,9 @@ export class App {
     }
     this.catalog = catalog.value;
     this.installGlobalListeners();
-    await this.loadSong(songId, { setDoc: set.value, variant: this.url.variant, t: this.url.t });
+    // a shared or bookmarked `t=` is a saved position like any other: it only restores while the
+    // user preserves positions, otherwise the track they open starts at the beginning
+    await this.loadSong(songId, { setDoc: set.value, variant: this.url.variant, t: bootPosition(this.prefs.preserveTrackPosition, this.url.t) });
     this.tickUi();
     this.onHashChange();
   }
@@ -248,36 +259,49 @@ export class App {
 
   // ---------------------------------------------------------------- song lifecycle
 
-  /** switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor */
-  private switchSong(id: string): void {
-    const stopped = this.stoppedByUser || this.engine.status.kind === 'stopped' || this.engine.status.kind === 'ended';
+  /**
+   * Switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor.
+   * `auto` marks the one switch the user did not ask for — automatic next-track stepping — which
+   * must keep playing and must not take the keyboard away from whatever the user was typing in.
+   */
+  private switchSong(id: string, opts: { play?: boolean; auto?: boolean } = {}): void {
+    const ended = this.engine.status.kind === 'ended';
+    const stopped = this.stoppedByUser || this.engine.status.kind === 'stopped' || ended;
     if (id !== this.song.id && stopped) this.playOnRenderClick = true;
     this.trackScrollTop = this.tracks?.scrollTop ?? this.trackScrollTop;
     this.ledger.flush();
     const preserve = this.prefs.preserveTrackPosition;
-    if (preserve) this.trackPositions.remember(this.song.id, this.engine.position());
+    // a track that ran to its end has no position left to resume from: play() would restart it anyway
+    if (preserve) this.trackPositions.remember(this.song.id, ended ? 0 : this.engine.position());
     const position = preserve ? this.trackPositions.recall(id) : 0;
-    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined, t: position });
+    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined, t: position, play: opts.play, auto: opts.auto });
   }
 
   /** `setDoc`: the set boot() already fetched; later switches fetch their own */
-  private async loadSong(id: string, opts: { setDoc?: SetDoc; variant?: string; t?: number; keepIndex?: number }): Promise<void> {
+  private async loadSong(id: string, opts: { setDoc?: SetDoc; variant?: string; t?: number; keepIndex?: number; play?: boolean; auto?: boolean }): Promise<void> {
     const entry = this.songs.songs.find((s) => s.id === id);
     if (!entry) return;
+    // Two switches can be in flight at once now that one of them starts by itself: the automatic
+    // step's fetch, and a track the user picks while it is still loading. The newest one asked
+    // for wins, whichever set document arrives first.
+    const seq = ++this.loadSeq;
     let set = opts.setDoc;
     if (!set) {
       try {
         set = parseSet(await getJson(entry.set));
       } catch (e) {
+        if (seq !== this.loadSeq) return;
         // keep playing the current song; tell the user
         this.transport.setStatus(`could not load ${entry.title}: ${(e as Error).message}`, 'wontload');
         this.picker.set(this.song.id);
         return;
       }
     }
+    if (seq !== this.loadSeq) return;
     // Boot honors the URL position; later switches pass this track's own saved position (or zero).
     const targetPos = opts.t ?? 0;
-    const wasPlaying = this.engine ? this.engine.playing : false;
+    // `play` forces playback on the new song: the auto-step happens after the old one has ended (not playing)
+    const wasPlaying = opts.play ?? (this.engine ? this.engine.playing : false);
     const prevFilters = this.filters ? this.filters.sel : (this.url.filters ?? { completeness: new Set(['full_gm']) });
     const prevQuery = this.filters ? this.filters.query : (this.url.q ?? '');
     const loop = this.engine ? this.engine.timeline.loop : !!this.url.loop;
@@ -295,7 +319,7 @@ export class App {
     this.engine.setVolume(volume);
     this.engine.setMuted(muted);
     this.index = new FilterIndex(set.order, this.catalog);
-    this.buildUi(prevFilters, prevQuery);
+    this.buildUi(prevFilters, prevQuery, opts.auto === true);
     // choose the variant: requested id → nearest index → default → first
     let target: string | undefined = opts.variant && set.variants[opts.variant] ? opts.variant : undefined;
     if (!target && opts.keepIndex !== undefined) target = this.visible[Math.min(opts.keepIndex, this.visible.length - 1)];
@@ -316,9 +340,15 @@ export class App {
     this.syncUrl(true);
   }
 
-  private buildUi(sel: Selection, query: string): void {
+  /** `keepFocus`: this rebuild was not asked for (automatic stepping) — hand the keyboard back afterwards */
+  private buildUi(sel: Selection, query: string, keepFocus = false): void {
     if (this.uninstallKeys) this.uninstallKeys();
     this.filters?.dispose(); // the old bar's document-level help listeners go with its DOM
+    // every song switch builds a new TrackList: drop the old one's resize/font observers with it
+    if (this.tracks) this.tracks.dispose();
+    // clear() destroys whatever holds the keyboard, and from <body> every letter is a shortcut:
+    // remember where focus was so the freshly built control in the same place can take it back
+    const focus: FocusMemento | null = keepFocus ? captureFocus(this.root, document.activeElement) : null;
     clear(this.root);
     // the new FilterBar starts closed: a `filters-open` left over from the previous song would
     // keep Now Playing hidden on phones (and the scrim it pointed at is gone with the old root)
@@ -445,12 +475,23 @@ export class App {
     );
     this.syncFontCycler();
     this.tracks = new TrackList(this.songs.songs, this.song.id, (id) => this.switchSong(id), {
-      value: this.prefs.preserveTrackPosition,
-      onChange: (v) => {
-        if (!v) this.trackPositions.clear();
-        this.prefs = { ...this.prefs, preserveTrackPosition: v };
-        savePrefs(this.prefs);
-        this.settings.setPrefs(this.prefs);
+      autoNext: {
+        value: this.prefs.autoNextTrack,
+        onChange: (v) => {
+          this.prefs = { ...this.prefs, autoNextTrack: v };
+          savePrefs(this.prefs);
+          this.settings.setPrefs(this.prefs);
+        },
+      },
+      preserve: {
+        value: this.prefs.preserveTrackPosition,
+        onChange: (v) => {
+          const wasPreserving = this.prefs.preserveTrackPosition;
+          this.prefs = { ...this.prefs, preserveTrackPosition: v };
+          savePrefs(this.prefs);
+          applyPreservePreference(wasPreserving, v, this.trackPositions, () => this.syncUrlPosition());
+          this.settings.setPrefs(this.prefs);
+        },
       },
     });
     this.rightPane = h('section', { class: 'right' }, this.tracks.el, this.splitHandle(), this.nowPlaying.el);
@@ -525,6 +566,14 @@ export class App {
         this.stoppedByUser = false;
       }
       this.onStatus(s);
+      if (s.kind === 'ended') {
+        // a track that ran to its end has no position left to resume from: zero the saved one and
+        // drop the `t=` the last seek left in the URL, so a reload does not land 2 s from the end
+        if (this.prefs.preserveTrackPosition) this.trackPositions.remember(this.song.id, 0);
+        this.syncUrl(true);
+      }
+      const next = autoAdvanceTarget(this.songs.songs, this.song.id, s.kind, { loop: this.engine.timeline.loop, autoNext: this.prefs.autoNextTrack });
+      if (next) this.switchSong(next, { play: true, auto: true });
     });
     this.engine.on('audible', (v) => {
       this.list.setAudible(v);
@@ -535,6 +584,7 @@ export class App {
     this.engine.on('tier', (t: Tier | null) => this.nowPlaying.setTier(t));
     this.applyFilters(sel, query, true);
     if (this.creditsEl) this.root.appendChild(this.creditsEl); // keep the About page on top across song loads
+    restoreFocus(this.root, focus);
   }
 
   // ---- pane sizes: right-pane width (desktop/landscape) and Now Playing height (phone portrait) ----
@@ -783,6 +833,17 @@ export class App {
     return (isCompact() ? this.prefs.mobileColumns : this.prefs.columns) as ColKey[];
   }
 
+  /**
+   * Rewrite the one saved position no map holds: the `t=` a reload would resume from. Turning the
+   * preference off drops it at once so the URL agrees with the preference; turning it back on puts
+   * the audible position back, so a reload right afterwards resumes where the listener is. What is
+   * currently audible never moves — a checkbox must not yank the listener out of the track.
+   */
+  private syncUrlPosition(): void {
+    if (!this.engine) return;
+    this.syncUrl(true);
+  }
+
   private setLoop(on: boolean): void {
     this.engine.setLoop(on);
     this.transport.setLoop(this.engine.timeline.loop);
@@ -838,6 +899,8 @@ export class App {
     this.syncFontCycler();
     const sel = this.header.querySelector('.themepick') as HTMLSelectElement | null;
     if (sel) sel.value = t;
+    // the caption's box has not changed but its text has: Topaz is far wider than the Modern face
+    if (this.tracks) this.tracks.refit();
     this.syncUrl();
   }
 
@@ -847,6 +910,7 @@ export class App {
     applyModernFont(this.modernFontId);
     saveModernFont(this.modernFontId);
     this.syncFontCycler();
+    if (this.tracks) this.tracks.refit();
   }
 
   private syncFontCycler(): void {
@@ -879,7 +943,7 @@ export class App {
       writeUrl({
         song: this.song.id,
         variant: this.engine.audible ?? undefined,
-        t: this.engine.position(),
+        t: urlPosition(this.prefs.preserveTrackPosition, this.engine.status.kind === 'ended', this.engine.position()),
         filters: this.filters.sel,
         q: this.filters.query,
         theme: this.theme,

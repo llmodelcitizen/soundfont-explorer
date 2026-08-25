@@ -625,6 +625,10 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* the caption's nowrap content must not set this grid item's floor: without it the pane is
+     widened by the caption instead of the caption being narrowed by the pane, and the overflow
+     the Tracks caption measures itself against can never happen */
+  min-width: 0;
   background: var(--panel-2);
   padding: 8px 12px 0;
 }
@@ -632,6 +636,9 @@ select:focus-visible {
   margin-bottom: 0;
   /* fixed-height caption: flex-shrink must not crush it when the track list overflows */
   flex: none;
+  /* the caption's own overflow — what `cramped` measures — stays inside it, never over the rows
+     next to it, and is not painted for the frame between the first layout and the first measure */
+  overflow: hidden;
 }
 .track-rows {
   overflow: auto;
@@ -762,6 +769,25 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+/* Tracks caption: both options spelled out when they fit, shortened when they nearly fit, neither
+   when they do not (Settings always carries both, in full, at every window size) */
+.track-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+.np-head .lbl-short {
+  display: none;
+}
+.np-head.short .lbl-full {
+  display: none;
+}
+.np-head.short .lbl-short {
+  display: inline;
+}
+.np-head.cramped .track-toggles {
+  display: none;
 }
 .preserve input {
   accent-color: var(--accent);
@@ -1014,6 +1040,16 @@ kbd {
   letter-spacing: 0.08em;
   color: var(--fg-dim);
   margin-bottom: 6px;
+}
+.settings .trackopts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 8px;
+}
+.settings .trackopts label {
+  display: inline-flex;
+  margin-bottom: 0;
 }
 .settings .colgrid {
   display: grid;
