@@ -28,6 +28,7 @@ import { NowPlaying } from './nowplaying';
 import { SongPicker } from './songpicker';
 import { adjacentTrackId, autoAdvanceTarget, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
+import { captureFocus, restoreFocus, type FocusMemento } from './focus';
 import { Favorites, ListenedLedger, TrackPositions, applyPreservePreference, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
@@ -254,8 +255,12 @@ export class App {
 
   // ---------------------------------------------------------------- song lifecycle
 
-  /** switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor */
-  private switchSong(id: string, opts: { play?: boolean } = {}): void {
+  /**
+   * Switch to another song (picker, track list, [ / ]) keeping the audible variant and the cursor.
+   * `auto` marks the one switch the user did not ask for — automatic next-track stepping — which
+   * must keep playing and must not take the keyboard away from whatever the user was typing in.
+   */
+  private switchSong(id: string, opts: { play?: boolean; auto?: boolean } = {}): void {
     const ended = this.engine.status.kind === 'ended';
     const stopped = this.stoppedByUser || this.engine.status.kind === 'stopped' || ended;
     if (id !== this.song.id && stopped) this.playOnRenderClick = true;
@@ -265,11 +270,11 @@ export class App {
     // a track that ran to its end has no position left to resume from: play() would restart it anyway
     if (preserve) this.trackPositions.remember(this.song.id, ended ? 0 : this.engine.position());
     const position = preserve ? this.trackPositions.recall(id) : 0;
-    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined, t: position, play: opts.play });
+    void this.loadSong(id, { keepIndex: this.cursor, variant: this.engine.audible ?? undefined, t: position, play: opts.play, auto: opts.auto });
   }
 
   /** `setDoc`: the set boot() already fetched; later switches fetch their own */
-  private async loadSong(id: string, opts: { setDoc?: SetDoc; variant?: string; t?: number; keepIndex?: number; play?: boolean }): Promise<void> {
+  private async loadSong(id: string, opts: { setDoc?: SetDoc; variant?: string; t?: number; keepIndex?: number; play?: boolean; auto?: boolean }): Promise<void> {
     const entry = this.songs.songs.find((s) => s.id === id);
     if (!entry) return;
     let set = opts.setDoc;
@@ -304,7 +309,7 @@ export class App {
     this.engine.setVolume(volume);
     this.engine.setMuted(muted);
     this.index = new FilterIndex(set.order, this.catalog);
-    this.buildUi(prevFilters, prevQuery);
+    this.buildUi(prevFilters, prevQuery, opts.auto === true);
     // choose the variant: requested id → nearest index → default → first
     let target: string | undefined = opts.variant && set.variants[opts.variant] ? opts.variant : undefined;
     if (!target && opts.keepIndex !== undefined) target = this.visible[Math.min(opts.keepIndex, this.visible.length - 1)];
@@ -325,10 +330,14 @@ export class App {
     this.syncUrl(true);
   }
 
-  private buildUi(sel: Selection, query: string): void {
+  /** `keepFocus`: this rebuild was not asked for (automatic stepping) — hand the keyboard back afterwards */
+  private buildUi(sel: Selection, query: string, keepFocus = false): void {
     if (this.uninstallKeys) this.uninstallKeys();
     // every song switch builds a new TrackList: drop the old one's resize/font observers with it
     if (this.tracks) this.tracks.dispose();
+    // clear() destroys whatever holds the keyboard, and from <body> every letter is a shortcut:
+    // remember where focus was so the freshly built control in the same place can take it back
+    const focus: FocusMemento | null = keepFocus ? captureFocus(this.root, document.activeElement) : null;
     clear(this.root);
     // the new FilterBar starts closed: a `filters-open` left over from the previous song would
     // keep Now Playing hidden on phones (and the scrim it pointed at is gone with the old root)
@@ -547,7 +556,7 @@ export class App {
       }
       this.onStatus(s);
       const next = autoAdvanceTarget(this.songs.songs, this.song.id, s.kind, { loop: this.engine.timeline.loop, autoNext: this.prefs.autoNextTrack });
-      if (next) this.switchSong(next, { play: true });
+      if (next) this.switchSong(next, { play: true, auto: true });
     });
     this.engine.on('audible', (v) => {
       this.list.setAudible(v);
@@ -558,6 +567,7 @@ export class App {
     this.engine.on('tier', (t: Tier | null) => this.nowPlaying.setTier(t));
     this.applyFilters(sel, query, true);
     if (this.creditsEl) this.root.appendChild(this.creditsEl); // keep the About page on top across song loads
+    restoreFocus(this.root, focus);
   }
 
   // ---- pane sizes: right-pane width (desktop/landscape) and Now Playing height (phone portrait) ----
