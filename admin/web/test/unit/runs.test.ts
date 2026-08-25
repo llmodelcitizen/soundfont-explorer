@@ -59,6 +59,26 @@ describe('RunsView poll', () => {
     expect(ff.count('GET', '/api/runs')).toBe(2);
   });
 
+  it('does not arm a poll when stop() lands while load() is still fetching', async () => {
+    // The Renders tab calls load() without awaiting it and the other tabs call stop()
+    // synchronously, so a click-through during load()'s two round-trips used to leave a
+    // 5 s poll running forever against a detached tree.
+    let release: (() => void) | null = null;
+    const ff = new FakeFetch()
+      .on('GET', '/api/render/songs', () => new Promise((r) => {
+        release = () => r({ render_enabled: false, songs: [] });
+      }))
+      .on('GET', '/api/runs', () => ({ runs: [] }));
+    const v = mount(ff);
+    const p = v.load(); // the user clicks "Renders" and the songs GET hangs
+    await until(() => release !== null);
+    v.stop(); // ... then clicks "Library" before it answers
+    release!();
+    await p;
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(ff.count('GET', '/api/runs')).toBe(0); // nothing rendered, nothing polling
+  });
+
   it('polls every 5 s while shown, and load() resumes after stop()', async () => {
     const ff = api().on('GET', '/api/runs', () => ({ runs: [] }));
     const v = mount(ff);

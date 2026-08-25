@@ -60,6 +60,10 @@ export class RunsView {
   }
 
   async load(): Promise<void> {
+    // The shell shows this view with an un-awaited load() and leaves it with a synchronous
+    // stop(), so a tab switch can land during either round-trip below. Without the
+    // generation check, load() would go on to arm a poll for a view nobody is looking at.
+    const gen = this.pollGen;
     try {
       const doc = await get<{ render_enabled: boolean; missing_canon?: number; songs: RenderSong[] }>('/api/render/songs');
       this.songs = doc.songs;
@@ -70,7 +74,9 @@ export class RunsView {
         `render songs unavailable: ${(e as Error).message}`));
       return;
     }
+    if (gen !== this.pollGen) return;
     await this.render();
+    if (gen !== this.pollGen) return;
     this.poll();
   }
 
