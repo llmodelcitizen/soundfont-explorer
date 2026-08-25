@@ -35,6 +35,9 @@ jobs:
       - name: admin server tests
         if: hashFiles('admin/server/tests/**') != ''
         run: python3 -m unittest discover -s admin/server/tests -t admin/server -v
+      - name: render fleet watchdog tests
+        if: hashFiles('infra/modules/render-fleet/lambda/tests/**') != ''
+        run: python3 -m unittest discover -s infra/modules/render-fleet/lambda/tests -t infra/modules/render-fleet/lambda -v
 
   web:
     name: web unit tests
