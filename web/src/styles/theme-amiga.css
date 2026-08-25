@@ -341,7 +341,9 @@
 }
 /* ● is not in Topaz, so it arrives from the fallback face on that face's own metrics: its ink
    sits 3.5 px above the baseline at 14 px where Topaz's tall parentheses centre on 8.5 px, which
-   is why the dot reads as level with the bottom of the brackets. Lift it by the difference. */
+   is why the dot reads as level with the bottom of the brackets. Lift it by the difference.
+   The 5 px is measured against the face this stack's own `monospace` resolves to (DejaVu Sans
+   Mono); a platform whose ● comes from another face may want a pixel more or less. */
 [data-theme='amiga'] .settings .listened-glyph {
   position: relative;
   top: -5px;
