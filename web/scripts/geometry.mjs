@@ -406,6 +406,11 @@ async function measure(theme, viewport, label) {
     const scrollBox = settingsScroll?.getBoundingClientRect();
     const scrolls = !!settingsScroll && (settingsScroll.scrollHeight > settingsScroll.clientHeight + 0.5
       || (!!fontfootBox && !!scrollBox && fontfootBox.bottom > scrollBox.bottom - 0.5));
+    // Nothing in this window is meant to be read by scrolling sideways: the widest thing in it is
+    // the 'listened after' slider, which sets its own width. A few pixels are enough to put a
+    // horizontal scrollbar under the sections — and, the scroller being as tall as its content, a
+    // vertical one beside them. Overflow measured, not width: a wider window fixes neither.
+    const scrollsSideways = settingsScroll ? settingsScroll.scrollWidth - settingsScroll.clientWidth : 0;
     const footrow = closing.length && fontfootBox && box
       ? {
         above: Math.min(...closing.map((b) => b.top)) - fontfootBox.bottom,
@@ -416,6 +421,7 @@ async function measure(theme, viewport, label) {
     return {
       guidance,
       scrolls,
+      scrollsSideways,
       equalButtons: !!defaultsBox && !!resetBox && Math.abs(defaultsBox.width - resetBox.width) <= 0.5 && Math.abs(defaultsBox.height - resetBox.height) <= 0.5,
       resetBelow: !!defaultsBox && !!resetBox && resetBox.top >= defaultsBox.bottom,
       fitsViewport: !!box && box.top >= 0 && box.bottom <= innerHeight,
@@ -1060,6 +1066,7 @@ for (const [label, viewport] of Object.entries(viewports)) {
     if (snapshot.headerCenters.length > 1) assert(Math.max(...snapshot.headerCenters) - Math.min(...snapshot.headerCenters) <= 1, `${label}/${snapshot.theme}: header controls are not vertically centered`);
     assert(snapshot.settingsFontReset.guidance === 'Click or tap the title bar to cycle font selection (modern theme only)', `${label}/${snapshot.theme}: font guidance is missing: ${JSON.stringify(snapshot.settingsFontReset)}`);
     assert(snapshot.settingsFontReset.equalButtons && snapshot.settingsFontReset.resetBelow && snapshot.settingsFontReset.fitsViewport, `${label}/${snapshot.theme}: font reset row geometry is wrong: ${JSON.stringify(snapshot.settingsFontReset)}`);
+    assert(snapshot.settingsFontReset.scrollsSideways <= 0.5, `${label}/${snapshot.theme}: the settings window scrolls sideways by ${snapshot.settingsFontReset.scrollsSideways}px`);
     // The closing buttons sit centred in the room below the last section (#40, modern+amiga only:
     // win95 keeps the base layout, so a leak of either declaration shows up as changed numbers).
     const footrow = snapshot.settingsFontReset.footrow;

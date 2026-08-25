@@ -69,3 +69,13 @@
 [data-theme='modern'] .settings .footrow {
   margin-top: 29px;
 }
+/* Modern is the only theme that draws this window in the body's own 14px: win95 sets its labels
+   and captions to 11px, and the Amiga's Topaz is a smaller face at the same nominal size. That
+   made modern the tallest of the three settings windows and the only one to need a vertical
+   scrollbar on a laptop-height viewport. Half a point off the type is what it can lose: at 13px
+   the hinted ● of "listened (●)" snaps a pixel and a half below the centre of its parentheses in
+   five of the fourteen Modern faces, which is exactly what scripts/geometry.mjs measures (#41).
+   Nothing pinned moves — the room around the closing buttons (#40) is set in pixels, not ems. */
+[data-theme='modern'] .settings {
+  font-size: 13.5px;
+}
