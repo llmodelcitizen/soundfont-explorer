@@ -40,17 +40,20 @@ def ensure_zip(cache: str, updated_at: str | None, files: Iterable[tuple[str, st
     with _build_lock:
         if os.path.exists(out):
             os.utime(out)  # "handed out just now": keeps a build in another thread off it
-            return out
-        tmp = f"{out}.{os.getpid()}-{threading.get_ident()}.tmp"
-        try:
-            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-                for src, arcname in files:
-                    if os.path.exists(src):
-                        z.write(src, arcname)
-            os.replace(tmp, out)
-        finally:
-            if os.path.exists(tmp):
-                os.remove(tmp)
+        else:
+            tmp = f"{out}.{os.getpid()}-{threading.get_ident()}.tmp"
+            try:
+                with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+                    for src, arcname in files:
+                        if os.path.exists(src):
+                            z.write(src, arcname)
+                os.replace(tmp, out)
+            finally:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+        # on every hand-out, not just on a build: sweeping only after a build left the
+        # previous version's zip in the cache until the library next changed — for ever if
+        # it stopped changing, which doubled the old one-zip ceiling (#19)
         _sweep(cache, os.path.basename(out))
     return out
 

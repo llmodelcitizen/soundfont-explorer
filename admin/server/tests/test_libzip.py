@@ -85,6 +85,18 @@ class EnsureZipTests(unittest.TestCase):
         libzip.ensure_zip(self.cache, "v3", self.files)
         self.assertFalse(os.path.exists(v1))
 
+    def test_a_hand_out_sweeps_the_previous_version(self):
+        """The sweep only ran on a build, so the version before the current one survived
+        until the library next changed — indefinitely if it stopped changing. The old code
+        kept exactly one whole-library zip in the cache dir; keep that ceiling (#19)."""
+        v1 = libzip.ensure_zip(self.cache, "v1", self.files)
+        v2 = libzip.ensure_zip(self.cache, "v2", self.files)
+        os.utime(v1, (0, 0))                     # nobody has asked for v1 in a long time
+        self.assertTrue(os.path.exists(v1))      # ... but no build has happened since
+        self.assertEqual(libzip.ensure_zip(self.cache, "v2", []), v2)   # a plain hand-out
+        self.assertFalse(os.path.exists(v1))
+        self.check(v2)
+
     def test_a_temp_left_by_a_killed_build_is_swept(self):
         """The in-process finally covers a normal failure, but a process killed mid-build
         (an sfadmin restart) leaves `<out>.<pid>-<tid>.tmp` behind, and the sweep only
