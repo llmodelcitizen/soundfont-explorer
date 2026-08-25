@@ -55,7 +55,7 @@ jobs:
       - run: npm run build --if-present
 
   admin-web:
-    name: admin web build
+    name: admin web unit tests + build
     runs-on: ubuntu-latest
     defaults:
       run:
