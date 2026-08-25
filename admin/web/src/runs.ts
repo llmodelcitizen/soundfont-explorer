@@ -92,7 +92,12 @@ export class RunsView {
   }
 
   private poll(): void {
-    this.stop();
+    // Clear the armed timer directly rather than through stop(): stop() also bumps pollGen,
+    // and a re-arm that bumps it invalidates a load() that is still fetching — re-clicking
+    // the already-active Renders tab starts exactly that, and the render was then skipped,
+    // leaving a stale submit form and canon-stale notice on screen. Only leaving the view
+    // (stop()) may cancel a generation.
+    if (this.timer !== null) clearTimeout(this.timer);
     const gen = this.pollGen;
     this.timer = window.setTimeout(async () => {
       this.timer = null;

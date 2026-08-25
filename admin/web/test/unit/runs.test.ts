@@ -93,6 +93,30 @@ describe('RunsView poll', () => {
     expect(ff.count('GET', '/api/runs')).toBe(6); // the load itself plus one tick — never two loops
   });
 
+  it('renders a load() that overlaps an armed tick', async () => {
+    // main.ts shows the Renders tab without stop()ing first, so re-clicking the already
+    // active tab starts load() with the 5 s timer still armed. The tick re-armed through
+    // stop(), which bumps pollGen, and load() then skipped its render: songs/renderEnabled
+    // were updated but the submit form and the canon-stale notice stayed on screen stale,
+    // with nothing to say the refresh had been dropped.
+    const song = (id: string, title: string) => ({ id, title, path: 'a', duration_s: 10 });
+    let release: ((v: unknown) => void) | null = null;
+    const ff: FakeFetch = new FakeFetch() // annotated: the handler below refers to `ff`
+      .on('GET', '/api/render/songs', () => (ff.count('GET', '/api/render/songs') === 1
+        ? { render_enabled: true, songs: [song('s1', 'first song')] }
+        : new Promise((r) => { release = r; })))
+      .on('GET', '/api/runs', () => ({ runs: [] }));
+    const v = mount(ff);
+    await v.load();
+    const p = v.load(); // the re-click, whose songs GET outlives the armed tick
+    await until(() => release !== null);
+    await vi.advanceTimersByTimeAsync(5000);
+    release!({ render_enabled: true, songs: [song('s1', 'first song'), song('s2', 'new song')] });
+    await p;
+    const picks = [...v.root.querySelectorAll('.pick')].map((n) => n.textContent?.trim());
+    expect(picks).toEqual(['first song 10s', 'new song 10s']);
+  });
+
   it('reports a tick that throws outside renderRuns and keeps polling', async () => {
     // renderRuns catches its own GET, but the layout calls around it (scroll anchoring,
     // fitLogBox) can still throw; an uncaught await there used to reject the timer
