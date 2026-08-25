@@ -524,6 +524,20 @@ for (const [label, viewport] of Object.entries(viewports)) {
   for (const themed of [modern, win95, amiga]) {
     assert(themed.keymapKeys?.hasCloseButton && !themed.keymapKeys.legacyHint, `${label}/${themed.theme}: the keys screen has no close button: ${JSON.stringify(themed.keymapKeys)}`);
   }
+  // issue #38: amiga only — one roomy, uniform gadget per shortcut, the key centred inside it,
+  // at the same type size as everywhere else, and none of it leaking into the other two themes.
+  const amigaKeys = amiga.keymapKeys?.keys ?? [];
+  const widest = (snapshot) => Math.max(...(snapshot.keymapKeys?.keys ?? []).map((key) => key.w));
+  const shortest = (snapshot) => Math.min(...(snapshot.keymapKeys?.keys ?? []).map((key) => key.h));
+  assert(amigaKeys.length > 0, `${label}/amiga: no shortcut gadgets were measured`);
+  assert(new Set(amigaKeys.map((key) => Math.round(key.w))).size === 1, `${label}/amiga: shortcut gadgets are not one width: ${JSON.stringify(amigaKeys.slice(0, 3))}`);
+  assert(widest(amiga) >= widest(modern) + 16 && shortest(amiga) >= shortest(modern) + 8, `${label}/amiga: shortcut gadgets are no bigger than the modern theme's: ${widest(amiga)}×${shortest(amiga)} vs ${widest(modern)}×${shortest(modern)}`);
+  assert(amigaKeys.every((key) => close(key.dx, 0, 1) && close(key.dy, 0, 1.5)), `${label}/amiga: shortcut keys are not centred in their gadget: ${JSON.stringify(amigaKeys.slice(0, 3))}`);
+  assert(new Set(amigaKeys.map((key) => key.fontSize)).size === 1, `${label}/amiga: shortcut gadgets do not share one type size: ${JSON.stringify(amigaKeys.slice(0, 3))}`);
+  for (const themed of [modern, win95]) {
+    // only the Amiga theme gives every key one uniform box; elsewhere each still hugs its text
+    assert(new Set((themed.keymapKeys?.keys ?? []).map((key) => Math.round(key.w))).size > 1, `${label}/${themed.theme}: the amiga-only shortcut gadget size leaked into this theme: ${JSON.stringify(themed.keymapKeys?.keys.slice(0, 3))}`);
+  }
   for (const [name, alignment] of Object.entries(amiga.amigaVerticalAlignment)) {
     if (name === 'favoriteContent' || name === 'listenedContentSize') continue;
     if (name === 'tracks' && label === 'phone') continue; // the phone layout replaces Tracks with the song dropdown

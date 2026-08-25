@@ -309,6 +309,25 @@
   border-color: #000000;
   box-shadow: var(--amiga-in);
 }
+/* Keys help: the outline around each shortcut is a proper gadget — same type size as the rest
+   of the dialog, a box with room around it, and the key centred inside (#38). */
+[data-theme='amiga'] .keymap td {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+[data-theme='amiga'] .keymap td:first-child {
+  padding-right: 14px;
+}
+[data-theme='amiga'] .keymap kbd {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20ch;
+  min-height: 28px;
+  padding: 4px 10px;
+  text-align: center;
+}
 [data-theme='amiga'] .debug.dragging {
   opacity: 1;
 }
