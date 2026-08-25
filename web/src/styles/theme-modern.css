@@ -51,3 +51,14 @@
 [data-theme='modern'] .filterrow > .btn {
   white-space: nowrap;
 }
+
+/* The settings window keeps ~20 px more room below its last section than the base layout, with
+   the closing buttons centred in it: 29 px above them to the "reset font" row (the section's
+   14 px bottom margin collapses into this margin) and the same 29 px below them to the bottom
+   window edge — 28 px of padding plus the window's own 1 px border. */
+[data-theme='modern'] .settings {
+  padding-bottom: 28px;
+}
+[data-theme='modern'] .settings .footrow {
+  margin-top: 29px;
+}
