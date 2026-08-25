@@ -256,18 +256,34 @@ export class RunsView {
       if (!['succeeded', 'failed', 'terminated'].includes(r.state)) {
         const t = el('button', { class: 'danger' }, 'Terminate');
         t.onclick = async () => {
-          if (confirm(`Terminate run ${r.run_id}?`)) {
+          if (!confirm(`Terminate run ${r.run_id}?`)) return;
+          t.disabled = true;
+          try {
             await post(`/api/runs/${r.run_id}/terminate`);
             await this.renderRuns(host);
+          } catch (e) {
+            this.note((e as Error).message, true);
+          } finally {
+            t.disabled = false;
           }
         };
         actions.append(t);
       } else if (!r.finisher.songs_json_published) {
         const f = el('button', {}, 'Run finisher');
         f.onclick = async () => {
+          // /finish 409s while another writer holds the publish mutex (a Published-tab
+          // rebuild, the watcher's own finisher). Unhandled, that rejection left the status
+          // line stuck on "finisher running…" with no reason shown (#19).
+          f.disabled = true;
           this.note('finisher running…');
-          await post(`/api/runs/${r.run_id}/finish`);
-          this.note('finisher done');
+          try {
+            await post(`/api/runs/${r.run_id}/finish`);
+            this.note('finisher done');
+          } catch (e) {
+            this.note((e as Error).message, true);
+          } finally {
+            f.disabled = false;
+          }
           await this.renderRuns(host);
         };
         actions.append(f);

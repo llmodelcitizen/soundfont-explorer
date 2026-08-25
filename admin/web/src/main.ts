@@ -79,14 +79,26 @@ function shell(me: Me): void {
   views[0]![1]();
   const update = el('button', {}, 'Update & restart');
   update.onclick = async () => {
+    // a refused write has to say so: unhandled, the button just stayed disabled and the
+    // page never reloaded, with the reason only in the devtools console (#19)
     update.disabled = true;
-    await post('/api/update');
-    setTimeout(() => location.reload(), 4000);
+    try {
+      await post('/api/update');
+      setTimeout(() => location.reload(), 4000);
+    } catch (e) {
+      update.disabled = false;
+      alert(`update failed: ${(e as Error).message}`);
+    }
   };
   const shutdown = el('button', { class: 'danger' }, 'Shut down box');
   shutdown.onclick = async () => {
     if (!confirm('Terminate the admin instance? Everything is saved in S3; relaunch with up.sh.')) return;
-    await post('/api/shutdown');
+    try {
+      await post('/api/shutdown');
+    } catch (e) {
+      alert(`shutdown failed: ${(e as Error).message}`);
+      return;                                  // the box is still up: do not say "Bye"
+    }
     app.replaceChildren(el('div', { class: 'wait' },
       el('h1', {}, 'Terminating'),
       el('div', { class: 'msg' }, 'The box is going away. Bye.')));
