@@ -13,9 +13,13 @@ interface Slot {
   busy: boolean;
   /** id of the job the worker is decoding */
   current: number | null;
+  /** replacements in a row without the worker ever answering (reset by any reply) */
+  failures: number;
 }
 
 const DECODE_TIMEOUT_MS = 15000;
+/** a slot whose replacements keep dying too is given up, not respawned forever */
+export const MAX_CONSECUTIVE_FAILURES = 3;
 
 export type WorkerFactory = () => WorkerLike;
 
@@ -35,15 +39,16 @@ export class WasmDecoder implements Decoder {
     this.q = new DecodeQueue(poolSize);
   }
 
-  private spawn(): Slot {
+  private spawn(failures = 0): Slot {
     const w = this.factory();
-    const slot: Slot = { w, busy: false, current: null };
+    const slot: Slot = { w, busy: false, current: null, failures };
     w.onmessage = (ev: MessageEvent) => {
       const { id, error, channelData, sampleRate } = ev.data as { id: number; error?: string; channelData?: Float32Array[]; sampleRate?: number };
       const p = this.waiting.get(id);
       this.waiting.delete(id);
       slot.busy = false;
       slot.current = null;
+      slot.failures = 0; // it answered, so the worker itself is alive (a decode error is not a crash)
       if (!p) return;
       if (error || !channelData) p.reject(new Error(error ?? 'decode failed'));
       else p.resolve({ channelData, sampleRate: sampleRate ?? 48000 });
@@ -65,16 +70,25 @@ export class WasmDecoder implements Decoder {
       this.waiting.delete(slot.current);
       p?.reject(new Error(why));
     }
-    const fresh = this.spawn();
-    if (idx >= 0) this.workers[idx] = fresh;
-    else this.workers.push(fresh);
     this.stats.errors++;
+    // not in the pool any more: already replaced (a timeout and the crash it caused both land
+    // here) or disposed — spawning would grow the pool past its size, or revive a dead decoder
+    if (idx < 0) return;
+    const failures = slot.failures + 1;
+    if (failures > MAX_CONSECUTIVE_FAILURES) {
+      // the replacements died without ever answering (worker script blocked, wasm will not
+      // instantiate, ...): another one would only die too, so drop the slot instead of looping
+      this.workers.splice(idx, 1);
+      return;
+    }
+    this.workers[idx] = this.spawn(failures);
   }
 
   decode(bytes: ArrayBuffer, priority: number): Promise<BufferLike> {
     return this.q.submit(priority, async () => {
+      if (!this.workers.length) throw new Error('no decode workers left (they kept crashing)');
       const slot = this.workers.find((s) => !s.busy);
-      if (!slot) throw new Error('no free decode worker'); // cannot happen: queue concurrency == pool size
+      if (!slot) throw new Error('no free decode worker'); // only after the pool shrank: queue concurrency == pool size
       slot.busy = true;
       const id = this.nextId++;
       slot.current = id;
