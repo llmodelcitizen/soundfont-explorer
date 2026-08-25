@@ -1018,7 +1018,10 @@ select:focus-visible {
 .settings .settings-scroll > .setting:last-child {
   margin-bottom: 0;
 }
-.settings-foot {
+/* the footer is a sibling of the scroll box, so nothing pushes it away on its own: without this
+   the close button sat directly under the last parameter's explanation, in all three themes (#30) */
+.settings-foot,
+.share-foot {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
@@ -1147,11 +1150,17 @@ kbd {
 .share {
   min-width: min(560px, 92vw);
 }
+/* the UA's 0.83em heading margin put more air above the title than the box has anywhere else;
+   win95 draws its own caption bar out of this element and keeps its negative margins (#30) */
+.share h2 {
+  margin: 0 0 12px;
+}
 .share-row {
   display: flex;
-  align-items: stretch;
+  /* stretch would drag the copy button down the whole height of a three-line field */
+  align-items: flex-start;
   gap: 8px;
-  margin: 12px 0 8px;
+  margin: 0 0 10px;
 }
 .share-url {
   flex: 1 1 auto;
@@ -1162,12 +1171,32 @@ kbd {
   padding: 4px 8px;
   border-radius: var(--radius);
   font: var(--mono);
+  /* the field's height is now rows x line-height rather than one text line, so the three themes
+     only agree if the line box does: 19.6px is the modern theme's 14px x 1.4, which is the number
+     theme-win95.css already pins its own fields to. The `font` shorthand above resets it. */
+  line-height: 19.6px;
+  /* wrap the link instead of scrolling it sideways: what a share dialog owes the reader is the
+     whole URL at once. Both properties are needed — break-all lets a line split mid-"word", but
+     the line breaker still *prefers* a legal opportunity at the end of the line, and a URL's
+     hyphens are exactly that. Left at break-all alone, every hyphen leaves a short line and a
+     long link outgrows the field; line-break:anywhere fills each line to the edge instead, and
+     is simply ignored where it is not supported. */
+  resize: none;
+  word-break: break-all;
+  line-break: anywhere;
+  white-space: pre-wrap;
+  display: block;
 }
 @media (pointer: coarse) {
-  /* after the `font` shorthand above, which resets the size the iOS zoom guard just set: the
-     dialog opens with this field focused, so a sub-16px size would zoom the whole page in */
+  /* after the `font` shorthand above, which resets the size the iOS zoom guard just set: a
+     sub-16px field zooms the whole page in the moment it takes focus */
   .share-url {
     font-size: 16px;
+    line-height: 22.4px; /* that size's modern line box, the pair to the 19.6px above */
+    /* the same link needs more lines here: the phone gives the field the full box width but at
+       bigger type, which is barely half a desktop line's characters. Five of them hold a link
+       carrying a song, a variant, a filter selection and a position (scripts/geometry.mjs). */
+    min-height: calc(5 * 22.4px + 10px);
   }
 }
 /* two classes, like the .btn.primary rule it has to beat — one class alone never applied */
@@ -1178,10 +1207,11 @@ kbd {
 .share-opt {
   display: block;
 }
-/* the same reason as the option's title, for a touch screen that never shows one */
-.share-why:not(:empty) {
-  display: block;
-  margin-top: 2px;
+/* the seconds tick every second while the dialog is open: give them a cell each, so counting
+   past 9 cannot reflow the words after them */
+.share-at {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 /* at the top of the track both links are the same string: the option is there but has nothing to do */
 .share-opt.off {
@@ -1190,19 +1220,17 @@ kbd {
 .share-note {
   display: block;
   min-height: 1.3em;
+  margin-top: 4px;
 }
-.share-heading {
-  font-size: 0.78em;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--fg-dim);
-  margin: 14px 0 6px;
+/* a copy that did not happen says so in the theme's warning ink, not in the same grey as 'copied' */
+.share-note.warn {
+  color: var(--warn);
 }
 .share-params {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 3px 12px;
-  margin: 0;
+  margin: 10px 0 0;
   font-size: 0.9em;
 }
 .share-params dt,
@@ -1427,7 +1455,9 @@ kbd {
   .share-row {
     flex-wrap: wrap;
   }
-  .share-copy {
+  /* two classes, to beat the .btn.share-copy rule above — as one class this never applied, and
+     the copy button went on sharing the row, leaving the link a third of the box to wrap in */
+  .btn.share-copy {
     flex: 1 1 100%;
   }
   .debug {

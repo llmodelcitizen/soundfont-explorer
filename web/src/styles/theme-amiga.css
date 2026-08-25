@@ -124,9 +124,8 @@
   border-color: #000000;
   box-shadow: var(--amiga-in);
 }
-/* Topaz is a bitmap face: the share dialog's em-relative sizes would land on 10.92px and 12.6px,
-   so pin them to the 12px the rest of the theme's small type already uses (#30). */
-[data-theme='amiga'] .share-heading,
+/* Topaz is a bitmap face: the parameter list's em-relative size would land on 12.6px, so pin it
+   to the 12px the rest of the theme's small type already uses (#30). */
 [data-theme='amiga'] .share-params {
   font-size: 12px;
 }

@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KeymapOverlay } from '../../src/ui/keymapOverlay';
-import { ShareDialog, copyText } from '../../src/ui/share';
+import { COPY_FAILED_KEYS, COPY_FAILED_TOUCH, ShareDialog, coarsePointer, copyText, fmtStart, startSeconds, type ShareCallbacks } from '../../src/ui/share';
 import { SettingsModal } from '../../src/ui/settings';
 import { FULLSCREEN_REFUSED, FULLSCREEN_UNSUPPORTED } from '../../src/ui/fullscreen';
 import { focusables } from '../../src/ui/focus';
@@ -152,64 +152,141 @@ describe('ShareDialog (#30)', () => {
   });
   const open: ShareDialog[] = [];
   /** every dialog re-reads its links on a timer while it is open: close them all after each test */
-  const share = (read: () => ShareLinks, onClose?: () => void): ShareDialog => {
-    const dialog = new ShareDialog({ links: read, onClose });
+  const share = (read: () => ShareLinks, extra: Partial<ShareCallbacks> = {}): ShareDialog => {
+    const dialog = new ShareDialog({ links: read, ...extra });
     document.body.append(dialog.el);
     open.push(dialog);
     return dialog;
   };
-  const field = (dialog: ShareDialog) => dialog.el.querySelector('.share-url') as HTMLInputElement;
+  /** a pointing device / a finger, the only thing that decides whether a copy highlights the link */
+  const desktop = { coarsePointer: () => false };
+  const phone = { coarsePointer: () => true };
+  const field = (dialog: ShareDialog) => dialog.el.querySelector('.share-url') as HTMLTextAreaElement;
   const timeBox = (dialog: ShareDialog) => dialog.el.querySelector('.share-time') as HTMLInputElement;
+  const copyBtn = (dialog: ShareDialog) => dialog.el.querySelector('.share-copy') as HTMLButtonElement;
+  const note = (dialog: ShareDialog) => dialog.el.querySelector('.share-note') as HTMLElement;
+  const opt = (dialog: ShareDialog) => dialog.el.querySelector('.share-opt') as HTMLElement;
+  const selected = (dialog: ShareDialog) => field(dialog).value.slice(field(dialog).selectionStart ?? 0, field(dialog).selectionEnd ?? 0);
+  /** the async clipboard, present or absent — both paths are real on the platforms this ships to */
+  const withClipboard = (writeText: ((text: string) => Promise<void>) | null) => {
+    Object.defineProperty(navigator, 'clipboard', { value: writeText ? { writeText } : undefined, configurable: true });
+  };
 
   afterEach(() => {
     for (const dialog of open.splice(0)) dialog.toggle(false);
+    Reflect.deleteProperty(navigator, 'clipboard');
+    Reflect.deleteProperty(document, 'execCommand');
   });
 
-  it('opens with the whole link selected, in a field that cannot claim a phone-wide column', () => {
-    const dialog = share(() => links(12));
+  it('opens with the whole link shown but nothing highlighted, and focus on the copy button', () => {
+    const dialog = share(() => links(12), desktop);
     dialog.toggle(true);
     expect(field(dialog).value).toBe('https://x.test/?theme=modern&t=12');
-    expect(document.activeElement).toBe(field(dialog));
-    expect([field(dialog).selectionStart, field(dialog).selectionEnd]).toEqual([0, field(dialog).value.length]);
-    // without size=1 the input keeps its 20-character intrinsic width, which at 16px Fixedsys
-    // (win95, coarse pointer) makes the whole box wider than a 320px viewport
-    expect(field(dialog).getAttribute('size')).toBe('1');
+    // a wall of highlight is not a greeting, and on a phone it is two drag handles and a callout bar
+    expect(selected(dialog)).toBe('');
+    // an aria-modal dialog still has to hold focus: the primary action takes it
+    expect(document.activeElement).toBe(copyBtn(dialog));
+  });
+
+  it('shows the link in a box deep enough to read it whole, not a one-line field to drag through', () => {
+    const dialog = share(() => links(12));
+    dialog.toggle(true);
+    expect(field(dialog).tagName).toBe('TEXTAREA');
+    expect(Number(field(dialog).getAttribute('rows'))).toBeGreaterThanOrEqual(3);
+    // cols=1 is the size=1 trick: without it the 20-character intrinsic width alone makes the box
+    // wider than a 320px viewport at 16px Fixedsys (win95, coarse pointer)
+    expect(field(dialog).getAttribute('cols')).toBe('1');
+    // soft wrapping keeps the value one line of text: a copied link must not carry newlines
+    expect(field(dialog).getAttribute('wrap')).toBe('soft');
+    expect(field(dialog).value).not.toMatch(/\n/);
   });
 
   it('copies the link for where the app is now, not where it was when the dialog opened', async () => {
     let state = links(12);
     const writeText = vi.fn(async () => {});
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-    const dialog = share(() => state);
+    withClipboard(writeText);
+    const dialog = share(() => state, desktop);
     dialog.toggle(true);
 
     state = links(99, 'amiga'); // the song/theme/position moved on behind the open dialog
-    const button = dialog.el.querySelector('.share-copy') as HTMLButtonElement;
-    button.focus(); // where a real click leaves the focus: on the button, not the field
-    button.click();
-    await vi.waitFor(() => expect(dialog.el.querySelector('.share-note')?.textContent).toBe('copied'));
+    copyBtn(dialog).click();
+    await vi.waitFor(() => expect(note(dialog).textContent).toBe('copied'));
 
     expect(writeText).toHaveBeenCalledWith('https://x.test/?theme=amiga&t=99');
     expect(field(dialog).value).toBe('https://x.test/?theme=amiga&t=99');
-    // the async-clipboard path must put the selection back: the dialog claims to be modal
+  });
+
+  it('highlights the copied link on a desktop, where a selection is a mouse-width affordance', async () => {
+    withClipboard(vi.fn(async () => {}));
+    const dialog = share(() => links(12), desktop);
+    dialog.toggle(true);
+    copyBtn(dialog).click();
+    await vi.waitFor(() => expect(note(dialog).textContent).toBe('copied'));
+
+    // the async-clipboard path never touches the field: the dialog puts the selection on itself,
+    // which shows what was taken and leaves the ⌘/Ctrl + C it invites copying the same string
     expect(document.activeElement).toBe(field(dialog));
-    expect([field(dialog).selectionStart, field(dialog).selectionEnd]).toEqual([0, field(dialog).value.length]);
+    expect(selected(dialog)).toBe('https://x.test/?theme=modern&t=12');
+  });
+
+  it('never highlights on a coarse pointer, where the handles are bigger than the link', async () => {
+    withClipboard(vi.fn(async () => {}));
+    const dialog = share(() => links(12), phone);
+    dialog.toggle(true);
+    copyBtn(dialog).click();
+    await vi.waitFor(() => expect(note(dialog).textContent).toBe('copied'));
+
+    expect(selected(dialog)).toBe('');
+    expect(document.activeElement).toBe(copyBtn(dialog)); // focus stays where the finger was
+  });
+
+  it('takes back even the selection its fallback needed, on a coarse pointer', async () => {
+    withClipboard(null); // an http:// page on a phone: no async clipboard at all
+    Object.defineProperty(document, 'execCommand', { value: vi.fn(() => true), configurable: true });
+    const dialog = share(() => links(12), phone);
+    dialog.toggle(true);
+    copyBtn(dialog).click();
+    await vi.waitFor(() => expect(note(dialog).textContent).toBe('copied'));
+
+    // the selection copy has to select something; what it must not do is leave it there
+    expect(selected(dialog)).toBe('');
+    expect(document.activeElement).toBe(copyBtn(dialog));
+  });
+
+  it('says so when neither clipboard path worked, in words the platform can act on', async () => {
+    withClipboard(vi.fn(async () => Promise.reject(new Error('denied'))));
+    Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true });
+
+    const onDesktop = share(() => links(12), desktop);
+    onDesktop.toggle(true);
+    copyBtn(onDesktop).click();
+    await vi.waitFor(() => expect(note(onDesktop).textContent).toBe(COPY_FAILED_KEYS));
+    // a failure that reads like the success it is not is the same as no message at all
+    expect(note(onDesktop).classList.contains('warn')).toBe(true);
+
+    const onPhone = share(() => links(12), phone);
+    onPhone.toggle(true);
+    copyBtn(onPhone).click();
+    await vi.waitFor(() => expect(note(onPhone).textContent).toBe(COPY_FAILED_TOUCH));
+    // there is no ⌘ and no Ctrl on the device this is telling
+    expect(COPY_FAILED_TOUCH).not.toMatch(/⌘|Ctrl/);
   });
 
   it('keeps the shown link in step with the app, so ⌘C and the copy button agree', () => {
     vi.useFakeTimers();
     try {
+      withClipboard(vi.fn(async () => {}));
       let state = links(10);
-      const dialog = share(() => state);
+      const dialog = share(() => state, desktop);
       dialog.toggle(true);
       expect(field(dialog).value).toBe('https://x.test/?theme=modern&t=10');
+      copyBtn(dialog).click(); // the highlight goes on synchronously, before any clipboard promise
 
       state = links(40); // 30 s of playback later, with the dialog still open
       vi.advanceTimersByTime(ShareDialog.SYNC_MS + 10);
       expect(field(dialog).value).toBe('https://x.test/?theme=modern&t=40');
-      // still selected, so the ⌘/Ctrl + C the dialog invites copies what it is showing
-      expect(document.activeElement).toBe(field(dialog));
-      expect([field(dialog).selectionStart, field(dialog).selectionEnd]).toEqual([0, field(dialog).value.length]);
+      // the highlight moves onto the new text: what is selected is still what the button would copy
+      expect(selected(dialog)).toBe('https://x.test/?theme=modern&t=40');
 
       dialog.toggle(false);
       state = links(80);
@@ -220,14 +297,43 @@ describe('ShareDialog (#30)', () => {
     }
   });
 
+  it('names the start time the link carries, and keeps counting while the dialog is open', () => {
+    vi.useFakeTimers();
+    try {
+      let state = links(75);
+      const dialog = share(() => state);
+      dialog.toggle(true);
+      // "where I am now" is unverifiable from a dialog that covers the transport: say the time
+      expect(opt(dialog).textContent).toContain('start playback at');
+      expect(opt(dialog).textContent).not.toContain('where I am now');
+      expect(dialog.el.querySelector('.share-at')?.textContent).toBe('1:15');
+
+      state = links(3672); // an hour and change later
+      vi.advanceTimersByTime(ShareDialog.SYNC_MS + 10);
+      expect(dialog.el.querySelector('.share-at')?.textContent).toBe('1:01:12');
+
+      // and with the option off the label still counts: it is what ticking the box would add,
+      // and the shown link (withoutTime) never changes to trigger a repaint on its own
+      timeBox(dialog).checked = false;
+      timeBox(dialog).dispatchEvent(new Event('change'));
+      expect(field(dialog).value).toBe('https://x.test/?theme=modern');
+      state = links(3700);
+      vi.advanceTimersByTime(ShareDialog.SYNC_MS + 10);
+      expect(dialog.el.querySelector('.share-at')?.textContent).toBe('1:01:40');
+      expect(field(dialog).value).toBe('https://x.test/?theme=modern');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the window keymap out while it is open, and closes on Escape', () => {
     const dialog = share(() => links(12));
     const a = actions();
     const uninstall = installKeyboard(window as unknown as Window, a);
     dialog.toggle(true);
-    // the copy button is where the focus lands once someone uses the dialog, and a BUTTON is not
-    // "typing": without the dialog swallowing them these keys reach the app behind it
-    const button = dialog.el.querySelector('.share-copy') as HTMLButtonElement;
+    // the copy button is where the focus lands, and a BUTTON is not "typing": without the dialog
+    // swallowing them these keys reach the app behind it
+    const button = copyBtn(dialog);
 
     for (const key of [' ', 't', ']', 'd']) press(button, key);
     expect(a.toggle).not.toHaveBeenCalled();
@@ -248,7 +354,7 @@ describe('ShareDialog (#30)', () => {
     dialog.toggle(true);
     const box = dialog.el.querySelector('.overlay-box.share') as HTMLElement;
     const close = box.querySelector('.close-share') as HTMLButtonElement;
-    expect(focusables(box)).toEqual([field(dialog), box.querySelector('.share-copy'), timeBox(dialog), close]);
+    expect(focusables(box)).toEqual([field(dialog), copyBtn(dialog), timeBox(dialog), close]);
 
     // forward off the last control comes back to the first
     close.focus();
@@ -271,7 +377,7 @@ describe('ShareDialog (#30)', () => {
 
   it('hands focus back however it is closed', () => {
     const onClose = vi.fn();
-    const dialog = share(() => links(12), onClose);
+    const dialog = share(() => links(12), { onClose });
 
     dialog.toggle(true);
     (dialog.el.querySelector('.close-share') as HTMLButtonElement).click();
@@ -288,7 +394,7 @@ describe('ShareDialog (#30)', () => {
   it('gives focus back to the control that opened it, not to <body>', () => {
     const onClose = vi.fn();
     const button = opener();
-    const dialog = share(() => links(12), onClose);
+    const dialog = share(() => links(12), { onClose });
 
     dialog.toggle(true);
     (dialog.el.querySelector('.close-share') as HTMLButtonElement).click();
@@ -296,7 +402,7 @@ describe('ShareDialog (#30)', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('disables the timestamp option when both links are the same string, and says why in text', () => {
+  it('disables the timestamp option when both links are the same string, and explains nothing', () => {
     let state = links(0);
     const dialog = share(() => state);
     dialog.toggle(true);
@@ -304,17 +410,29 @@ describe('ShareDialog (#30)', () => {
     expect(timeBox(dialog).disabled).toBe(true);
     // an unusable option must not claim it is adding a t= the link does not carry
     expect(timeBox(dialog).checked).toBe(false);
-    expect(dialog.el.querySelector('.share-opt')?.classList.contains('off')).toBe(true);
-    // a title is invisible on a phone: the reason is on screen
-    expect(dialog.el.querySelector('.share-why')?.textContent).toMatch(/at the start/);
+    expect(opt(dialog).classList.contains('off')).toBe(true);
+    // "0:00" is the whole explanation: the sentence that used to spell it out is gone, and so is
+    // the tooltip that said the same thing to a pointer only
+    expect(dialog.el.querySelector('.share-at')?.textContent).toBe('0:00');
+    expect(dialog.el.textContent).not.toMatch(/at the start/i);
+    expect(dialog.el.querySelector('.share-why')).toBeNull();
+    expect(opt(dialog).getAttribute('title')).toBeNull();
 
     dialog.toggle(false);
     state = links(30);
     dialog.toggle(true);
     expect(timeBox(dialog).disabled).toBe(false);
     expect(timeBox(dialog).checked).toBe(true);
-    expect(dialog.el.querySelector('.share-opt')?.classList.contains('off')).toBe(false);
-    expect(dialog.el.querySelector('.share-why')?.textContent).toBe('');
+    expect(opt(dialog).classList.contains('off')).toBe(false);
+  });
+
+  it('lists what every parameter means with no heading shouting over it', () => {
+    const dialog = share(() => links(12));
+    dialog.toggle(true);
+    // the rows carry their own meaning; the label above them was a caption on a seven-row table
+    expect(dialog.el.querySelector('.share-heading')).toBeNull();
+    expect(dialog.el.textContent).not.toMatch(/what the link says/i);
+    expect(dialog.el.querySelectorAll('.share-params dt').length).toBe(7);
   });
 
   it('starts every share from the whole link, however the last one ended', () => {
@@ -342,8 +460,32 @@ describe('ShareDialog (#30)', () => {
     expect(on()).toEqual(['theme=']);
   });
 
-  it('falls back to the selected field when the async clipboard is unavailable', async () => {
-    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  it('falls back to a selection copy when there is no async clipboard, without a tick in between', () => {
+    withClipboard(null); // what an http:// page — or an older Safari — actually offers
+    const exec = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
+    const input = document.createElement('input');
+    input.readOnly = true;
+    input.value = 'https://x.test/?song=a';
+    document.body.append(input);
+
+    let settled: boolean | null = null;
+    void copyText(input, input.value).then((ok) => {
+      settled = ok;
+    });
+    // the copy has to happen inside the gesture that is still running: iOS and Android both spend
+    // the user activation on the first await, and execCommand a microtask later is refused
+    expect(exec).toHaveBeenCalledWith('copy');
+    expect(document.activeElement).toBe(input);
+    // iOS Safari will not select a readonly field and only extends a selection into a
+    // content-editable form control — both come off for the copy, and both go straight back
+    expect(input.readOnly).toBe(true);
+    expect(input.hasAttribute('contenteditable')).toBe(false);
+    return vi.waitFor(() => expect(settled).toBe(true));
+  });
+
+  it('falls back the same way when the async clipboard is there and refuses', async () => {
+    withClipboard(vi.fn(async () => Promise.reject(new Error('NotAllowedError'))));
     const exec = vi.fn(() => true);
     Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
     const input = document.createElement('input');
@@ -352,7 +494,60 @@ describe('ShareDialog (#30)', () => {
 
     expect(await copyText(input, input.value)).toBe(true);
     expect(exec).toHaveBeenCalledWith('copy');
-    expect(document.activeElement).toBe(input);
+  });
+
+  it('reports the failure rather than swallowing it when both paths fail', async () => {
+    withClipboard(vi.fn(async () => Promise.reject(new Error('denied'))));
+    Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true });
+    const input = document.createElement('input');
+    input.value = 'https://x.test/?song=a';
+    document.body.append(input);
+
+    expect(await copyText(input, input.value)).toBe(false);
+  });
+
+  it('puts the text it was asked to copy into the field the fallback copies from', async () => {
+    withClipboard(null);
+    Object.defineProperty(document, 'execCommand', { value: vi.fn(() => true), configurable: true });
+    const input = document.createElement('input');
+    input.value = 'stale';
+    document.body.append(input);
+
+    expect(await copyText(input, 'https://x.test/?song=a&t=9')).toBe(true);
+    // execCommand copies the selection, which is the field — so the field has to hold the link
+    expect(input.value).toBe('https://x.test/?song=a&t=9');
+  });
+
+  it('asks the pointer, not the user agent, whether a selection is worth drawing', () => {
+    const asked: string[] = [];
+    const view = (matches: boolean) =>
+      ({
+        matchMedia: (query: string) => {
+          asked.push(query);
+          return { matches } as MediaQueryList;
+        },
+      }) as unknown as Window;
+
+    expect(coarsePointer(view(true))).toBe(true);
+    expect(coarsePointer(view(false))).toBe(false);
+    // `pointer` is the primary input: a laptop with a touchscreen is still a laptop
+    expect(new Set(asked)).toEqual(new Set(['(pointer: coarse)']));
+    expect(coarsePointer(null)).toBe(false); // nothing to ask: the side that highlights
+  });
+
+  it('reads the start time back out of the link, and says it the way a clock does', () => {
+    expect(startSeconds('https://x.test/?theme=modern&t=75')).toBe(75);
+    expect(startSeconds('https://x.test/?theme=modern')).toBe(0); // from the top: no t= at all
+    expect(startSeconds('https://x.test/')).toBe(0);
+    expect(startSeconds('https://x.test/?t=nonsense')).toBe(0);
+
+    expect(fmtStart(0)).toBe('0:00');
+    expect(fmtStart(9)).toBe('0:09');
+    expect(fmtStart(75)).toBe('1:15');
+    expect(fmtStart(600)).toBe('10:00');
+    expect(fmtStart(3672)).toBe('1:01:12');
+    expect(fmtStart(-5)).toBe('0:00');
+    expect(fmtStart(Number.NaN)).toBe('0:00');
   });
 });
 

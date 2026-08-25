@@ -474,14 +474,59 @@ async function measure(theme, viewport, label) {
     const field = document.querySelector('.share-url');
     const shareButton = document.querySelector('.top .share-btn');
     const gear = document.querySelector('.top [aria-label="settings"]');
+    // a share link carrying every parameter at a realistic length — longer than anything the
+    // fixture site can produce, and the length the field has to show without clipping
+    const sample = 'https://soundfonts.ericq.com/?song=chopin-nocturne-op9-no2&v=arachno-soundfont-10&f=engine:fluidsynth;size:lt2m&theme=win95&t=125';
+    let sampleFits = null;
+    if (field) {
+      const shown = field.value;
+      field.value = sample;
+      sampleFits = field.scrollHeight <= field.clientHeight + 1;
+      field.value = shown; // the dialog re-syncs anyway, but never leave a lie on screen
+    }
+    // padding on all four sides, measured off the two children that span the box: the scrolling
+    // middle and the footer. The title is not usable for this — win95 draws its caption bar out
+    // of the h2 with negative margins, so it deliberately sits outside the padding box.
+    const scroller = share?.dialog.querySelector('.share-scroll');
+    const closeButton = share?.dialog.querySelector('.close-share');
+    const params = Array.from(share?.dialog.querySelectorAll('.share-params dd') ?? []);
+    const rects = share
+      ? {
+          box: share.dialog.getBoundingClientRect(),
+          scroll: scroller?.getBoundingClientRect(),
+          close: closeButton?.getBoundingClientRect(),
+          title: share.dialog.querySelector('h2')?.getBoundingClientRect(),
+          lastParam: params[params.length - 1]?.getBoundingClientRect(),
+        }
+      : null;
     const shareState = share
       ? {
           ...share.state,
           // issue #30 spells out the placement and the "highlighted" link
           leftOfTheGear: !!shareButton && !!gear && shareButton.nextElementSibling === gear,
+          fieldTag: field?.tagName ?? null,
           fieldFocused: document.activeElement === field,
+          copyFocused: document.activeElement === share.dialog.querySelector('.share-copy'),
           fieldSelected: !!field && field.selectionStart === 0 && field.selectionEnd === field.value.length && field.value.length > 0,
           fieldFontSize: field ? getComputedStyle(field).fontSize : null,
+          fieldLines: field ? Math.round(field.clientHeight / parseFloat(getComputedStyle(field).lineHeight)) : null,
+          sampleFits,
+          sampleLength: sample.length,
+          // the removed guidance (#30 overhaul): both were text nobody needed to read twice
+          hasHeading: !!share.dialog.querySelector('.share-heading'),
+          hasWhy: !!share.dialog.querySelector('.share-why'),
+          optText: share.dialog.querySelector('.share-opt')?.textContent?.trim() ?? null,
+          padding: rects && rects.scroll && rects.close && rects.title
+            ? {
+                left: rects.scroll.left - rects.box.left,
+                right: rects.box.right - rects.scroll.right,
+                bottom: rects.box.bottom - rects.close.bottom,
+                belowTitle: rects.scroll.top - rects.title.bottom,
+                // the collision this overhaul was asked to fix: the t= explanation ended up
+                // sitting directly on the close button, in all three themes
+                aboveClose: rects.lastParam ? rects.close.top - rects.lastParam.bottom : null,
+              }
+            : null,
         }
       : null;
     click('.close-share');
@@ -1171,15 +1216,31 @@ for (const [label, viewport] of Object.entries(viewports)) {
     assert(keys && !keys.scrolls, `${label}/${themed.theme}: the keys box scrolls itself instead of scrolling its list: ${JSON.stringify(keys)}`);
     assert(keys?.fitsViewport, `${label}/${themed.theme}: the keys screen does not fit the viewport: ${JSON.stringify(keys)}`);
   }
-  // issue #30: share sits immediately left of the gear, and its dialog opens with the whole link
-  // selected, at a size iOS will not zoom into, with the close button on screen.
+  // issue #30: share sits immediately left of the gear, and its dialog shows the whole link in a
+  // box deep enough to read it, at a size iOS will not zoom into, with the close button on screen.
   for (const themed of [modern, win95, amiga]) {
     const share = themed.dialogs?.share;
     assert(share?.leftOfTheGear, `${label}/${themed.theme}: the share button is not immediately left of the settings gear: ${JSON.stringify(share)}`);
-    assert(share?.fieldFocused && share.fieldSelected, `${label}/${themed.theme}: the share dialog does not open with the link focused and selected: ${JSON.stringify(share)}`);
+    // it opens *unhighlighted*: a pre-selected field is a wall of highlight on a desktop and two
+    // drag handles plus a callout bar on a phone. Focus is on the copy button, so aria-modal holds.
+    assert(share && !share.fieldSelected, `${label}/${themed.theme}: the share dialog opens with the link already highlighted: ${JSON.stringify(share)}`);
+    assert(share?.copyFocused, `${label}/${themed.theme}: the share dialog does not open with the copy button focused: ${JSON.stringify(share)}`);
     assert(share?.closeReachable && share.fitsViewport && !share.scrolls, `${label}/${themed.theme}: the share dialog does not fit its box: ${JSON.stringify(share)}`);
-    // the field takes focus the moment the dialog opens: below 16px iOS zooms the whole page in
+    // a link long enough to be worth sharing is longer than one line: it wraps, it does not clip
+    assert(share?.fieldTag === 'TEXTAREA' && share.fieldLines >= 3, `${label}/${themed.theme}: the share link field is not a multi-line box: ${JSON.stringify(share)}`);
+    assert(share?.sampleFits, `${label}/${themed.theme}: a ${share?.sampleLength}-character link does not fit the field without scrolling: ${JSON.stringify(share)}`);
+    // the field is 16px on a coarse pointer whether or not it has focus: below that iOS zooms the
+    // whole page in the moment it is tapped
     if (label === 'phone') assert(share?.fieldFontSize === '16px', `${label}/${themed.theme}: the share link field is not 16px on a coarse pointer: ${JSON.stringify(share)}`);
+    // the guidance this overhaul removed, and the label that replaced "start where I am now"
+    assert(share && !share.hasHeading && !share.hasWhy, `${label}/${themed.theme}: the share dialog still carries the removed guidance: ${JSON.stringify(share)}`);
+    assert(/start playback at \d+:\d\d/.test(share?.optText ?? ''), `${label}/${themed.theme}: the timestamp option does not name the time it would use: ${JSON.stringify(share)}`);
+    // padding on all sides, and a real gap between the last parameter and the close button —
+    // they used to touch, which is what "the t= explanation sits on the close button" looked like
+    const pad = share?.padding;
+    assert(pad && pad.left >= 8 && pad.right >= 8 && pad.bottom >= 8 && pad.belowTitle >= 8, `${label}/${themed.theme}: the share dialog is short of padding on some side: ${JSON.stringify(pad)}`);
+    assert(pad && close(pad.left, pad.right, 1), `${label}/${themed.theme}: the share dialog's left and right padding differ: ${JSON.stringify(pad)}`);
+    assert(pad && pad.aboveClose >= 10, `${label}/${themed.theme}: the close button sits on the last parameter's explanation: ${JSON.stringify(pad)}`);
   }
   // issue #38: amiga only — one roomy, uniform gadget per shortcut, the key centred inside it,
   // at the same type size as everywhere else, and none of it leaking into the other two themes.
