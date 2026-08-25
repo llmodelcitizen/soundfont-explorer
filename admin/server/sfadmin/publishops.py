@@ -12,7 +12,6 @@ catalog docs are a few KB and stay.
 """
 from __future__ import annotations
 
-import datetime
 import json
 import os
 import shutil
@@ -20,6 +19,7 @@ import subprocess
 import sys
 import threading
 
+from .clock import now_iso
 from .config import get_config
 
 IMMUTABLE = "public,max-age=31536000,immutable"
@@ -38,10 +38,6 @@ OPS_LOCK = threading.RLock()
 class NoSongsJson(RuntimeError):
     """The site bucket has no songs.json at all (a fresh site) — distinct from an S3 error
     reading it, which callers must not mistake for 'nothing is live'."""
-
-
-def _now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ---------------------------------------------------------------- S3 + shell primitives
@@ -313,7 +309,7 @@ def prune(dry_run: bool = True) -> dict:
     for k in doomed:
         p = "/".join(k.split("/")[:3])
         by_prefix[p] = by_prefix.get(p, 0) + 1
-    report = {"dry_run": dry_run, "checked_at": _now(),
+    report = {"dry_run": dry_run, "checked_at": now_iso(),
               "kept_songs": len(live.get("songs", [])),
               "missing_sets": missing_sets,
               "doomed_objects": len(doomed),

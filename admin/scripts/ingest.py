@@ -23,7 +23,6 @@ Re-running without --force is safe: it refuses rather than re-minting ids over t
 from __future__ import annotations
 
 import argparse
-import datetime
 import hashlib
 import json
 import os
@@ -33,17 +32,15 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "songs", "tools"))
+sys.path.insert(0, os.path.join(ROOT, "admin", "server"))
 import canon  # noqa: E402
 import smf as S  # noqa: E402
+from sfadmin.clock import now_iso  # noqa: E402
 
 FILES = os.path.join(ROOT, "songs", "import", "FILES")
 STAGE = os.path.join(ROOT, "work", "library-stage")
 MIDI_EXTS = {".mid", ".midi", ".rmi"}
 SCHEMA = 1
-
-
-def now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def admin_bucket() -> str:

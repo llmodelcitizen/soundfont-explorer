@@ -23,9 +23,7 @@ import struct
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
-
-from ._util import write_json
+from ._util import now_iso, write_json
 
 SCHEMA = 1
 INFO_CAP = 1 << 20  # 1 MiB: never slurp more of LIST/INFO than this
@@ -321,7 +319,7 @@ def scan_dir(root: str, limit: int | None = None, threads: int = DEFAULT_THREADS
 
     return {
         "schema": SCHEMA,
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": now_iso(),
         "root": os.path.normpath(root),
         "count": len(fonts),
         "parse_failures": len(bad),

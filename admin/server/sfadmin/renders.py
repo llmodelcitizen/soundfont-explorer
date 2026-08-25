@@ -26,6 +26,7 @@ import sys
 import threading
 import time
 
+from .clock import now_iso
 from .config import get_config
 
 TERMINAL = ("succeeded", "failed", "terminated")
@@ -63,10 +64,6 @@ STAGE_TIMEOUT_S = 1800
 # the reconciler would fail a live submit, park the fleet under it and leave the record
 # with a finished_at in the past (which empties the run's Logs box for ever) (#19).
 SUBMIT_EXEMPT_S = 2 * STAGE_TIMEOUT_S + 600
-
-
-def _now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _ms(iso: str) -> int:
@@ -277,7 +274,7 @@ class RunManager:
                       "instance_types": instance_types, "shard_vcpus": shard_vcpus,
                       "shard_memory_mib": shard_memory_mib, "variants": est["variants_per_song"]},
             "estimate": {k: est[k] for k in ("jobs", "cpu_h", "usd", "variants_per_song")},
-            "batch_job_id": None, "submitted_at": _now(), "finished_at": None,
+            "batch_job_id": None, "submitted_at": now_iso(), "finished_at": None,
             "status_summary": {}, "published_sets": {},
             "instance_types_before": None, "instance_types_restored": True,
             "verdict": None,
@@ -327,7 +324,7 @@ class RunManager:
         except Exception as e:
             rec["state"] = "failed"
             _note_verdict(rec, f"submit failed: {e}")
-            rec["finished_at"] = _now()
+            rec["finished_at"] = now_iso()
             self._put(rec)
             self._sleep_fleet(rec)
             raise
@@ -398,7 +395,7 @@ class RunManager:
                 rec["status_summary"] = {"UNKNOWN": 1}
                 _note_verdict(rec, f"describe_jobs failed {errors} polls in a row ({e}); "
                                    "the job may still be running — check Batch")
-                rec["finished_at"] = _now()
+                rec["finished_at"] = now_iso()
                 self._put(rec)
                 return
             errors = 0
@@ -412,7 +409,7 @@ class RunManager:
                 _note_verdict(rec, f"Batch job {rec['batch_job_id']} is unknown to "
                                    f"describe_jobs ({missing} polls): expired or never ran; "
                                    "outcome unknown")
-                rec["finished_at"] = _now()
+                rec["finished_at"] = now_iso()
                 self._put(rec)
                 return
             missing = 0
@@ -422,7 +419,7 @@ class RunManager:
             self._scan_published(rec)
             if j["status"] in ("SUCCEEDED", "FAILED"):
                 rec["state"] = "succeeded" if j["status"] == "SUCCEEDED" else "failed"
-                rec["finished_at"] = _now()
+                rec["finished_at"] = now_iso()
             self._put(rec)
             if rec["state"] in TERMINAL:
                 return
@@ -497,7 +494,7 @@ class RunManager:
                     _note_verdict(rec, f"submit was still staging after {int(age)}s — wedged"
                                   if rec["run_id"] in submitting else
                                   "no Batch job was ever submitted (crash during submit)")
-                    rec["finished_at"] = _now()
+                    rec["finished_at"] = now_iso()
                     self._put(rec)
                     self._sleep_fleet(rec)
                 continue
@@ -540,9 +537,9 @@ class RunManager:
                 with publocks.exclusive(f"finisher for run {rid}", timeout=lock_wait):
                     publishops.sync_down()
                     publishops.rebuild_and_publish()
-                rec["finisher"] = {"ran_at": _now(), "songs_json_published": True, "error": prior}
+                rec["finisher"] = {"ran_at": now_iso(), "songs_json_published": True, "error": prior}
             except Exception as e:
-                rec["finisher"] = {"ran_at": _now(), "songs_json_published": False,
+                rec["finisher"] = {"ran_at": now_iso(), "songs_json_published": False,
                                    "error": "; ".join(x for x in (prior, str(e)) if x)}
             self._put(rec)
         finally:
@@ -561,7 +558,7 @@ class RunManager:
             boto3.client("batch").terminate_job(jobId=rec["batch_job_id"],
                                                 reason="admin UI terminate")
         rec["state"] = "terminated"
-        rec["finished_at"] = _now()
+        rec["finished_at"] = now_iso()
         self._put(rec)
         self._sleep_fleet(rec)
         return rec

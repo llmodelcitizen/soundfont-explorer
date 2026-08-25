@@ -11,7 +11,6 @@ in the entry — renames and moves never change an id, so renders survive reorga
 """
 from __future__ import annotations
 
-import datetime
 import hashlib
 import json
 import os
@@ -21,14 +20,11 @@ import subprocess
 import sys
 import threading
 
+from .clock import now_iso
 from .config import get_config
 
 MIDI_EXTS = {".mid", ".midi", ".rmi"}
 _SAFE_SEG = re.compile(r"^[^/\0]+$")
-
-
-def now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _canon_modules():
