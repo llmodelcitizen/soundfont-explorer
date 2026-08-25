@@ -96,6 +96,15 @@ export class VariantList {
         active && !c.noArrow ? h('span', { class: 'arrow' }, this.sort.dir === 1 ? '▲' : '▼') : '',
       );
       cell.addEventListener('click', () => this.cb.onSort(c.key));
+      cell.addEventListener('keydown', (event) => {
+        // Space is play/pause on the window, and the keymap preventDefaults it before the
+        // button's own activation runs: a focused header sorts on Space only if it handles the
+        // key itself, as the Modern title does. Enter reaches the click listener untouched.
+        if (event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.cb.onSort(c.key);
+      });
       this.head.appendChild(cell);
       if (refocus === c.key) cell.focus();
     }

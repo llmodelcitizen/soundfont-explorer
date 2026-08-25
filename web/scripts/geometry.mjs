@@ -582,15 +582,76 @@ async function headerSorting() {
   assert(result.ascending.idx.disabled === null && result.ascending.idx.title.endsWith('click for the catalog order'), `${label}: '#' does not offer the catalog order while a sort is active: ${JSON.stringify(result.ascending.idx)}`);
   assert(result.restored.idx.disabled === 'true', `${label}: '#' still claims to be actionable after restoring the catalog order: ${JSON.stringify(result.restored.idx)}`);
   assert(!result.spent.rebuilt && result.spent.order === result.catalog && (result.spent.scrollable < 300 || result.spent.scrollTop === 300), `${label}: clicking '#' in the catalog order re-applied the order anyway: ${JSON.stringify({ ...result.spent, order: result.spent.order === result.catalog })}`);
+  // A focused header sorts on its own activation keys. Space is play/pause on the window and the
+  // keymap preventDefaults it before the button's default activation runs, so the header handles
+  // Space itself (as the Modern title does) and Enter reaches the click listener: without both,
+  // a header that has the focus after a click still cannot be operated from the keyboard.
+  await page.evaluate(() => document.querySelector('.row.head .hcell.col-engine').focus());
+  await page.keyboard.press(' ');
+  // the transport button flips to 'pause' within a frame of a play/pause reaching the keymap
+  await page.waitForTimeout(300);
+  const space = await page.evaluate(() => ({
+    sort: document.querySelector('.row.head .hcell.col-engine').getAttribute('aria-sort'),
+    focus: document.activeElement?.dataset.col ?? null,
+    icon: document.querySelector('.transport .play')?.dataset.icon ?? null,
+  }));
+  await page.keyboard.press('Enter');
+  const enter = await page.evaluate(() => document.querySelector('.row.head .hcell.col-engine').getAttribute('aria-sort'));
+  assert(space.sort === 'ascending' && space.focus === 'engine', `${label}: Space on the focused engine header did not sort it: ${JSON.stringify(space)}`);
+  assert(space.icon !== 'pause', `${label}: Space on a focused header also reached the window keymap and started playback: ${JSON.stringify(space)}`);
+  assert(enter === 'descending', `${label}: Enter on the focused engine header did not reverse the sort: ${enter}`);
   await page.close();
 }
 
 await headerSorting();
 
 /**
+ * The '#' header in the catalog order has nothing left to restore, and says so with
+ * aria-disabled. The pointer must be told the same thing: no hand cursor, no hover colour, no
+ * press — otherwise a mouse user gets a control that lights up, depresses and does nothing while
+ * a screen reader is told it is unavailable. Checked in all three themes, each of which draws
+ * its own hover and active states for a header.
+ */
+async function spentHeaderIsNotAControl() {
+  for (const theme of ['modern', 'win95', 'amiga']) {
+    const label = `desktop/${theme}`;
+    const page = await browser.newPage({ viewport: viewports.desktop });
+    page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+    const target = new URL(url);
+    target.searchParams.set('theme', theme);
+    await page.goto(target.href, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.rows .row', { timeout: 20000 });
+    const probe = () => page.evaluate(() => {
+      const idx = document.querySelector('.row.head .hcell.col-idx');
+      const style = getComputedStyle(idx);
+      return { disabled: idx.getAttribute('aria-disabled'), cursor: style.cursor, color: style.color, background: style.backgroundColor, shadow: style.boxShadow, label: getComputedStyle(idx.querySelector('.hlabel')).opacity };
+    });
+    const away = await probe(); // catalog order, pointer elsewhere
+    await page.hover('.row.head .hcell.col-idx');
+    const hovered = await probe();
+    await page.mouse.down();
+    const pressed = await probe();
+    await page.mouse.up();
+    await page.click('.row.head .hcell.col-engine'); // now '#' has an order to restore
+    await page.hover('.row.head .hcell.col-idx');
+    const live = await probe();
+    assert(away.disabled === 'true' && live.disabled === null, `${label}: the '#' header did not go from spent to live: ${JSON.stringify([away.disabled, live.disabled])}`);
+    assert(hovered.cursor === 'default' && live.cursor === 'pointer', `${label}: the spent '#' header's cursor is ${hovered.cursor} and the live one's ${live.cursor}`);
+    assert(Number(hovered.label) < 1 && Number(live.label) === 1, `${label}: the spent '#' label is not dimmed against the live one: ${JSON.stringify([hovered.label, live.label])}`);
+    assert(hovered.color === away.color && hovered.background === away.background, `${label}: the spent '#' header lights up under the pointer: ${JSON.stringify([away, hovered])}`);
+    assert(pressed.shadow === away.shadow, `${label}: the spent '#' header depresses when pressed: ${JSON.stringify([away.shadow, pressed.shadow])}`);
+    await page.close();
+  }
+}
+
+await spentHeaderIsNotAControl();
+
+/**
  * The Now Playing tier pill: its tooltip is written once, in the NowPlaying constructor, and its
  * label by setTier() as the engine promotes the audio. tierLabel()/tierTitle() are unit-tested;
  * the strings only reach a user through a real document, so a real playback is checked here.
+ * The tooltip half needs no audio and is asserted; the label half is skipped, not failed, on a
+ * runner that cannot decode any (the strings themselves are pinned by the unit tests).
  */
 async function nowPlayingTierPill() {
   const label = 'desktop/modern';

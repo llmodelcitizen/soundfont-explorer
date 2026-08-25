@@ -335,6 +335,11 @@
 [data-theme='win95'] .hcell:active {
   box-shadow: inset 1px 1px #000000, inset -1px -1px #ffffff, inset 2px 2px #808080, inset -2px -2px #dfdfdf;
 }
+/* a spent header does not depress: base already takes its hand cursor and hover colour away, and
+   an Explorer button that flashes pressed would still promise the click aria-disabled denies */
+[data-theme='win95'] .hcell[aria-disabled='true']:active {
+  box-shadow: var(--w95-thumb);
+}
 [data-theme='win95'] .hcell.sorted {
   color: #000000;
   font-weight: 700;

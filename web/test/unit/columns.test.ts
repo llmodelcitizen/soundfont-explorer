@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseCatalog } from '../../src/contracts/catalog';
 import { DEFAULT_PREFS } from '../../src/state/prefs';
-import { COLUMNS, cellText, columnDef, displayLabel, nextSort, rowMinWidth, sortIds, visibleColumns, type CellContext, type ColKey } from '../../src/ui/columns';
+import { COLUMNS, cellText, columnDef, displayLabel, nextSort, rowMinWidth, sortIds, visibleColumns, type CellContext, type ColKey, type SortState } from '../../src/ui/columns';
 import { makeSet } from './fakes';
 
 const catalog = parseCatalog({
@@ -74,7 +74,15 @@ describe('header clicks', () => {
 
   it('leaves every other column on the three-step cycle', () => {
     for (const c of COLUMNS.filter((x) => x.key !== 'idx')) {
-      expect([c.key, nextSort({ key: null, dir: 1 }, c.key)]).toEqual([c.key, { key: c.key, dir: 1 }]);
+      // all three clicks, so a column that quietly gained resetsSort is caught at whichever
+      // step it stops cycling — the flag only changes what steps 2 and 3 do
+      const steps: SortState[] = [];
+      let state: SortState = { key: null, dir: 1 };
+      for (let i = 0; i < 3; i++) {
+        state = nextSort(state, c.key);
+        steps.push(state);
+      }
+      expect([c.key, steps]).toEqual([c.key, [{ key: c.key, dir: 1 }, { key: c.key, dir: -1 }, { key: null, dir: 1 }]]);
     }
   });
 });
