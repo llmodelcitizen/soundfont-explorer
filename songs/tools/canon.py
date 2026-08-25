@@ -424,8 +424,15 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
         with open(os.path.join(SONGS_DIR, "songs.json"), encoding="utf-8") as fh:
             existing = json.load(fh)["songs"]
         by_id = {e["id"]: e for e in entries}
-        merged = [by_id.pop(e["id"], e) for e in existing]
-        entries = merged + [e for e in entries if e["id"] in by_id]
+        merged = []
+        for e in existing:
+            if e["id"] in by_id:
+                merged.append(by_id.pop(e["id"]))       # re-canonicalized this run
+            elif e["id"] not in only:
+                merged.append(e)                        # not selected: untouched
+            # selected but not produced (refused, or gone from the corpus): its stale entry
+            # must not survive, or the render list keeps offering a song canon just rejected
+        entries = merged + list(by_id.values())
     ids = [e["id"] for e in entries]
     if len(set(ids)) != len(ids):
         raise SystemExit("duplicate song ids")
