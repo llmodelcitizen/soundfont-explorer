@@ -177,6 +177,13 @@ resource "aws_cloudfront_distribution" "site" {
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
+
+  # The circuit breaker (modules/circuit-breaker) disables the distribution out of band. Ignore
+  # that drift so a routine `terraform apply` cannot silently reopen the site; re-enabling is the
+  # explicit manual step in docs/DEPLOY.md "If the circuit breaker trips".
+  lifecycle {
+    ignore_changes = [enabled]
+  }
 }
 
 output "bucket_name" {
