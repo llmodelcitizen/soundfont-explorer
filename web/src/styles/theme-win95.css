@@ -103,7 +103,6 @@
 [data-theme='win95'] .folder-count,
 [data-theme='win95'] .settings .small,
 [data-theme='win95'] .settings .setting-title,
-[data-theme='win95'] .share-heading,
 [data-theme='win95'] .share-params,
 [data-theme='win95'] .transport .clock {
   font-size: 11px;
@@ -524,7 +523,8 @@
 /* --warn is #ffff00, which the transport strip carries on navy: on the #c0c0c0 dialog face it
    measures 1.69:1, less legible than the plain hint it replaces. A refusal has to be readable,
    so it takes the same maroon this theme already gives 'clear all site data' (#34). */
-[data-theme='win95'] .settings .colfoot span.warn {
+[data-theme='win95'] .settings .colfoot span.warn,
+[data-theme='win95'] .share-note.warn {
   color: var(--bad);
 }
 
@@ -552,8 +552,7 @@
 }
 /* Dialog control labels are black on the face, as in a real property sheet. */
 [data-theme='win95'] .settings .preserve,
-[data-theme='win95'] .settings .setting-title,
-[data-theme='win95'] .share-heading {
+[data-theme='win95'] .settings .setting-title {
   color: #000000;
 }
 /* The ♥ / ● column toggles come from fallback glyphs: full-size, centred on their checkbox. */
