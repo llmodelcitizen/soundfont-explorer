@@ -339,6 +339,17 @@ class FinisherTests(unittest.TestCase):
         self.assertTrue(rec["finisher"]["songs_json_published"])
         self.assertEqual(rec["finisher"]["error"], "instance-type restore failed: boom")
 
+    def test_a_retry_clears_the_previous_finishers_own_error(self):
+        # only a verdict from before the finisher ran is carried over ("Run finisher" is
+        # offered exactly while songs_json_published is false, and it must be able to clear)
+        self.release.set()
+        self.m.runs["r1"]["finisher"] = {"ran_at": "2026-08-24T01:05:00Z",
+                                         "songs_json_published": False,
+                                         "error": "manifest --songs-json-only failed"}
+        rec = self.m.finish("r1")
+        self.assertTrue(rec["finisher"]["songs_json_published"])
+        self.assertIsNone(rec["finisher"]["error"])
+
 
 def write_repo(root: str) -> None:
     p = pathlib.Path(root)

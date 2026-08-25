@@ -447,10 +447,12 @@ class RunManager:
                 raise RuntimeError(f"the finisher for run {rid} is already running")
             self._finishing.add(rid)
         try:
-            # a verdict recorded before the finisher ran (a job Batch forgot, a failed
+            # a verdict recorded before the finisher ever ran (a job Batch forgot, a failed
             # instance-type restore) is the operator's only explanation of the run, and
-            # replacing the whole dict here dropped it (#19)
-            prior = (rec.get("finisher") or {}).get("error")
+            # replacing the whole dict here dropped it (#19). A previous finisher's own
+            # error is not carried over: a retry that works clears it.
+            fin = rec.get("finisher") or {}
+            prior = None if fin.get("ran_at") else fin.get("error")
             try:
                 with publocks.exclusive(f"finisher for run {rid}", timeout=lock_wait):
                     publishops.sync_down()
