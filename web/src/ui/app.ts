@@ -29,6 +29,7 @@ import { SongPicker } from './songpicker';
 import { adjacentTrackId, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { ShareDialog } from './share';
+import { FULLSCREEN_UNSUPPORTED, fullscreenSupported, toggleFullscreen } from './fullscreen';
 import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
@@ -203,6 +204,17 @@ export class App {
       this.diag.resumedOnGesture = (Number(this.diag.resumedOnGesture) || 0) + 1;
     });
     window.addEventListener('hashchange', () => this.onHashChange());
+    // the browser also leaves full screen on its own (Esc, F11): keep the Settings button honest
+    for (const name of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(name, () => this.settings.refresh());
+  }
+
+  /** Shift + F and the Settings button; unsupported browsers (iPhone Safari) just say so. */
+  private goFullscreen(): void {
+    if (!fullscreenSupported()) {
+      this.transport?.setStatus(FULLSCREEN_UNSUPPORTED, 'wontload');
+      return;
+    }
+    void toggleFullscreen().then(() => this.settings.refresh());
   }
 
   private creditsEl: HTMLElement | null = null;
@@ -520,6 +532,7 @@ export class App {
         }
       },
       filters: () => this.filters.toggle(),
+      fullscreen: () => this.goFullscreen(),
       theme: () => this.setTheme(nextTheme(this.theme)),
       debug: () => this.debug.toggle(),
       keymap: () => this.keymap.toggle(),

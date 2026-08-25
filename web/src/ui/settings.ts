@@ -4,6 +4,7 @@ import { DEFAULT_PREFS, type Prefs } from '../state/prefs';
 import { COLUMNS, columnTitle } from './columns';
 import { isCompact } from '../config';
 import { clearAllSiteData } from '../state/wipe';
+import { FULLSCREEN_UNSUPPORTED, fullscreenSupported, isFullscreen, toggleFullscreen } from './fullscreen';
 
 export interface SettingsCallbacks {
   onChange(p: Prefs): void;
@@ -36,6 +37,11 @@ export class SettingsModal {
   setPrefs(p: Prefs): void {
     this.prefs = p;
     this.render();
+  }
+
+  /** repaint while open — the full-screen button's label follows the document's own state */
+  refresh(): void {
+    if (this.visible) this.render();
   }
 
   toggle(force?: boolean): void {
@@ -78,6 +84,9 @@ export class SettingsModal {
     });
     const resetFont = h('button', { class: 'btn colaction', type: 'button', title: 'restore the default Modern font' }, 'reset font');
     resetFont.addEventListener('click', () => this.cb.onResetFont());
+    const canFullscreen = fullscreenSupported();
+    const fullscreen = h('button', { class: 'btn fullscreen-btn', type: 'button', disabled: !canFullscreen, title: canFullscreen ? 'fill the screen (Shift + F)' : FULLSCREEN_UNSUPPORTED }, isFullscreen() ? 'leave full screen' : 'full screen');
+    fullscreen.addEventListener('click', () => void toggleFullscreen().then(() => this.render()));
     const close = h('button', { class: 'btn close-settings', type: 'button' }, 'close');
     close.addEventListener('click', () => this.toggle(false));
     const wipe = h('button', { class: 'btn danger', type: 'button', title: 'Forget everything this site stored in this browser (settings, favorites, listened marks, pane sizes) and reload' }, 'clear all site data');
@@ -118,6 +127,12 @@ export class SettingsModal {
         ),
         h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order.')),
         h('div', { class: 'btnrow colfoot fontfoot' }, resetFont, h('span', { class: 'muted small' }, 'Click or tap the title bar to cycle font selection (modern theme only)')),
+      ),
+      h(
+        'section',
+        { class: 'setting' },
+        h('div', { class: 'setting-title' }, 'Display'),
+        h('div', { class: 'btnrow colfoot' }, fullscreen, h('span', { class: 'muted small' }, canFullscreen ? 'Fill the screen with the player. Shortcut: Shift + F (Esc leaves it).' : FULLSCREEN_UNSUPPORTED)),
       ),
       h('div', { class: 'btnrow' }, close, wipe),
     );
