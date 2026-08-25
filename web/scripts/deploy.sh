@@ -11,8 +11,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(cd .. && pwd)
 DRY=()
-[[ "${1:-}" == "--dry-run" ]] && DRY=(--dryrun)
-# expanded as ${DRY[@]+"${DRY[@]}"}: an empty array is an unbound variable under `set -u` on bash < 4.4 (macOS ships 3.2)
+DRYRUN=0
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY=(--dryrun)
+  DRYRUN=1
+fi
+# DRY is expanded as ${DRY[@]+"${DRY[@]}"}: an empty array is an unbound variable under `set -u`
+# on bash < 4.4 (macOS ships 3.2). DRYRUN is the plain scalar the branch below tests, so no
+# expansion of the empty array is needed anywhere on the non-dry-run path.
 
 OUT="$ROOT/infra/live/outputs.json"
 [[ -f "$OUT" ]] || { echo "missing $OUT — run: terraform -chdir=infra/live output -json > infra/live/outputs.json" >&2; exit 1; }
@@ -31,7 +37,7 @@ echo "== index.html / 404.html (60 s)"
 aws s3 cp dist/index.html "s3://$BUCKET/index.html" --content-type "text/html; charset=utf-8" --cache-control "$SHORT" ${DRY[@]+"${DRY[@]}"}
 aws s3 cp dist/404.html "s3://$BUCKET/404.html" --content-type "text/html; charset=utf-8" --cache-control "$SHORT" ${DRY[@]+"${DRY[@]}"}
 if [[ -f dist/robots.txt ]]; then aws s3 cp dist/robots.txt "s3://$BUCKET/robots.txt" --content-type text/plain --cache-control "$SHORT" ${DRY[@]+"${DRY[@]}"}; fi
-if [[ ${#DRY[@]} -eq 0 ]]; then
+if [[ $DRYRUN -eq 0 ]]; then
   echo "== invalidate"
   aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/" "/index.html" "/404.html" --query 'Invalidation.Id' --output text
 fi
