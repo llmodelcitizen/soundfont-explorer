@@ -40,11 +40,19 @@ def render_songs() -> dict:
                        "duration_s": s["duration_s"]} for s in doc["songs"]]}
 
 
+def _variants(body: dict) -> int | None:
+    """Optional override of the per-song job count; the default is derived from the
+    catalog (planner.variant_counts), never a literal."""
+    return int(body["variants"]) if body.get("variants") else None
+
+
 @router.post("/api/render/plan")
 def plan(body: dict) -> dict:
     try:
         return _mgr().plan(list(body.get("songs", [])), int(body.get("shards", 8)),
-                           int(body.get("variants", 566)))
+                           variants=_variants(body),
+                           engines=body.get("engines") or None,
+                           limit=int(body["limit"]) if body.get("limit") else None)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
@@ -62,7 +70,7 @@ def submit(body: dict) -> dict:
             instance_types=body.get("instance_types") or None,
             shard_vcpus=int(body["shard_vcpus"]) if body.get("shard_vcpus") else None,
             shard_memory_mib=int(body["shard_memory_mib"]) if body.get("shard_memory_mib") else None,
-            variants=int(body.get("variants", 566)),
+            variants=_variants(body),
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e

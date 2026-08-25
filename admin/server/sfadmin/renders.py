@@ -97,29 +97,37 @@ class RunManager:
 
     # ------------------------------------------------------------ plan + submit
 
-    def plan(self, songs: list[str], shards: int, variants: int = 566) -> dict:
+    def plan(self, songs: list[str], shards: int, variants: int | None = None,
+             engines: list[str] | None = None, limit: int | None = None) -> dict:
+        """Shards + cost estimate under the run's knobs. The per-song job count comes from
+        catalog/variants.json narrowed by `engines` and capped by `limit`; `variants` is
+        an explicit override of that count (the old --variants knob)."""
         planner = _planner()
         import pathlib
-        durations = planner.song_durations(pathlib.Path(self.cfg.repo))
+        repo = pathlib.Path(self.cfg.repo)
+        durations = planner.song_durations(repo)
         unknown = [s for s in songs if s not in durations]
         if unknown:
             raise ValueError(f"not in songs.json (run canon first): {unknown[:5]}"
                              + ("…" if len(unknown) > 5 else ""))
         plan = planner.plan_shards(songs, shards, durations)
-        cpu_h, usd = planner.estimate(plan, variants)
-        return {"shards": plan, "jobs": len(songs) * variants,
+        per_song = planner.variants_per_song(planner.variant_counts(repo), engines, limit)
+        if variants:
+            per_song = min(variants, limit) if limit else variants
+        cpu_h, usd = planner.estimate(plan, per_song)
+        return {"shards": plan, "jobs": len(songs) * per_song, "variants_per_song": per_song,
                 "cpu_h": round(cpu_h, 1), "usd": round(usd, 2)}
 
     def submit(self, songs: list[str], shards: int, max_usd: float,
                engines: list[str] | None = None, limit: int | None = None,
                instance_types: list[str] | None = None,
                shard_vcpus: int | None = None, shard_memory_mib: int | None = None,
-               variants: int = 566) -> dict:
+               variants: int | None = None) -> dict:
         if not self.cfg.render_enabled:
             raise RuntimeError("render fleet is not deployed (empty render config)")
         if self.active():
             raise RuntimeError(f"run {self.active()['run_id']} is still {self.active()['state']}")
-        est = self.plan(songs, shards, variants)
+        est = self.plan(songs, shards, variants, engines, limit)
         if est["usd"] > max_usd:
             raise ValueError(f"estimate ${est['usd']:.2f} exceeds max ${max_usd:.2f} — raise it deliberately")
         plan = est["shards"]
@@ -136,8 +144,8 @@ class RunManager:
             "songs": songs, "shards": plan,
             "knobs": {"shards": shards, "max_usd": max_usd, "engines": engines, "limit": limit,
                       "instance_types": instance_types, "shard_vcpus": shard_vcpus,
-                      "shard_memory_mib": shard_memory_mib, "variants": variants},
-            "estimate": {k: est[k] for k in ("jobs", "cpu_h", "usd")},
+                      "shard_memory_mib": shard_memory_mib, "variants": est["variants_per_song"]},
+            "estimate": {k: est[k] for k in ("jobs", "cpu_h", "usd", "variants_per_song")},
             "batch_job_id": None, "submitted_at": _now(), "finished_at": None,
             "status_summary": {}, "published_sets": {},
             "instance_types_before": None, "instance_types_restored": True,
