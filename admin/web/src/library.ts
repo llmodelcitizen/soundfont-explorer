@@ -7,6 +7,7 @@
 // server additionally caps concurrent preview renders at 2).
 import { get, isSessionExpired, patch, post } from './api';
 import { el, note, statusLine } from './dom';
+import { safeStorage } from './storage';
 
 export interface CanonInfo {
   status: 'ok' | 'pending' | 'refused' | 'unparsed';
@@ -88,8 +89,9 @@ export class LibraryView {
 
   constructor() {
     try {
-      this.open = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]'));
-      this.autoplay = localStorage.getItem(AUTOPLAY_KEY) === '1';
+      // the try still guards new Set(): a hand-edited store can hold something un-iterable
+      this.open = new Set(safeStorage.getJson<string[]>(OPEN_KEY) ?? []);
+      this.autoplay = safeStorage.get(AUTOPLAY_KEY) === '1';
     } catch { /* fresh */ }
     document.addEventListener('keydown', (ev) => this.onKey(ev));
   }
@@ -102,9 +104,7 @@ export class LibraryView {
   }
 
   private saveOpen(): void {
-    try {
-      localStorage.setItem(OPEN_KEY, JSON.stringify([...this.open]));
-    } catch { /* private mode */ }
+    safeStorage.setJson(OPEN_KEY, [...this.open]);
   }
 
   private async act(label: string, fn: () => Promise<unknown>): Promise<boolean> {
@@ -367,9 +367,7 @@ export class LibraryView {
     auto.checked = this.autoplay;
     auto.onchange = () => {
       this.autoplay = auto.checked;
-      try {
-        localStorage.setItem(AUTOPLAY_KEY, this.autoplay ? '1' : '0');
-      } catch { /* private mode */ }
+      safeStorage.set(AUTOPLAY_KEY, this.autoplay ? '1' : '0');
       this.maybeAutoplay();
     };
     const upload = el('button', {}, 'Upload…');
