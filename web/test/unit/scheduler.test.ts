@@ -18,10 +18,16 @@ function chainFor(D = 8) {
   return { set, ctx, store, timeline, chain };
 }
 
+/** a set neither tier's slices cover: nothing can advance fill()'s tail past u = 4 */
+function malformed(set: ReturnType<typeof chainFor>['set']): void {
+  set.slices = 2;
+  set.listen = { ...set.listen, slice_s: 2, slices: 2 };
+}
+
 describe('Chain.fill', () => {
   it('stops instead of spinning when the set\'s slices do not cover its duration', () => {
     const h = chainFor(8);
-    h.set.slices = 2; // malformed: 2 × 2 s slices for an 8 s song → every u ≥ 4 maps to the last slice, which ends at 4
+    malformed(h.set); // 2 × 2 s slices for an 8 s song → every u ≥ 4 maps to the last slice, which ends at 4
     let peeks = 0;
     const peek = h.store.peek.bind(h.store);
     h.store.peek = (k) => {
@@ -42,14 +48,43 @@ describe('Chain.fill', () => {
     // breaking out of fill() is indistinguishable from "fully scheduled" for the engine: audio
     // simply runs out at the tail, so the stall must reach the debug panel (store.lastError)
     const h = chainFor(8);
-    h.set.slices = 2;
+    malformed(h.set);
     h.ctx.currentTime = 4;
     expect(h.store.lastError).toBeNull();
     h.chain.fill(4);
     expect(h.chain.coverageStalls).toBe(1);
+    expect(h.store.stats.coverageStalls).toBe(1); // where the debug panel reads it
     expect(h.store.lastError).toMatch(/a\/s\/1: segment ends at 4 ≤ tail 4 .* do not cover its duration/);
     h.chain.fill(4);
     expect(h.chain.coverageStalls).toBe(2);
+  });
+
+  it('reports the same uncovered stretch once, not on every tick', () => {
+    // fill() runs on every engine tick and every frame: rewriting lastError each time would
+    // bury every other fetch/decode error the debug panel could show for the whole song
+    const h = chainFor(8);
+    malformed(h.set);
+    h.ctx.currentTime = 4;
+    h.chain.fill(4);
+    expect(h.store.lastError).toMatch(/do not cover its duration/);
+    h.store.lastError = 'a/s/0: boom'; // a real error arrives while the malformed set plays
+    for (let i = 0; i < 5; i++) h.chain.fill(4);
+    expect(h.chain.coverageStalls).toBe(6); // still counted every time
+    expect(h.store.lastError).toBe('a/s/0: boom');
+  });
+
+  it('falls back to the tier that covers the stretch instead of stalling on the preferred one', () => {
+    // only the listen tier runs short here; the scrub tier covers the whole duration, so fill()
+    // must keep going on it rather than stopping on whichever tier pick() happened to prefer
+    const h = chainFor(8);
+    h.set.listen = { ...h.set.listen, slice_s: 2, slices: 1 }; // listen covers [0, 2) only
+    h.store.decoded.set(keyStr({ v: 'a', tier: 'l', i: 0 }), new FakeBuffer(2.14, 48000, 2, 'a/l/0'));
+    h.ctx.currentTime = 2;
+    expect(h.chain.fill(2)).toBeNull();
+    expect(h.chain.tail).toBe(6); // 2 + LOOKAHEAD, carried by the scrub tier past u = 2
+    expect(h.chain.scheduled.map((x) => x.key.tier)).toEqual(['l', 's', 's']);
+    expect(h.chain.coverageStalls).toBe(0);
+    expect(h.store.lastError).toBeNull();
   });
 
   it('fills a well-formed set up to the lookahead', () => {

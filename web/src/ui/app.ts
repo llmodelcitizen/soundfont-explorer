@@ -961,6 +961,7 @@ export class App {
             decodedOk: this.store.stats.decodedOk,
             decodeErrors: this.store.stats.decodeErrors,
             fetchErrors: this.store.stats.fetchErrors,
+            coverageStalls: this.store.stats.coverageStalls,
             lastError: this.store.lastError ?? '',
             audibleRms: this.engine.audibleRms(),
             status: `${this.engine.status.kind} ${this.engine.status.message}`.trim(),

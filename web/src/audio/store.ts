@@ -48,7 +48,7 @@ export class SegmentStore {
   private failed = new Map<string, { fails: number; until: number; kind: 'fetch' | 'decode' }>();
   /** byte-only prefetches in flight, keyed like `failed`: one failure per request, not per tick */
   private fetchingOnly = new Map<string, Promise<unknown>>();
-  stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0, backedOff: 0 };
+  stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0, backedOff: 0, coverageStalls: 0 };
   lastError: string | null = null;
   /** Range for a blind header probe: a full-size pack's header (the length table may be shorter) */
   private readonly headerProbe: { start: number; end: number };
