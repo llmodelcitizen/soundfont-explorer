@@ -161,6 +161,15 @@
   width: 18px;
   height: 18px;
 }
+@media (pointer: coarse) {
+  /* A media query adds no specificity, so the 18px above would beat base.css's coarse-pointer rule
+     and leave the one theme with a deliberately larger glyph as the only one with a small tap
+     target. Same 24x24 as every other theme (WCAG 2.5.8). */
+  [data-theme='amiga'] .facet-help-btn {
+    width: 24px;
+    height: 24px;
+  }
+}
 [data-theme='amiga'] .facet-help-btn:hover,
 [data-theme='amiga'] .facet-help-btn[data-open='true'] {
   background: #f08000;

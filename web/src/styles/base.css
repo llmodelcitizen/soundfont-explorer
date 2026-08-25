@@ -252,7 +252,9 @@ select:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--fg-dim);
-  margin: 4px 0 2px;
+  /* the bottom margin clears the help gadget's enlarged hit area below (see .facet-help-btn::after),
+     so the pad it gains never covers the first chip of the row underneath */
+  margin: 4px 0;
 }
 /* category help: a "?" gadget beside the heading, and the bubble it opens. The bubble is fixed,
    so the scrolling facet panel cannot clip it; filters.ts anchors it under its own trigger. */
@@ -261,6 +263,7 @@ select:focus-visible {
   flex: 0 0 auto;
 }
 .facet-help-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -275,6 +278,15 @@ select:focus-visible {
   line-height: 14px;
   letter-spacing: normal;
   cursor: pointer;
+}
+/* The gadget is drawn small enough to sit inside a 0.75em heading; the area it answers to is not.
+   This pad takes the target to the 24x24 minimum of WCAG 2.5.8 without growing the panel: the inset
+   is measured from the padding box, so with border-box sizing it grows the 16px gadget to
+   14 + 2 x 5 = 24. The heading's own margin above keeps it off the first chip of the row below. */
+.facet-help-btn::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
 }
 .facet-help-btn:hover,
 .facet-help-btn[data-open='true'] {
@@ -291,8 +303,11 @@ select:focus-visible {
   width: max-content;
   max-width: min(320px, calc(100vw - 16px));
   /* a landscape phone is barely taller than this copy: scroll the overflow rather than hang it
-     off the bottom of the screen, where the caveat the reader came for is cut off */
+     off the bottom of the screen, where the caveat the reader came for is cut off. dvh is the
+     visible height that filters.ts clamps against, with vh left as the fallback for browsers
+     without it — 100vh includes the mobile URL bar, and would overflow by its height. */
   max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px);
   overflow: auto;
   padding: 6px 9px;
   background: var(--panel);
@@ -1015,11 +1030,15 @@ kbd {
   .search {
     font-size: 16px;
   }
-  /* a 16 px "?" is a poor tap target */
+  /* a 16 px "?" is a poor tap target: on a touch screen the gadget itself is the 24x24 minimum of
+     WCAG 2.5.8, so the pad it carries on desktop would only reach into the chips below */
   .facet-help-btn {
-    width: 22px;
-    height: 22px;
-    line-height: 20px;
+    width: 24px;
+    height: 24px;
+    line-height: 22px;
+  }
+  .facet-help-btn::after {
+    inset: 0;
   }
 }
 

@@ -92,17 +92,51 @@ describe('help bubbles', () => {
     expect(tips.open).toBe('bank_map');
   });
 
-  it('closes when the panel scrolls or is rebuilt', () => {
+  it('does not bring a dismissed bubble back the next time the pointer visits another trigger', () => {
+    const tips = new HelpTips();
+    // Escape never blurs a button, so the trigger keeps focus after dismissing its bubble. If that
+    // focus is still remembered, the next hover elsewhere falls back to it on the way out and paints
+    // a bubble the reader dismissed, with the pointer nowhere near it (issue #26).
+    tips.focus('engine');
+    tips.escape();
+    tips.pointerEnter('chip');
+    tips.pointerLeave('chip');
+    expect(tips.open).toBe(null);
+  });
+
+  it('closes when the panel scrolls or is rebuilt, remembered focus and all', () => {
     const tips = new HelpTips();
     tips.pointerEnter('type');
     tips.close();
     expect(tips.open).toBe(null);
     tips.focus('type');
-    tips.reset();
+    tips.close();
     expect(tips.open).toBe(null);
-    // reset drops the remembered focus too, so a stale trigger cannot hold a bubble open
+    // close drops the remembered focus too, so a stale trigger cannot hold a bubble open
     tips.pointerEnter('type');
     tips.pointerLeave('type');
+    expect(tips.open).toBe(null);
+  });
+
+  it('toggles on the first click on a trigger the keyboard had already focused', () => {
+    const tips = new HelpTips();
+    // Tab to the trigger, then click it: the button already has focus, so no focus event follows the
+    // press, and the click has to close the bubble rather than re-show it
+    tips.focus('decade');
+    tips.pointerDown();
+    tips.activate('decade');
+    expect(tips.open).toBe(null);
+  });
+
+  it('lets the pointer take away a bubble its own click left focused', () => {
+    const tips = new HelpTips();
+    // a mouse click focuses the trigger; that focus must not pin the bubble over the chips it
+    // covers the way a keyboard focus does
+    tips.pointerDown();
+    tips.focus('size');
+    tips.activate('size');
+    expect(tips.open).toBe('size');
+    tips.pointerLeave('size');
     expect(tips.open).toBe(null);
   });
 

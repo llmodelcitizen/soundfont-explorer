@@ -37,6 +37,10 @@ export const FACET_HELP: Record<FacetKey, string> = {
 export class HelpTips {
   private shown: FacetKey | null = null;
   private focused: FacetKey | null = null;
+  /** the focus above arrived with a pointer press, so it is not the keyboard holding a bubble open */
+  private viaPointer = false;
+  /** a press has landed on a trigger and the focus it may bring has not arrived yet */
+  private pressing = false;
   private justFocused = false;
 
   constructor(private readonly onChange: (open: FacetKey | null) => void = () => {}) {}
@@ -45,24 +49,47 @@ export class HelpTips {
     return this.shown;
   }
 
+  /**
+   * The bubble the keyboard is holding open, if any. A trigger left focused by a mouse click does
+   * not hold one: the bubble covers the chips beside it, and the pointer moving away is the plainest
+   * signal that the reader is done with it.
+   */
+  private get held(): FacetKey | null {
+    return this.viaPointer ? null : this.focused;
+  }
+
   pointerEnter(key: FacetKey): void {
     this.show(key);
   }
 
   /** the pointer left the trigger: a bubble the keyboard is holding open stays */
   pointerLeave(key: FacetKey): void {
-    if (this.shown === key && this.focused !== key) this.show(this.focused);
+    if (this.shown === key && this.held !== key) this.show(this.held);
+  }
+
+  /**
+   * A pointer went down on a trigger. Any focus that follows belongs to this press, and a focus the
+   * keyboard left behind is spent: without this, the first click on a trigger reached by Tab takes
+   * the just-focused branch of activate() below and re-shows instead of toggling.
+   */
+  pointerDown(): void {
+    this.pressing = true;
+    this.justFocused = false;
   }
 
   focus(key: FacetKey): void {
     this.focused = key;
+    this.viaPointer = this.pressing;
+    this.pressing = false;
     this.justFocused = true;
     this.show(key);
   }
 
   blur(key: FacetKey): void {
+    this.pressing = false;
     if (this.focused !== key) return;
     this.focused = null;
+    this.viaPointer = false;
     this.justFocused = false;
     if (this.shown === key) this.show(null);
   }
@@ -84,16 +111,18 @@ export class HelpTips {
     return true;
   }
 
-  /** the panel scrolled out from under the bubble, or was rebuilt */
+  /**
+   * Dismissed: by Escape, by a tap outside, by the panel scrolling out from under the bubble, or by
+   * the triggers being rebuilt. The remembered focus goes with it — Escape never blurs a button, and
+   * a trigger still holding focus for a bubble the reader has dismissed would have it painted back
+   * the next time the pointer visited another "?" and left again (issue #26).
+   */
   close(): void {
+    this.focused = null;
+    this.viaPointer = false;
+    this.pressing = false;
     this.justFocused = false;
     this.show(null);
-  }
-
-  /** the triggers themselves are gone (the facet panel re-rendered) */
-  reset(): void {
-    this.focused = null;
-    this.close();
   }
 
   private show(next: FacetKey | null): void {

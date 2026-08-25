@@ -54,6 +54,15 @@ export const label = (v: string): string => VALUE_LABELS[v] ?? v.replace(/_/g, '
  */
 const HOVER_GRACE_MS = 220;
 
+/** a tap rather than a hover: a finger and a pen both emit enter/leave around their click */
+const isTap = (e: PointerEvent): boolean => e.pointerType === 'touch' || e.pointerType === 'pen';
+
+/** some of this element's copy is selected, so the click that ended the drag must not close it */
+function selectionInside(el: HTMLElement): boolean {
+  const sel = window.getSelection();
+  return !!sel && !sel.isCollapsed && !!sel.anchorNode && el.contains(sel.anchorNode);
+}
+
 /** anchor a help bubble under its trigger, nudged to stay inside the viewport (it is position: fixed) */
 function placeTip(btn: HTMLElement, tip: HTMLElement): void {
   tip.style.left = '0px';
@@ -139,8 +148,19 @@ export class FilterBar {
     if (e instanceof PointerEvent) this.outsideHelp(e);
   };
 
+  /**
+   * Escape drops an open bubble, and normally the key stops there: the app's own Escape closes the
+   * whole filter panel, which is not what dismissing a bubble asked for. It does not stop there when
+   * something nearer the user's attention wants the key — a text field it would clear, or a modal
+   * covering the panel — because the bubble may only be open because the pointer happens to be
+   * resting on a "?" (issue #26).
+   */
   private readonly onEscape = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape' && this.help.escape()) e.stopPropagation();
+    if (e.key !== 'Escape' || !this.help.open) return;
+    const t = e.target as HTMLElement | null;
+    const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    const modal = !!document.querySelector('.overlay:not(.hidden)');
+    if (this.help.escape() && !typing && !modal) e.stopPropagation();
   };
 
   toggle(force?: boolean): void {
@@ -151,7 +171,7 @@ export class FilterBar {
     else if (!next) {
       // a bubble must not come back with the panel, nor the focus it was holding on to
       this.cancelHelpLeave();
-      this.help.reset();
+      this.help.close();
     }
     this.groups.classList.toggle('hidden', !next);
     this.cb.onOpenChange?.(next);
@@ -192,32 +212,32 @@ export class FilterBar {
     const wrap = h('span', { class: 'facet-help' }, btn, tip);
     // On the wrapper, so reading the bubble itself keeps it open: it hangs against its trigger,
     // and a pointer that clips the heading on the way there has the grace above to arrive. A tap
-    // emits the same enter/leave around its click, with pointerType 'touch': that is not hover,
-    // and taking it for hover left the bubble already open when the tap's click arrived, which
-    // toggled it straight back shut (issue #26).
+    // emits the same enter/leave around its click: that is not hover, and taking it for hover left
+    // the bubble already open when the tap's click arrived, which toggled it straight back shut.
+    // A pen reports 'pen' and taps exactly like a finger, so it is held to the same path (#26).
     wrap.addEventListener('pointerenter', (e) => {
-      if (e.pointerType === 'touch') return;
+      if (isTap(e)) return;
       this.cancelHelpLeave();
       this.help.pointerEnter(key);
     });
     wrap.addEventListener('pointerleave', (e) => {
-      if (e.pointerType === 'touch') return;
+      if (isTap(e)) return;
       this.cancelHelpLeave();
       this.helpLeave = setTimeout(() => {
         this.helpLeave = null;
         this.help.pointerLeave(key);
       }, HOVER_GRACE_MS);
     });
-    // A tap on the bubble is aimed at the filter chips it covers, so it takes the bubble down —
-    // on the click rather than the press, so that the tap is spent here instead of toggling a
-    // chip the reader could not see. A mouse press is left alone: the copy stays selectable.
-    let tapped = false;
-    tip.addEventListener('pointerdown', (e) => {
-      tapped = e.pointerType === 'touch';
-    });
+    // A click or tap on the bubble is aimed at the filter chips it covers, so it takes the bubble
+    // down — on the click rather than the press, so that the gesture is spent here instead of
+    // toggling a chip the reader could not see. A mouse drag that selected some of the copy is the
+    // exception: that click ends a selection and must not throw the text away with it.
     tip.addEventListener('click', () => {
-      if (tapped) this.help.close();
+      if (!selectionInside(tip)) this.help.close();
     });
+    // pointerdown, not click: the press is what decides whether the focus that follows it is the
+    // keyboard's (which holds the bubble open) or a pointer's (which does not)
+    btn.addEventListener('pointerdown', () => this.help.pointerDown());
     btn.addEventListener('focus', () => this.help.focus(key));
     btn.addEventListener('blur', () => this.help.blur(key));
     btn.addEventListener('click', (e) => {
@@ -239,7 +259,12 @@ export class FilterBar {
     this.helpLeave = null;
   }
 
-  /** a click or tap anywhere but the open bubble and its own trigger drops it */
+  /**
+   * A click or tap anywhere but the open bubble and its own trigger drops it. The gesture is not
+   * swallowed: a bubble is a tooltip, not a modal, so a tap that lands on a chip the reader can see
+   * both dismisses the bubble and presses the chip. Only a tap on the bubble itself is spent, since
+   * there the chip underneath is hidden by the copy (issue #26).
+   */
   private outsideHelp(e: PointerEvent): void {
     const key = this.help.open;
     const els = key && this.helpEls.get(key);
@@ -275,8 +300,14 @@ export class FilterBar {
   private render(): void {
     this.stale = false;
     this.cancelHelpLeave();
-    this.help.reset();
+    this.help.close();
     this.helpEls.clear();
+    // every chip is rebuilt below, so a chip the keyboard just pressed is about to be destroyed
+    // under its own focus: remember which one it was and hand focus back to its replacement, or
+    // Tab would restart from the top of the document after every filter (issue #26)
+    const active = document.activeElement;
+    const refocus = active instanceof HTMLElement && this.groups.contains(active) ? { key: active.dataset['key'], value: active.dataset['value'] } : null;
+    const restore: HTMLElement[] = [];
     clear(this.groups);
     const all = this.index.allCounts(this.sel, this.query);
     for (const key of FACET_KEYS) {
@@ -287,10 +318,12 @@ export class FilterBar {
         const on = chosen.has(value);
         const b = h('button', { type: 'button', class: `opt${on ? ' on' : ''}${count === 0 && !on ? ' zero' : ''}`, dataset: { key, value } }, label(value), h('span', { class: 'cnt' }, String(count)));
         b.addEventListener('click', () => this.toggleValue(key, value));
+        if (refocus?.key === key && refocus.value === value) restore.push(b);
         return b;
       });
       this.groups.appendChild(h('div', { class: 'facet' }, h('div', { class: 'facet-name' }, FACET_LABELS[key], this.helpFor(key)), h('div', { class: 'opts' }, opts)));
     }
+    restore[0]?.focus();
   }
 
   toggleValue(key: FacetKey, value: string): void {
