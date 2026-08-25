@@ -141,13 +141,21 @@ describe('WasmDecoder worker pool', () => {
     for (let round = 0; round < 10; round++) await flush(3);
     expect(spawned.length).toBe(1 + MAX_CONSECUTIVE_FAILURES); // slot 0 gave up
 
+    // the healthy slot keeps answering, and re-arming waits out EMPTY_POOL_PROBE_MS: a broken
+    // lineage must not cost a fresh worker on every successful decode
+    expect((await decoder.decode(new ArrayBuffer(8), 0)).length).toBe(48);
+    expect((await decoder.decode(new ArrayBuffer(8), 0)).length).toBe(48);
+    expect(spawned.length).toBe(1 + MAX_CONSECUTIVE_FAILURES);
+
     pressure = false; // whatever killed that lineage has passed
+    await vi.advanceTimersByTimeAsync(EMPTY_POOL_PROBE_MS);
     expect((await decoder.decode(new ArrayBuffer(8), 0)).length).toBe(48);
     await flush(3);
     expect(spawned.length).toBe(2 + MAX_CONSECUTIVE_FAILURES); // the retired slot is back
     const settled = await Promise.allSettled([decoder.decode(new ArrayBuffer(8), 0), decoder.decode(new ArrayBuffer(8), 1)]);
     expect(settled.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
-    expect(spawned.length).toBe(2 + MAX_CONSECUTIVE_FAILURES); // and it is a working slot, not a churn
+    expect(spawned.length).toBe(2 + MAX_CONSECUTIVE_FAILURES); // a working slot, not churn
+    expect(decoder.stats.decoded).toBe(5);
   });
 
   it('probes one fresh worker once an empty pool has had time to recover', async () => {

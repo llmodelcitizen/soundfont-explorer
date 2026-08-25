@@ -20,7 +20,7 @@ interface Slot {
 const DECODE_TIMEOUT_MS = 15000;
 /** consecutive crashes with no reply in between after which a slot is retired, not respawned */
 export const MAX_CONSECUTIVE_FAILURES = 3;
-/** an empty pool is allowed one fresh worker this often (see acquireSlot) */
+/** retired slots are re-armed at most this often (see regrow) */
 export const EMPTY_POOL_PROBE_MS = 30000;
 
 export type WorkerFactory = () => WorkerLike;
@@ -37,8 +37,8 @@ export class WasmDecoder implements Decoder {
   /** jobs parked until a slot frees up (see acquireSlot) */
   private freeWaiters: (() => void)[] = [];
   private waiting = new Map<number, { resolve: (v: { channelData: Float32Array[]; sampleRate: number }) => void; reject: (e: unknown) => void }>();
-  /** when the pool last went empty, so a dead pool is probed rather than hammered */
-  private retiredAt = 0;
+  /** last retirement or re-arm, so a pool that keeps losing slots is probed, not hammered */
+  private regrownAt = 0;
   private disposed = false;
 
   constructor(private readonly ctx: ContextLike, private readonly poolSize = 4, private readonly factory: WorkerFactory = defaultFactory) {
@@ -71,9 +71,11 @@ export class WasmDecoder implements Decoder {
    * Terminate a worker and put a fresh one in its slot. `crashed` says whether the worker died
    * without ever answering (onerror): only that counts toward the give-up bound. A decode
    * timeout is not evidence that the worker script is broken — a throttled background tab or a
-   * slow device can blow 15 s on a healthy worker — and counting it would retire slots that
-   * nothing ever re-grows, turning a passing slowdown into a decoder that stays dead until the
-   * page is reloaded.
+   * slow device can blow 15 s on a healthy worker — so it costs a replacement but not a strike.
+   * The price of that choice: a worker that hangs without ever firing onerror is replaced once
+   * per DECODE_TIMEOUT_MS for as long as it keeps hanging. That is the cheaper failure — the
+   * alternative retires slots for a passing slowdown — but it is a bound of 1 per 15 s per
+   * slot, not a bound on the total.
    */
   private replace(slot: Slot, why: string, crashed = true): void {
     const idx = this.workers.indexOf(slot);
@@ -96,8 +98,8 @@ export class WasmDecoder implements Decoder {
       // the whole lineage died without ever answering (worker script blocked, wasm will not
       // instantiate, ...): another one would only die too, so drop the slot instead of looping
       this.workers.splice(idx, 1);
+      this.regrownAt = Date.now(); // the pool may be re-armed, but not before it has settled
       // the pool is smaller now: stop admitting jobs no worker can run
-      if (!this.workers.length) this.retiredAt = Date.now();
       this.q.setConcurrency(this.workers.length);
       this.wakeFreeWaiters();
       return;
@@ -107,15 +109,21 @@ export class WasmDecoder implements Decoder {
   }
 
   /**
-   * Grow the pool back to its original size. A slot is retired when its whole lineage died
-   * without ever answering, which usually means a worker script that will never load — but
-   * memory pressure or a transient chunk/CSP failure looks exactly the same, and a decoder that
-   * stays shrunk (or dead) until the page is reloaded is the worse failure. So a worker that
-   * answers, which proves the script loads, re-arms whatever was retired while it did not.
+   * Put retired slots back, at most once every EMPTY_POOL_PROBE_MS. A slot is retired when its
+   * whole lineage died without ever answering, which usually means a worker script that will
+   * never load — but memory pressure or a transient chunk/CSP failure looks exactly the same,
+   * and a decoder that stays shrunk (or dead) until the page is reloaded is the worse failure.
+   *
+   * The fresh workers start one crash short of the bound, so if whatever killed the lineage is
+   * still there they retire again on their first crash: re-arming costs one worker per slot per
+   * EMPTY_POOL_PROBE_MS, never a whole lineage, and never a spawn per decode. A worker that
+   * answers has its count cleared and is an ordinary slot again.
    */
-  private regrow(failures = 0): void {
+  private regrow(): void {
     if (this.disposed || this.workers.length >= this.poolSize) return;
-    while (this.workers.length < this.poolSize) this.workers.push(this.spawn(failures));
+    if (Date.now() - this.regrownAt < EMPTY_POOL_PROBE_MS) return;
+    this.regrownAt = Date.now();
+    while (this.workers.length < this.poolSize) this.workers.push(this.spawn(MAX_CONSECUTIVE_FAILURES - 1));
     this.q.setConcurrency(this.workers.length);
     this.wakeFreeWaiters();
   }
@@ -136,17 +144,10 @@ export class WasmDecoder implements Decoder {
    */
   private async acquireSlot(): Promise<Slot> {
     for (;;) {
-      if (!this.workers.length) {
-        // Every slot was retired. A script that will never load must stay dead rather than
-        // spin, but the pressure that killed the last lineage may have passed, so try a single
-        // fresh worker at most once every EMPTY_POOL_PROBE_MS. It starts one crash short of the
-        // bound, so a probe that dies retires again immediately instead of costing a lineage;
-        // one that answers re-arms the whole pool through regrow().
-        if (this.disposed || Date.now() - this.retiredAt < EMPTY_POOL_PROBE_MS) throw new Error('no decode workers left (they kept crashing)');
-        this.retiredAt = Date.now();
-        this.workers.push(this.spawn(MAX_CONSECUTIVE_FAILURES - 1));
-        this.q.setConcurrency(this.workers.length);
-      }
+      // every slot was retired: with no worker left to answer, this job is the only thing that
+      // can ask for the pool back (regrow() decides whether it has been dead long enough)
+      if (!this.workers.length) this.regrow();
+      if (!this.workers.length) throw new Error('no decode workers left (they kept crashing)');
       const free = this.workers.find((s) => !s.busy);
       if (free) {
         free.busy = true; // claimed synchronously, so two admitted jobs cannot take one slot
