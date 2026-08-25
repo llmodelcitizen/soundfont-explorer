@@ -156,20 +156,35 @@ def sequence_title(smf: S.Smf) -> Optional[str]:
     return None
 
 
+def import_out_name(rel: str) -> str:
+    """songs/rendered/-relative name of an import's canonical MIDI, from its import/FILES/-relative
+    source path: the path itself, plus ``.mid`` unless it already ends in exactly that.
+
+    Stripping ``.mid``/``.midi`` case-insensitively and re-adding ``.mid`` made ``x.mid``,
+    ``x.MID`` and ``x.midi`` (Windows-era archives have all three) land on one
+    ``rendered/x.mid``: the last one canonicalized won and the other entries' ``sha256`` in
+    songs.json no longer matched the file on disk. Keeping the source's own extension in the
+    name maps distinct sources to distinct files (``x.MID.mid``, ``x.midi.mid``) while every
+    ``.mid`` source — nearly all of them — keeps the name it always had. The admin's stale-file
+    cleanup (sfadmin.library) uses this same function.
+    """
+    return rel if rel.endswith(".mid") else rel + ".mid"
+
+
 def import_labels(src: str, smf: S.Smf, explicit_title: Optional[str] = None) -> Tuple[str, str, str]:
     """(id, title, output path) for a song imported from songs/import/FILES/.
 
     The label keeps the file's directory path and ends with the song's own name:
     ``videogame-music/crystalis/Crystalis Desert`` when the MIDI carries a title,
     ``videogame-music/crystalis/crys_cave`` when it does not. The canonical MIDI keeps the
-    original *filename* under songs/rendered/, so the file on disk still matches its source.
+    original *filename* under songs/rendered/ (import_out_name), so the file on disk still
+    matches its source.
     """
     rel = src[len(IMPORT_ROOT):] if src.startswith(IMPORT_ROOT) else src
-    rel = re.sub(r"\.midi?$", "", rel, flags=re.I)
-    parent, _, stem = rel.rpartition("/")
+    parent, _, stem = re.sub(r"\.midi?$", "", rel, flags=re.I).rpartition("/")
     name = explicit_title or sequence_title(smf) or stem
     title = f"{parent}/{name}" if parent else name
-    return slug(title), title, os.path.join(RENDERED_DIR, parent, stem + ".mid")
+    return slug(title), title, os.path.join(RENDERED_DIR, import_out_name(rel))
 
 
 def slug(s: str) -> str:

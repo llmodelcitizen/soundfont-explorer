@@ -246,9 +246,9 @@ class Library:
     def _forget_stale_canonical(self, old_rel: str) -> None:
         """canon.py mirrors the import tree under songs/rendered/ and never cleans up; a
         moved or deleted source leaves its old canonical MIDI behind — remove it.
-        Same stem rule as canon.import_labels: only .mid/.midi is stripped (.rmi kept)."""
-        stale = os.path.join(self.cfg.repo, "songs", "rendered",
-                             re.sub(r"\.midi?$", "", old_rel, flags=re.I) + ".mid")
+        The file name is canon.import_out_name's rule (shared, so the two cannot drift)."""
+        canon, _ = _canon_modules()
+        stale = os.path.join(self.cfg.repo, "songs", "rendered", canon.import_out_name(old_rel))
         if os.path.exists(stale):
             os.remove(stale)
 
