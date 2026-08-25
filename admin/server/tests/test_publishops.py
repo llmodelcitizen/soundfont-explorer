@@ -66,8 +66,8 @@ class FakeSite:
     def _list(self, prefix):
         return [{"Key": k, "Size": len(self.objects[k])} for k in self.keys(prefix)]
 
-    def live_songs_json(self):
-        return json.loads(self.objects["songs.json"])
+    def _get_json(self, key):
+        return json.loads(self.objects[key]) if key in self.objects else None
 
     def _delete_keys(self, keys):
         self.events.append("delete")
@@ -116,7 +116,7 @@ class PublishOpsTests(unittest.TestCase):
         self.site.add_song("beta")
         self.site.put_songs_json([self.site.entry("alpha"), self.site.entry("beta")])
         stubs = {"get_config": lambda: FakeCfg(td.name), "_expected_absent": lambda: set()}
-        for name in ("_list", "live_songs_json", "_delete_keys", "sync_down",
+        for name in ("_list", "_get_json", "_delete_keys", "sync_down",
                      "_run_manifest", "_publish_songs_json"):
             stubs[name] = getattr(self.site, name)
         for name, fn in stubs.items():
@@ -174,6 +174,43 @@ class PublishOpsTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=repr(bad)):
                 publishops.remove_track(bad)
         self.assertEqual(self.site.events, [])
+
+    # -- prune
+
+    def test_prune_keeps_what_the_live_sets_name(self):
+        self.site.objects["a/alpha/l/stale/0.ogg"] = b"x"     # superseded render
+        self.site.objects["s/alpha/h0.json"] = b"{}"           # superseded set doc
+        self.site.objects["a/gamma/l/r1/0.ogg"] = b"x"         # not in songs.json at all
+        r = publishops.prune(dry_run=True)
+        self.assertEqual(r["missing_sets"], [])
+        self.assertEqual(r["doomed_objects"], 3)
+        self.assertNotIn("delete", self.site.events)
+        r = publishops.prune(dry_run=False)
+        self.assertEqual(r["deleted"], 3)
+        self.assertEqual(self.site.keys("a/") + self.site.keys("s/"),
+                         ["a/alpha/g/g1/0.ogg", "a/alpha/l/r1/0.ogg", "a/beta/g/g1/0.ogg",
+                          "a/beta/l/r1/0.ogg", "s/alpha/h1.json", "s/beta/h1.json"])
+
+    def test_prune_tolerates_a_missing_set_doc(self):
+        """songs.json still lists a track whose set doc is gone (the state a half-done
+        remove left behind): prune must not 500, and must not guess at that track's
+        audio — it keeps all of it and reports the gap."""
+        del self.site.objects["s/alpha/h1.json"]
+        self.site.objects["a/alpha/l/stale/0.ogg"] = b"x"
+        self.site.objects["a/beta/l/stale/0.ogg"] = b"x"
+        r = publishops.prune(dry_run=False)
+        self.assertEqual(r["missing_sets"], ["s/alpha/h1.json"])
+        self.assertEqual(r["kept_songs"], 2)
+        self.assertEqual(r["deleted"], 1)
+        self.assertEqual(self.site.keys("a/alpha/"),
+                         ["a/alpha/g/g1/0.ogg", "a/alpha/l/r1/0.ogg", "a/alpha/l/stale/0.ogg"])
+        self.assertEqual(self.site.keys("a/beta/"), ["a/beta/g/g1/0.ogg", "a/beta/l/r1/0.ogg"])
+
+    def test_prune_without_songs_json_refuses(self):
+        del self.site.objects["songs.json"]
+        with self.assertRaisesRegex(RuntimeError, "no songs.json"):
+            publishops.prune(dry_run=False)
+        self.assertNotIn("delete", self.site.events)
 
 
 if __name__ == "__main__":

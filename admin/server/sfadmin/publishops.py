@@ -51,10 +51,21 @@ def _delete_keys(keys: list[str]) -> int:
     return len(keys)
 
 
-def live_songs_json() -> dict:
+def _get_json(key: str) -> dict | None:
+    """The JSON object at `key`, or None when there is no such object."""
     cfg = get_config()
-    r = cfg.s3.get_object(Bucket=cfg.site_bucket, Key="songs.json")
+    try:
+        r = cfg.s3.get_object(Bucket=cfg.site_bucket, Key=key)
+    except cfg.s3.exceptions.NoSuchKey:
+        return None
     return json.load(r["Body"])
+
+
+def live_songs_json() -> dict:
+    doc = _get_json("songs.json")
+    if doc is None:
+        raise RuntimeError("no songs.json in the site bucket")
+    return doc
 
 
 def sync_down() -> None:
@@ -209,14 +220,22 @@ def remove_track(sid: str) -> dict:
 
 def prune(dry_run: bool = True) -> dict:
     """Delete a/ and s/ objects the live songs.json no longer references."""
-    cfg = get_config()
     live = live_songs_json()  # no fallback: pruning without a songs.json would keep nothing
     keep: set[str] = set()
     keep_prefixes: list[str] = []
+    missing_sets: list[str] = []
     for song in live.get("songs", []):
         set_key = song["set"].lstrip("/")
         keep.add(set_key)
-        doc = json.load(cfg.s3.get_object(Bucket=cfg.site_bucket, Key=set_key)["Body"])
+        doc = _get_json(set_key)
+        if doc is None:
+            # songs.json names a set doc the bucket no longer has (a remove that died
+            # half-way before #15, or a stray delete). Without the doc there is no way to
+            # tell which of the song's audio is current, so keep all of it and say so —
+            # Remove on the Published tab is the deliberate way to clear the track.
+            missing_sets.append(set_key)
+            keep_prefixes.append(f"a/{song['id']}/")
+            continue
         sid = doc["song"]
         for g in doc.get("groups", []):
             keep_prefixes.append(f"a/{sid}/g/{g['hash']}/")
@@ -231,6 +250,7 @@ def prune(dry_run: bool = True) -> dict:
         by_prefix[p] = by_prefix.get(p, 0) + 1
     report = {"dry_run": dry_run, "checked_at": _now(),
               "kept_songs": len(live.get("songs", [])),
+              "missing_sets": missing_sets,
               "doomed_objects": len(doomed),
               "doomed_by_prefix": dict(sorted(by_prefix.items(), key=lambda x: -x[1])[:40])}
     if not dry_run and doomed:
