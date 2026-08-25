@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -177,12 +178,32 @@ def overview() -> dict:
 
 # ---------------------------------------------------------------- remove + prune
 
+def _local_set_dir(sid: str) -> str:
+    """out/public/s/<id> in the snapshot. The id comes straight from the URL and the
+    directory gets rmtree'd, so anything but a single path component is refused."""
+    if not sid or sid in (".", "..") or "/" in sid or "\\" in sid:
+        raise ValueError(f"bad track id {sid!r}")
+    return os.path.join(get_config().repo, "out", "public", "s", sid)
+
+
 def remove_track(sid: str) -> dict:
-    """Delete /a/<id> and /s/<id> entirely, then rebuild + publish songs.json without it."""
+    """Rebuild + publish songs.json without <id>, THEN delete /a/<id> and /s/<id>.
+
+    The objects go last (#15): a refused rebuild (the drop guard firing on a corpus gap for
+    some *other* live track) or a failed publish must leave the site exactly as it was — a
+    live songs.json pointing at audio that is already gone 404s for visitors, and wedges
+    the Published tab (every rebuild keeps refusing, prune trips on the missing set doc).
+    sync_down mirrors the bucket, where the track's set docs still exist at this point, so
+    they are dropped from the local mirror by hand before the manifest runs; the bucket is
+    only touched once the new songs.json is live.
+    """
+    set_dir = _local_set_dir(sid)
     keys = [o["Key"] for o in _list(f"a/{sid}/")] + [o["Key"] for o in _list(f"s/{sid}/")]
-    n = _delete_keys(keys)
     sync_down()
+    if os.path.isdir(set_dir):
+        shutil.rmtree(set_dir)   # must not fail quietly: a surviving set doc keeps <id> listed
     report = rebuild_and_publish(expect_dropped=frozenset({sid}))
+    n = _delete_keys(keys)
     return {"id": sid, "deleted_objects": n, "songs_json": report.get("songs_json")}
 
 
