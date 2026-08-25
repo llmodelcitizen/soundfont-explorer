@@ -104,8 +104,14 @@ async function measure(theme, viewport, label) {
       const result = outer && title ? {
         height: outer.h,
         paddingLeft: style.paddingLeft,
+        paddingRight: style.paddingRight,
         captionOffset: title.cy - outer.cy,
         buttonOffsets: buttons.map((button) => button.cy - outer.cy),
+        buttonHeights: buttons.map((button) => button.h),
+        buttonFontSizes: Array.from(document.querySelectorAll('.dbg-actions .btn')).map((button) => getComputedStyle(button).fontSize),
+        // the right-hand gadgets must be inset from the caption's right edge by its own left padding (#39)
+        buttonInsetRight: buttons.length ? outer.right - Math.max(...buttons.map((button) => button.right)) : null,
+        titleInsetLeft: title.x - outer.x,
       } : null;
       if (wasHidden) debug.classList.add('hidden');
       return result;
@@ -519,6 +525,11 @@ for (const [label, viewport] of Object.entries(viewports)) {
     assert(titleBar?.height === 36 && titleBar.paddingLeft === '8px', `${label}/${themed.theme}: debug title bar does not have the themed dimensions: ${JSON.stringify(titleBar)}`);
     assert(titleBar && close(titleBar.captionOffset, 0, 0.5), `${label}/${themed.theme}: debug caption is not vertically centered: ${JSON.stringify(titleBar)}`);
     assert(titleBar?.buttonOffsets.every((offset) => close(offset, 0, 0.5)), `${label}/${themed.theme}: debug title-bar buttons are not vertically centered: ${JSON.stringify(titleBar)}`);
+    // issue #39: the gadgets are inset from the right by the caption's own left padding, and share one height and type size
+    assert(titleBar?.paddingRight === titleBar?.paddingLeft, `${label}/${themed.theme}: debug title-bar buttons do not match the caption's left padding: ${JSON.stringify(titleBar)}`);
+    assert(titleBar && close(titleBar.buttonInsetRight, titleBar.titleInsetLeft, 0.5), `${label}/${themed.theme}: debug title-bar buttons are not inset like the caption: ${JSON.stringify(titleBar)}`);
+    assert(titleBar && new Set(titleBar.buttonHeights.map((h) => Math.round(h))).size === 1, `${label}/${themed.theme}: debug title-bar buttons are not the same height: ${JSON.stringify(titleBar)}`);
+    assert(titleBar && new Set(titleBar.buttonFontSizes).size === 1, `${label}/${themed.theme}: debug title-bar buttons do not share one font size: ${JSON.stringify(titleBar)}`);
   }
   // issue #33: the keys screen closes with a real button in every theme, not a line of prose
   for (const themed of [modern, win95, amiga]) {

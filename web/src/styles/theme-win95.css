@@ -423,14 +423,27 @@
   color: #ffffff;
   border-bottom-color: #808080;
 }
-/* Give the debug caption enough chrome around its full-size title-bar buttons. */
+/* Give the debug caption enough chrome around its full-size title-bar buttons, with the
+   gadgets inset from the right edge by exactly the caption's own left padding (#39). */
 [data-theme='win95'] .dbg-head {
   box-sizing: border-box;
   height: 36px;
   padding-left: 8px;
+  padding-right: 8px;
 }
 [data-theme='win95'] .dbg-actions {
   align-items: center;
+}
+/* One height and one type size for both gadgets, each label centred in its box, as in modern. */
+[data-theme='win95'] .dbg-head .btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1;
 }
 /* Pane captions run edge to edge over their pane (and its scrollbar column), with the text and
    checkbox centred in the bar: base reserves 6px bottom padding that would ride them high on a

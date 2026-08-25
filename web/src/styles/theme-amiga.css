@@ -258,14 +258,27 @@
   color: #000000;
   border-color: #000000;
 }
-/* Give the debug caption enough chrome around its full-size title-bar gadgets. */
+/* Give the debug caption enough chrome around its full-size title-bar gadgets, with the
+   gadgets inset from the right edge by exactly the caption's own left padding (#39). */
 [data-theme='amiga'] .dbg-head {
   box-sizing: border-box;
   height: 36px;
   padding-left: 8px;
+  padding-right: 8px;
 }
 [data-theme='amiga'] .dbg-actions {
   align-items: center;
+}
+/* One height and one type size for both gadgets, each label centred in its box, as in modern. */
+[data-theme='amiga'] .dbg-head .btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 1;
 }
 /* Remove the base theme's bottom-only padding so Workbench captions and their adjacent text
    sit halfway up the strip. The side padding remains equal without changing horizontal flow. */
