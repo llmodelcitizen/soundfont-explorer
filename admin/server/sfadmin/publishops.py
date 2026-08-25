@@ -29,8 +29,9 @@ SHORT = "public,max-age=60,stale-while-revalidate=600"
 # minutes (an aws s3 sync plus an sfr manifest over the corpus). FastAPI serves these sync
 # routes on a threadpool and the render finisher syncs from its own watcher thread, so a
 # second caller could otherwise re-mirror out/public in the middle of a remove and restore
-# the very set doc it just dropped (#15). Re-entrant: remove/prune hold it across their own
-# calls to sync_down()/rebuild_and_publish().
+# the very set doc it just dropped (#15). Re-entrant: remove_track() and /rebuild hold it
+# across their own calls to sync_down()/rebuild_and_publish(). prune() stays outside it —
+# it decides from the bucket alone, never from out/public.
 OPS_LOCK = threading.RLock()
 
 
