@@ -37,11 +37,13 @@ class FakeManager(renders.RunManager):
         self.lock = threading.RLock()
         self.runs: dict = {}
         self._watching: set = set()
+        self._submitting: set = set()
         self._finishing: set = set()
         self._finish_lock = threading.Lock()
         self._loaded = True
         self.puts: list = []
         self.slept: list = []
+        self.watched: list = []
 
     def _put(self, rec):
         self.puts.append(json.loads(json.dumps(rec)))
@@ -51,6 +53,9 @@ class FakeManager(renders.RunManager):
 
     def _scan_published(self, rec):
         pass
+
+    def _watch_async(self, rid):
+        self.watched.append(rid)
 
 
 def run_record(rid: str, state: str, **kw) -> dict:
@@ -127,6 +132,39 @@ class WatchTests(unittest.TestCase):
 
         self.m._poll(self.rec, batch, sleep)
         self.assertEqual(batch.calls, 1)
+
+
+class ReconcileTests(unittest.TestCase):
+    """The crash heuristic (no job id after 300 s ⇒ failed) must not fire on a submit that
+    is still staging in this process (#19)."""
+
+    def setUp(self):
+        self.m = FakeManager()
+        self.t0 = renders._ms("2026-08-24T00:00:00Z") / 1000
+        # 10 minutes into a submit whose aws s3 sync is still running
+        self.m.runs["r1"] = run_record("r1", "staged", batch_job_id=None)
+
+    def test_in_flight_submit_is_left_alone_and_counts_as_live(self):
+        self.m._submitting.add("r1")
+        self.m._reconcile_once(now=self.t0 + 600)   # no boto3 here: live ⇒ the CE is not touched
+        self.assertEqual(self.m.runs["r1"]["state"], "staged")
+        self.assertEqual(self.m.slept, [])
+        self.assertEqual(self.m.puts, [])
+
+    def test_crashed_submit_is_failed_after_the_grace_period(self):
+        with unittest.mock.patch.dict(sys.modules, {"boto3": unittest.mock.MagicMock()}):
+            self.m._reconcile_once(now=self.t0 + 200)
+            self.assertEqual(self.m.runs["r1"]["state"], "staged")   # still within 300 s
+            self.m._reconcile_once(now=self.t0 + 600)
+        self.assertEqual(self.m.runs["r1"]["state"], "failed")
+        self.assertIn("crash during submit", self.m.runs["r1"]["finisher"]["error"])
+        self.assertEqual(self.m.slept, ["r1"])
+
+    def test_live_run_is_readopted(self):
+        self.m.runs["r1"]["batch_job_id"] = "job-9"
+        self.m._reconcile_once(now=self.t0 + 600)
+        self.assertEqual(self.m.watched, ["r1"])
+        self.assertEqual(self.m.runs["r1"]["state"], "staged")
 
 
 class LogTailTests(unittest.TestCase):

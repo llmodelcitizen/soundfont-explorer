@@ -85,6 +85,7 @@ class RunManager:
         self.lock = threading.RLock()
         self.runs: dict[str, dict] = {}
         self._watching: set[str] = set()
+        self._submitting: set[str] = set()     # runs whose submit() is in flight in this process
         self._finishing: set[str] = set()      # runs whose finisher is rebuilding songs.json
         self._finish_lock = threading.Lock()   # one songs.json rebuild at a time
         self._loaded = False
@@ -201,6 +202,9 @@ class RunManager:
         }
         with self.lock:
             self.runs[rid] = rec
+            # the reconciler's "crashed during submit" heuristic must not fire on a slow
+            # _stage(): this thread is the submit, and it can take minutes (#19)
+            self._submitting.add(rid)
             self._put(rec)  # before anything can go wrong: the run is never untracked
         try:
             import boto3
@@ -237,6 +241,9 @@ class RunManager:
             self._put(rec)
             self._sleep_fleet(rec)
             raise
+        finally:
+            with self.lock:
+                self._submitting.discard(rid)
         self._watch_async(rid)
         return rec
 
@@ -352,16 +359,21 @@ class RunManager:
             except Exception:
                 pass  # next tick
 
-    def _reconcile_once(self) -> None:
-        import boto3
+    def _reconcile_once(self, now: float | None = None) -> None:
         live = False
+        with self.lock:
+            submitting = set(self._submitting)
         for rec in self.list():
             if rec["state"] in TERMINAL:
                 continue
             if not rec["batch_job_id"]:
+                if rec["run_id"] in submitting:
+                    # submit() is still staging in this process; it may already have ENABLED
+                    # the CE, so this counts as live (a crash empties the set: restart case)
+                    live = True
+                    continue
                 # crashed between record write and submit-job; nothing is running
-                age = time.time() - datetime.datetime.fromisoformat(
-                    rec["submitted_at"].replace("Z", "+00:00")).timestamp()
+                age = (now if now is not None else time.time()) - _ms(rec["submitted_at"]) / 1000
                 if age > 300:
                     rec["state"] = "failed"
                     rec["finisher"]["error"] = "no Batch job was ever submitted (crash during submit)"
@@ -372,6 +384,7 @@ class RunManager:
             live = True
             self._watch_async(rec["run_id"])  # re-adopt after restart (no-op when attached)
         if not live:
+            import boto3
             batch = boto3.client("batch")
             try:
                 ce = batch.describe_compute_environments(
