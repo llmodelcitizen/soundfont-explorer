@@ -28,8 +28,10 @@ function facetValues(v: Variant, key: FacetKey): string[] {
   const f = v.facets ?? {};
   let raw: unknown = f[key];
   // the top-level engine/chip/type strings mirror single facet values; a multi-chip variant
-  // (edm-all: chip 'opll', facets.chip ['opll', 'scc']) keeps the full list only in facets
-  if (!Array.isArray(raw)) {
+  // (edm-all: chip 'opll', facets.chip ['opll', 'scc']) keeps the full list only in facets.
+  // An empty list carries no values (published catalogs do contain empty facet lists — every
+  // SF2 variant has facets.quality []), so treat it like a missing facet rather than as "none"
+  if (!Array.isArray(raw) || raw.length === 0) {
     if (key === 'engine') raw = v.engine || raw;
     if (key === 'chip') raw = v.chip || raw;
     if (key === 'type') raw = v.type || raw;
@@ -38,7 +40,7 @@ function facetValues(v: Variant, key: FacetKey): string[] {
     const tags = tagNames(raw);
     return tags.length ? tags : ['ok'];
   }
-  if (Array.isArray(raw)) return raw.map(String);
+  if (Array.isArray(raw)) return raw.length ? raw.map(String) : ['unknown'];
   if (raw === null || raw === undefined || raw === '') return ['unknown'];
   return [String(raw)];
 }

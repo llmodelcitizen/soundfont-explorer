@@ -150,15 +150,23 @@ describe('FilterIndex facet arrays', () => {
       { id: 'edm-opll', label: 'OPLL', engine: 'edmidi', chip: 'opll', type: 'fm', facets: { chip: 'opll' }, aliases: [] },
       { id: 'edm-scc', label: 'SCC', engine: 'edmidi', chip: 'scc', type: 'fm', facets: { chip: 'scc' }, aliases: [] },
       { id: 'edm-all', label: 'OPLL + SCC', engine: 'edmidi', chip: 'opll', type: 'fm', facets: { chip: ['opll', 'scc'] }, aliases: [] },
+      // empty facet lists occur in the published catalog (facets.quality is [] on every SF2
+      // variant): they mean "nothing recorded here", not "no chip"
+      { id: 'edm-empty', label: 'Empty list', engine: 'edmidi', chip: 'scc', type: 'fm', facets: { chip: [] }, aliases: [] },
+      { id: 'edm-none', label: 'No chip at all', engine: 'edmidi', type: 'fm', facets: { chip: [] }, aliases: [] },
     ],
   });
-  const idx = new FilterIndex(['edm-opll', 'edm-scc', 'edm-all'], catalog);
+  const idx = new FilterIndex(['edm-opll', 'edm-scc', 'edm-all', 'edm-empty', 'edm-none'], catalog);
 
   it('keeps every chip of a multi-chip variant (edm-all is listed under SCC as well as OPLL)', () => {
-    expect(idx.apply({ chip: new Set(['scc']) })).toEqual(['edm-scc', 'edm-all']);
+    expect(idx.apply({ chip: new Set(['scc']) })).toEqual(['edm-scc', 'edm-all', 'edm-empty']);
     expect(idx.apply({ chip: new Set(['opll']) })).toEqual(['edm-opll', 'edm-all']);
     const counts = Object.fromEntries(idx.counts('chip', {}).map((c) => [c.value, c.count]));
-    expect(counts).toEqual({ opll: 2, scc: 2 });
+    expect(counts).toEqual({ opll: 2, scc: 3, unknown: 1 });
+  });
+
+  it('falls back to the top-level value for an empty facet list, and buckets the rest as unknown', () => {
+    expect(idx.apply({ chip: new Set(['unknown']) })).toEqual(['edm-none']); // never invisible
   });
 });
 
