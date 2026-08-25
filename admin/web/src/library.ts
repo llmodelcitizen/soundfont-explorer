@@ -50,6 +50,7 @@ const OPEN_KEY = 'sfadmin.folders.v1';
 const AUTOPLAY_KEY = 'sfadmin.autoplay.v1';
 const CANON_POLL_MS = 3000;
 const CANON_POLL_MAX_FAILURES = 10; // consecutive failed status GETs before the poll gives up
+const CANON_POLL_MAX_BACKOFF = 5; // ... spaced out to at most 5x the interval between tries
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]
@@ -544,8 +545,12 @@ export class LibraryView {
     // The run keeps going server-side whatever happens to this poll, so one failed status
     // GET (the box is busy running fluidsynth) must not orphan it — the status line would
     // stay on "running…" forever. Give up only after several consecutive failures so a
-    // dead server does not leave a zombie loop behind.
+    // dead server does not leave a zombie loop behind. Back the retries off as they pile
+    // up: ten of them at a flat 3 s would abandon a run that is still going after 27 s,
+    // which is nothing next to the few minutes a full run takes on this box, while the
+    // backoff stretches the same budget to nearly two minutes.
     let failures = 0;
+    const retryDelay = (): number => CANON_POLL_MS * Math.min(failures, CANON_POLL_MAX_BACKOFF);
     const poll = async (): Promise<void> => {
       if (gen !== this.canonGen) return; // a newer canon run took this poll over
       let s: { running: boolean; error?: string; result?: CanonResult };
@@ -563,7 +568,7 @@ export class LibraryView {
           return;
         }
         this.note(`canon: status check failed (${msg}), retrying…`, true);
-        setTimeout(poll, CANON_POLL_MS);
+        setTimeout(poll, retryDelay());
         return;
       }
       if (gen !== this.canonGen) return; // ... or while this status GET was in flight

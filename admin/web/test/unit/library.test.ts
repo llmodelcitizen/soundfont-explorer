@@ -183,7 +183,11 @@ describe('LibraryView canon poll', () => {
     await view.load();
     button(view, 'Canon check').click();
     await until(() => ff.count('GET', '/api/library/canon/status') === 1);
-    await vi.advanceTimersByTimeAsync(3000 * 20);
+    await vi.advanceTimersByTimeAsync(60000);
+    // the retries back off, so a minute of server hiccup does not abandon a run that a
+    // full canon check would still be in the middle of
+    expect(status(view).textContent).toMatch(/retrying/);
+    await vi.advanceTimersByTimeAsync(120000);
     expect(ff.count('GET', '/api/library/canon/status')).toBe(10);
     expect(status(view).textContent).toMatch(/lost track of the run after 10 failed/);
     expect(status(view).classList.contains('error')).toBe(true);
