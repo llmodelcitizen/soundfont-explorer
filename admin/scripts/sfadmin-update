@@ -1,28 +1,42 @@
 #!/bin/bash
 # Re-pull the current app bundle from the admin bucket and restart sfadmin.
 # Run by sfadmin-update.service (root) when the app touches /run/sfadmin/update-requested.
+#
+# Privilege boundary (#9): root only fetches, swaps directories and restarts the unit. The
+# bundle is unpacked and pip-installed AS sfadmin, so nothing the unprivileged, network-facing
+# app can influence — the tree it owns, wheels, requirements.txt, setup hooks — ever executes
+# as root. (Previously the tree was chowned to sfadmin and root then ran pip against wheels
+# inside it.) The bucket side of the same boundary is the IAM Deny on app/* in
+# infra/modules/admin: the box can read its bundle but never rewrite it.
 set -euo pipefail
 rm -f /run/sfadmin/update-requested
 # shellcheck source=/dev/null
 . /etc/sfadmin.env
+export AWS_DEFAULT_REGION
+APP=/opt/sfadmin/app
+VENV=/opt/sfadmin/venv
+as_sfadmin() { runuser -u sfadmin -- env HOME=/var/lib/sfadmin "$@"; }
 
 KEY=$(aws s3 cp "s3://$SFADMIN_BUCKET/app/current" -)
-rm -rf /opt/sfadmin/app.new
-mkdir -p /opt/sfadmin/app.new
-aws s3 cp "s3://$SFADMIN_BUCKET/$KEY" - | tar -xz -C /opt/sfadmin/app.new
-rm -rf /opt/sfadmin/app.old
-mv /opt/sfadmin/app /opt/sfadmin/app.old
-mv /opt/sfadmin/app.new /opt/sfadmin/app
-rm -rf /opt/sfadmin/app/songs/import/FILES
-mkdir -p /opt/sfadmin/app/songs/import
-ln -sfn "$SFADMIN_DATA/library/FILES" /opt/sfadmin/app/songs/import/FILES
+rm -rf "$APP.new"
+install -d -o sfadmin -g sfadmin "$APP.new"
+aws s3 cp "s3://$SFADMIN_BUCKET/$KEY" - | as_sfadmin tar -xz -C "$APP.new"
+rm -rf "$APP.old"
+mv "$APP" "$APP.old"
+mv "$APP.new" "$APP"
+rm -rf "$APP/songs/import/FILES"
+as_sfadmin mkdir -p "$APP/songs/import"
+as_sfadmin ln -sfn "$SFADMIN_DATA/library/FILES" "$APP/songs/import/FILES"
 # restore the canon products the fresh snapshot just clobbered (see bootstrap.sh)
-aws s3 sync "s3://$SFADMIN_BUCKET/canon/rendered/" /opt/sfadmin/app/songs/rendered/ --size-only || true
+aws s3 sync "s3://$SFADMIN_BUCKET/canon/rendered/" "$APP/songs/rendered/" --size-only || true
 for f in songs.json corpus-imports.json canon-report.json; do
-  aws s3 cp "s3://$SFADMIN_BUCKET/canon/$f" "/opt/sfadmin/app/songs/$f" 2>/dev/null || true
+  aws s3 cp "s3://$SFADMIN_BUCKET/canon/$f" "$APP/songs/$f" 2>/dev/null || true
 done
-chown -R sfadmin:sfadmin /opt/sfadmin/app
-/opt/sfadmin/venv/bin/pip install -q --no-index \
-  --find-links /opt/sfadmin/app/admin/wheels -r /opt/sfadmin/app/admin/server/requirements.txt
+chown -R sfadmin:sfadmin "$APP/songs"   # data restored as root above; the code stays as unpacked
+# the venv is sfadmin's (bootstrap.sh), so the install runs unprivileged against the wheels
+# that were just unpacked from the (write-protected) bundle
+chown -R sfadmin:sfadmin "$VENV"
+as_sfadmin "$VENV/bin/pip" install -q --no-index \
+  --find-links "$APP/admin/wheels" -r "$APP/admin/server/requirements.txt"
 systemctl restart sfadmin.service
 echo "sfadmin updated to $KEY"

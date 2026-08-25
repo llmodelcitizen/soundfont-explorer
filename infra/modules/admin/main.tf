@@ -205,6 +205,15 @@ data "aws_iam_policy_document" "instance" {
     "s3:ListBucket", "s3:ListBucketVersions"]
     resources = [aws_s3_bucket.admin.arn, "${aws_s3_bucket.admin.arn}/*"]
   }
+  # ... except its own code. app/ (bundles, bootstrap.sh, the `current` pointer) is written
+  # only by admin/scripts/deploy.sh from the operator's machine; bootstrap.sh and
+  # sfadmin-update execute parts of the bundle as root, so a box able to rewrite it could
+  # escalate itself (#9).
+  statement {
+    effect    = "Deny"
+    actions   = ["s3:PutObject", "s3:PutObjectAcl", "s3:DeleteObject", "s3:DeleteObjectVersion"]
+    resources = ["${aws_s3_bucket.admin.arn}/app/*"]
+  }
 
   # --- site bucket: read manifests, publish songs.json + catalog docs, delete renders.
   # Deliberately NO write on a/* or s/* content (only the shards publish audio) and no

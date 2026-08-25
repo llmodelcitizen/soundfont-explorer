@@ -69,6 +69,9 @@ chgrp sfadmin "$STATUS_DIR" && chmod 775 "$STATUS_DIR"   # app touches update-re
 # canon.py runs as sfadmin inside the snapshot (writes songs/songs.json, songs/rendered/,
 # corpus-imports.json) and reads sources at songs/import/FILES — point that at the library
 chown -R sfadmin:sfadmin "$APP"
+# the venv is sfadmin's too: sfadmin-update re-installs the bundle's wheels unprivileged,
+# so a bundle can never run pip hooks as root (#9)
+chown -R sfadmin:sfadmin "$VENV"
 rm -rf "$APP/songs/import/FILES"
 mkdir -p "$APP/songs/import"
 ln -sfn "$DATA/library/FILES" "$APP/songs/import/FILES"

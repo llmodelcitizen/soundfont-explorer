@@ -79,7 +79,7 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get install -y -q shellcheck >/dev/null
-          mapfile -t files < <( { git ls-files '*.sh'; git ls-files render/scripts/sfr web/scripts | xargs -r grep -lE '^#!/(usr/)?bin/(ba)?sh' ; } | grep -v legacy/ | sort -u || true)
+          mapfile -t files < <( { git ls-files '*.sh'; git ls-files render/scripts/sfr web/scripts admin/scripts | xargs -r grep -lE '^#!/(usr/)?bin/(ba)?sh' ; } | grep -v legacy/ | sort -u || true)
           if [ "${#files[@]}" -gt 0 ]; then shellcheck "${files[@]}"; else echo "no shell scripts"; fi
       - name: hadolint
         if: hashFiles('render/Dockerfile') != ''
