@@ -23,10 +23,17 @@ interface Overview {
 interface PruneReport {
   dry_run: boolean;
   kept_songs: number;
+  /** Set docs songs.json names that the bucket no longer has: those tracks are kept whole. */
+  missing_sets: string[];
   doomed_objects: number;
   doomed_by_prefix: Record<string, number>;
   deleted?: number;
 }
+
+// A bucket whose only anomaly is a missing set doc prunes 0 objects, so say it in the
+// status line — otherwise the gap is visible only in the raw JSON below.
+const gaps = (r: PruneReport) =>
+  r.missing_sets?.length ? `, ${r.missing_sets.length} set docs missing` : '';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]
@@ -75,7 +82,7 @@ export class PublishedView {
         pruneOut.hidden = false;
         pruneOut.textContent = JSON.stringify(this.lastPrune, null, 1);
         pruneReal.disabled = this.lastPrune.doomed_objects === 0;
-        this.note(`${this.lastPrune.doomed_objects} objects unreferenced`);
+        this.note(`${this.lastPrune.doomed_objects} objects unreferenced${gaps(this.lastPrune)}`);
       } catch (e) {
         this.note((e as Error).message, true);
       }
@@ -87,7 +94,7 @@ export class PublishedView {
       try {
         const r = await post<PruneReport>('/api/published/prune', { dry_run: false });
         pruneOut.textContent = JSON.stringify(r, null, 1);
-        this.note(`deleted ${r.deleted ?? 0} objects`);
+        this.note(`deleted ${r.deleted ?? 0} objects${gaps(r)}`);
         pruneReal.disabled = true;
       } catch (e) {
         this.note((e as Error).message, true);

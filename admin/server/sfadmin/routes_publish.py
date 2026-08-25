@@ -34,6 +34,8 @@ def remove(sid: str) -> dict:
     _no_active_run()
     try:
         return publishops.remove_track(sid)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e   # a malformed id is the caller's fault
     except Exception as e:
         raise HTTPException(500, f"remove failed: {e}") from e
 
