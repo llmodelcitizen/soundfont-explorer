@@ -271,14 +271,18 @@ export class RunsView {
       } else if (!r.finisher.songs_json_published) {
         const f = el('button', {}, 'Run finisher');
         f.onclick = async () => {
-          // /finish 409s while another writer holds the publish mutex (a Published-tab
-          // rebuild, the watcher's own finisher). Unhandled, that rejection left the status
-          // line stuck on "finisher running…" with no reason shown (#19).
+          // /finish 409s only when this run is ALREADY being finished (the watcher's own
+          // finisher, or a second click): RunManager.finish() catches the publish mutex
+          // being held and records it on the record it returns, so the request succeeds
+          // while the finisher published nothing. Both have to be shown — unhandled, the
+          // rejection left the status line stuck on "finisher running…", and a plain
+          // "finisher done" claimed a rebuild that did not happen (#19).
           f.disabled = true;
           this.note('finisher running…');
           try {
-            await post(`/api/runs/${r.run_id}/finish`);
-            this.note('finisher done');
+            const rec = await post<Run>(`/api/runs/${r.run_id}/finish`);
+            if (rec.finisher.songs_json_published) this.note('finisher done');
+            else this.note(`finisher: ${rec.finisher.error ?? 'songs.json was not published'}`, true);
           } catch (e) {
             this.note((e as Error).message, true);
           } finally {

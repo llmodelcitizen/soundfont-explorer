@@ -46,6 +46,19 @@ class WriteHandlerTests(unittest.TestCase):
                 self.assertIn("catch (", body, f"{name} {where}: a write with no catch")
         self.assertGreaterEqual(seen, 4, "the handler scan found nothing — the pattern moved")
 
+    def test_the_finish_handler_reads_the_outcome_off_the_record(self):
+        """POST /api/runs/{rid}/finish 409s only for a DUPLICATE finisher: when the publish
+        mutex is held elsewhere, RunManager.finish() catches that itself and returns the
+        record with songs_json_published false, so the request succeeds while nothing was
+        published. Noting "finisher done" on the status code alone claimed a rebuild that
+        did not happen (#19)."""
+        body = next((b for _, b in handlers("runs.ts") if "/finish" in b), None)
+        self.assertIsNotNone(body, "the Run finisher handler moved")
+        code = re.sub(r"//.*", "", body)      # the comment says all this too
+        self.assertIn("songs_json_published", code)
+        self.assertIn("finisher.error", code)
+        self.assertLess(code.index("songs_json_published"), code.index("finisher done"))
+
     def test_the_scan_would_notice_an_unhandled_write(self):
         bare = "  x.onclick = async () => {\n    await post('/api/x');\n  };\n"
         body = block(bare, HANDLER.search(bare).end())
