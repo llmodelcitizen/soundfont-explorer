@@ -6,6 +6,8 @@
 export interface Prefs {
   /** seconds of audible playback before a variant's dot lights up */
   listenedAfterS: number;
+  /** step to the next track when the current one plays to its end (ignored while LOOP is on) */
+  autoNextTrack: boolean;
   /** remember a separate playhead position for each track (false = start from the beginning) */
   preserveTrackPosition: boolean;
   /** visible list columns (keys from ui/columns.ts); always-on columns are implied */
@@ -16,6 +18,7 @@ export interface Prefs {
 
 export const DEFAULT_PREFS: Prefs = {
   listenedAfterS: 2,
+  autoNextTrack: true,
   preserveTrackPosition: true,
   columns: ['chip', 'engine', 'decade', 'fav', 'dot'],
   mobileColumns: ['chip', 'fav', 'dot'],
@@ -45,6 +48,8 @@ export function loadPrefs(): Prefs {
   const n = Number(p.listenedAfterS);
   return {
     listenedAfterS: Number.isFinite(n) && n >= 0 ? Math.min(60, n) : DEFAULT_PREFS.listenedAfterS,
+    // a pre-existing sfp.prefs.v1 has no autoNextTrack: it gets the default, like a fresh browser
+    autoNextTrack: typeof p.autoNextTrack === 'boolean' ? p.autoNextTrack : DEFAULT_PREFS.autoNextTrack,
     preserveTrackPosition: typeof p.preserveTrackPosition === 'boolean' ? p.preserveTrackPosition : DEFAULT_PREFS.preserveTrackPosition,
     columns: Array.isArray(p.columns) ? p.columns.map(String) : [...DEFAULT_PREFS.columns],
     mobileColumns: Array.isArray(p.mobileColumns) ? p.mobileColumns.map(String) : [...DEFAULT_PREFS.mobileColumns],
@@ -70,6 +75,41 @@ export class TrackPositions {
   clear(): void {
     this.positions.clear();
   }
+}
+
+/**
+ * React to a change of "preserve track position". Turning it off resets every saved position to
+ * zero rather than only stopping new ones from being saved: the remembered song → seconds map is
+ * dropped, and `syncUrlPosition` rewrites the one saved position no map holds — the `t` the URL
+ * would otherwise restore on the next reload. What is currently audible keeps playing where it
+ * is; only positions that would be *restored* are reset. Turning it back on is the symmetric
+ * case: nothing to clear, but the URL has to carry a position again, or a reload right after
+ * re-enabling the option would start the track the user is hearing from zero. Only a real
+ * transition acts: settings changes arrive for every option, the listened slider included.
+ */
+export function applyPreservePreference(was: boolean, now: boolean, positions: TrackPositions, syncUrlPosition: () => void): void {
+  if (was === now) return;
+  if (!now) positions.clear();
+  syncUrlPosition();
+}
+
+/**
+ * The position a fresh page load starts from. A `t=` in a shared or bookmarked link is a saved
+ * position like any other, so it only restores while the user preserves positions — otherwise
+ * the one restore path #35 set out to close would still put them 90 seconds into the track.
+ */
+export function bootPosition(preserve: boolean, t: number | undefined): number {
+  return preserve ? (t ?? 0) : 0;
+}
+
+/**
+ * The position to carry in the URL: none while positions are not preserved (a reload starts from
+ * the beginning), and none for a track that has run to its end — there is nothing left to resume
+ * from, and a `t=` two seconds from the end would make a reload end the track again at once.
+ */
+export function urlPosition(preserve: boolean, ended: boolean, position: number): number | undefined {
+  if (!preserve || ended) return undefined;
+  return position;
 }
 
 type Ledger = Record<string, Record<string, number>>;

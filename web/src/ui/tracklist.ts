@@ -5,10 +5,14 @@
  * open/closed state persists in localStorage; stepping with [ ] follows this displayed
  * logical order, and selecting a track inside a closed folder opens it.
  */
+import type { StatusKind } from '../audio/engine';
 import { songTitle, type SongEntry } from '../contracts/songs';
 import { clear, h } from './dom';
 
 const OPEN_KEY = 'sfp.folders.v1';
+
+export const AUTO_NEXT_TIP = 'This is only useful when the LOOP button is not activated.';
+export const PRESERVE_TIP = 'When checked, each track resumes from its own previous position. When unchecked, tracks start from the beginning.';
 
 function groupedTracks(songs: SongEntry[]): { root: SongEntry[]; folders: [string, SongEntry[]][] } {
   const root = songs.filter((s) => !s.path);
@@ -32,6 +36,25 @@ export function adjacentTrackId(songs: SongEntry[], current: string, delta: numb
   return ids[(i + delta + ids.length) % ids.length];
 }
 
+/**
+ * The track to step to when the engine reports the end of the current one, or undefined when
+ * nothing should move: any other status, LOOP on (the song never ends), the preference off, or
+ * the end of the list. Unlike `[` and `]` this does not wrap: stepping the user did not ask for
+ * has to stop somewhere, or a tab left open walks the whole catalog and then plays it again for
+ * ever, fetching every set and every audio segment each time round.
+ */
+export function autoAdvanceTarget(
+  songs: SongEntry[],
+  current: string,
+  kind: StatusKind,
+  opts: { loop: boolean; autoNext: boolean },
+): string | undefined {
+  if (kind !== 'ended' || opts.loop || !opts.autoNext) return undefined;
+  const ids = trackOrder(songs).map((s) => s.id);
+  const i = ids.indexOf(current);
+  return i < 0 ? undefined : ids[i + 1];
+}
+
 export function trackMetadata(s: Pick<SongEntry, 'duration_s' | 'variant_count' | 'composer'>): string {
   const mm = Math.floor(s.duration_s / 60);
   const ss = String(Math.round(s.duration_s % 60)).padStart(2, '0');
@@ -39,37 +62,131 @@ export function trackMetadata(s: Pick<SongEntry, 'duration_s' | 'variant_count' 
   return [`${mm}:${ss}`, `${s.variant_count} variants`, composer?.toLowerCase() === 'unknown' ? '' : composer ?? ''].filter(Boolean).join(' · ');
 }
 
+/** one of the two track options: its current value and where a click on it goes */
+export interface TrackToggle {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}
+
+/**
+ * A caption toggle's text in two lengths. Both toggles fit the default split on a desktop only
+ * in the short wording; the full wording appears on a wide pane, and `title` carries the whole
+ * explanation either way. Settings always spells both options out in full.
+ */
+function captionLabel(full: string, short: string): HTMLElement {
+  return h('span', { class: 'toglabel' }, h('span', { class: 'lbl-full' }, ` ${full}`), h('span', { class: 'lbl-short' }, ` ${short}`));
+}
+
 export class TrackList {
   readonly el: HTMLElement;
   private rows = new Map<string, HTMLElement>();
   private rowOrder: HTMLElement[] = [];
   private body: HTMLElement;
+  private head: HTMLElement;
   private songs: SongEntry[] = [];
   private current = '';
   private open = new Set<string>();
+  private observer: ResizeObserver | null = null;
+  private stopWatchingFonts: (() => void) | null = null;
+  private disposed = false;
 
+  readonly autoNextBox: HTMLInputElement;
   readonly preserveBox: HTMLInputElement;
 
-  constructor(songs: SongEntry[], current: string, private readonly onPick: (id: string) => void, preserve: { value: boolean; onChange: (v: boolean) => void }) {
+  constructor(
+    songs: SongEntry[],
+    current: string,
+    private readonly onPick: (id: string) => void,
+    toggles: { autoNext: TrackToggle; preserve: TrackToggle },
+  ) {
     try {
       this.open = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]);
     } catch { /* fresh */ }
     this.body = h('div', { class: 'track-rows', role: 'listbox', 'aria-label': 'tracks' });
-    this.preserveBox = h('input', { type: 'checkbox', id: 'preserve-pos' }) as HTMLInputElement;
-    this.preserveBox.checked = preserve.value;
-    this.preserveBox.addEventListener('change', () => {
-      preserve.onChange(this.preserveBox.checked);
-      this.preserveBox.blur();
-    });
-    const tip = 'When checked, each track resumes from its own previous position. When unchecked, tracks start from the beginning.';
-    const label = h('label', { class: 'preserve', for: 'preserve-pos', title: tip }, this.preserveBox, ' Preserve track position');
-    this.el = h(
-      'section',
-      { class: 'tracks' },
-      h('div', { class: 'np-head' }, h('span', { class: 'np-title' }, 'tracks'), h('span', { class: 'muted small' }, `${songs.length} · [ ] to step`), h('span', { class: 'spacer' }), label),
-      this.body,
+    this.autoNextBox = this.toggle('auto-next-track', toggles.autoNext);
+    this.preserveBox = this.toggle('preserve-pos', toggles.preserve);
+    this.head = h(
+      'div',
+      { class: 'np-head' },
+      h('span', { class: 'np-title' }, `${songs.length} tracks`),
+      h('span', { class: 'muted small' }, '· [ ] to step'),
+      h('span', { class: 'spacer' }),
+      // Settings carries the same two options at every window size; here they only fit sometimes.
+      h(
+        'span',
+        { class: 'track-toggles' },
+        h('label', { class: 'preserve', for: 'auto-next-track', title: AUTO_NEXT_TIP }, this.autoNextBox, captionLabel('Automatically step to next track', 'Auto-next')),
+        h('label', { class: 'preserve', for: 'preserve-pos', title: PRESERVE_TIP }, this.preserveBox, captionLabel('Preserve track position', 'Preserve position')),
+      ),
     );
+    this.el = h('section', { class: 'tracks' }, this.head, this.body);
+    this.watchCaptionWidth();
     this.setSongs(songs, current);
+  }
+
+  private toggle(id: string, toggle: TrackToggle): HTMLInputElement {
+    const box = h('input', { type: 'checkbox', id }) as HTMLInputElement;
+    box.checked = toggle.value;
+    box.addEventListener('change', () => {
+      toggle.onChange(box.checked);
+      box.blur();
+    });
+    return box;
+  }
+
+  /**
+   * Fit the caption to its pane in three steps: full labels, short labels, then no toggles at all
+   * (a dragged-in split, a small window, iOS mobile-landscape — Settings still has both). The
+   * middle step is what keeps them on show at ordinary laptop widths: the full wording needs
+   * ~490 px of caption in the Modern face and ~585 px in Topaz, where the default split gives
+   * about 410 px at 1280×800, so all-or-nothing would hide them for most desktop users.
+   *
+   * Measuring beats a breakpoint: the pane width is the user's, not the viewport's. Neither step
+   * can change the caption's own box — it is a fixed-height row stretched to the pane, and
+   * `.tracks { min-width: 0 }` makes the pane set the caption's width rather than the other way
+   * round — so this never feeds itself a new observation, and the overflow it looks for can
+   * actually happen.
+   */
+  private fitCaption(): void {
+    if (this.disposed) return;
+    this.head.classList.remove('short', 'cramped');
+    if (!this.head.clientWidth || !this.overflowing()) return;
+    this.head.classList.add('short');
+    if (this.overflowing()) this.head.classList.add('cramped');
+  }
+
+  private overflowing(): boolean {
+    return this.head.scrollWidth > this.head.clientWidth;
+  }
+
+  /**
+   * Re-take the decision whenever the caption's *content* width can have changed at a fixed box
+   * width: a webfont arriving after the first observation (Topaz and IBM Plex both swap in late),
+   * a theme switch, a Modern font cycle. The ResizeObserver alone only sees the box.
+   */
+  refit(): void {
+    this.fitCaption();
+  }
+
+  private watchCaptionWidth(): void {
+    if (typeof ResizeObserver === 'undefined') return;
+    this.observer = new ResizeObserver(() => this.fitCaption());
+    this.observer.observe(this.head);
+    const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+    if (!fonts) return;
+    const onLoaded = () => this.fitCaption();
+    fonts.addEventListener('loadingdone', onLoaded);
+    this.stopWatchingFonts = () => fonts.removeEventListener('loadingdone', onLoaded);
+    void fonts.ready.then(onLoaded, () => undefined);
+  }
+
+  /** Drop the observers before the pane is replaced: a song switch builds a whole new TrackList. */
+  dispose(): void {
+    this.disposed = true;
+    this.observer?.disconnect();
+    this.observer = null;
+    this.stopWatchingFonts?.();
+    this.stopWatchingFonts = null;
   }
 
   setSongs(songs: SongEntry[], current: string): void {

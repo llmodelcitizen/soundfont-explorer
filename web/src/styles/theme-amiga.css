@@ -117,11 +117,18 @@
 [data-theme='amiga'] .search,
 [data-theme='amiga'] .songpicker,
 [data-theme='amiga'] .themepick,
-[data-theme='amiga'] .settings .num {
+[data-theme='amiga'] .settings .num,
+[data-theme='amiga'] .share-url {
   background: #ffffff;
   color: #000000;
   border-color: #000000;
   box-shadow: var(--amiga-in);
+}
+/* Topaz is a bitmap face: the share dialog's em-relative sizes would land on 10.92px and 12.6px,
+   so pin them to the 12px the rest of the theme's small type already uses (#30). */
+[data-theme='amiga'] .share-heading,
+[data-theme='amiga'] .share-params {
+  font-size: 12px;
 }
 [data-theme='amiga'] option {
   background: #ffffff;
@@ -145,6 +152,44 @@
 }
 [data-theme='amiga'] .opt:hover .cnt {
   color: #000000;
+}
+
+/* Category help: a square Workbench gadget, and a white requester panel for the text. */
+[data-theme='amiga'] .facet-help-btn {
+  background: #0050a0;
+  color: #ffffff;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+  border-radius: 0;
+  /* Topaz is a bitmap face: keep the glyph at the size the rest of the theme draws it, and give
+     the gadget the two extra pixels that keeps the "?" off its own border */
+  font-size: 14px;
+  line-height: 14px;
+  width: 18px;
+  height: 18px;
+}
+@media (pointer: coarse) {
+  /* A media query adds no specificity, so the 18px above would beat base.css's coarse-pointer rule
+     and leave the one theme with a deliberately larger glyph as the only one with a small tap
+     target. Same 24x24 as every other theme (WCAG 2.5.8). */
+  [data-theme='amiga'] .facet-help-btn {
+    width: 24px;
+    height: 24px;
+  }
+}
+[data-theme='amiga'] .facet-help-btn:hover,
+[data-theme='amiga'] .facet-help-btn[data-open='true'] {
+  background: #f08000;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--amiga-in);
+}
+[data-theme='amiga'] .facet-tip {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--amiga-out);
+  border-radius: 0;
 }
 
 [data-theme='amiga'] .row:hover,
@@ -207,6 +252,11 @@
   background: #f08000;
   color: #000000;
 }
+/* a spent header ('#' in the catalog order) does not light up under the pointer: it has nothing
+   to sort, and aria-disabled already says so to a screen reader */
+[data-theme='amiga'] .hcell[aria-disabled='true']:hover {
+  background: transparent;
+}
 [data-theme='amiga'] .row.head > button.hcell.col-fav,
 [data-theme='amiga'] .row.head > button.hcell.col-dot {
   display: grid;
@@ -257,14 +307,27 @@
   color: #000000;
   border-color: #000000;
 }
-/* Give the debug caption enough chrome around its full-size title-bar gadgets. */
+/* Give the debug caption enough chrome around its full-size title-bar gadgets, with the
+   gadgets inset from the right edge by exactly the caption's own left padding (#39). */
 [data-theme='amiga'] .dbg-head {
   box-sizing: border-box;
   height: 36px;
   padding-left: 8px;
+  padding-right: 8px;
 }
 [data-theme='amiga'] .dbg-actions {
   align-items: center;
+}
+/* One height and one type size for both gadgets, each label centred in its box, as in modern. */
+[data-theme='amiga'] .dbg-head .btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 1;
 }
 /* Remove the base theme's bottom-only padding so Workbench captions and their adjacent text
    sit halfway up the strip. The side padding remains equal without changing horizontal flow. */
@@ -308,6 +371,23 @@
   border-color: #000000;
   box-shadow: var(--amiga-in);
 }
+/* Keys help: the outline around each shortcut is a proper gadget — same type size as the rest
+   of the dialog, a box with room around it, and the key centred inside (#38). */
+[data-theme='amiga'] .keymap td:first-child {
+  padding-right: 14px;
+}
+[data-theme='amiga'] .keymap kbd {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20ch;
+  /* 24px, not more: twenty gadgets plus their rows have to leave the close button and the last
+     shortcuts on screen — the dialog is only as tall as the shortest phone (#33) */
+  min-height: 24px;
+  padding: 2px 10px;
+  text-align: center;
+}
 [data-theme='amiga'] .debug.dragging {
   opacity: 1;
 }
@@ -329,6 +409,34 @@
 [data-theme='amiga'] input[type='range'] {
   accent-color: #f08000;
 }
+/* The settings window keeps ~20 px more room below its last section than the base layout, with
+   the closing buttons centred in it: 29 px above them to the "reset font" row (the section's
+   14 px bottom margin collapses into this margin) and the same 29 px below them to the bottom
+   window edge — 28 px of padding plus the window's own 1 px border.
+   The overlay centres its box, so those 21 px would otherwise appear half above the window: an
+   equal top margin holds the top edge where it was and puts all of the new room at the bottom.
+   The margin counts against the space the box is centred in, so the height cap gives the same
+   21 px back — on a short viewport the window scrolls instead of hanging off the bottom. */
+[data-theme='amiga'] .settings {
+  padding-bottom: 28px;
+  margin-top: 21px;
+  max-height: calc(100vh - 45px);
+  max-height: calc(100dvh - 45px);
+}
+[data-theme='amiga'] .settings .footrow {
+  margin-top: 29px;
+}
+/* ● is not in Topaz, so it arrives from the fallback face on that face's own metrics: its ink
+   sits 3.5 px above the baseline at 14 px where Topaz's tall parentheses centre on 8.5 px, which
+   is why the dot reads as level with the bottom of the brackets. Lift it by the difference.
+   The 5 px is measured against the face this stack's own `monospace` resolves to (DejaVu Sans
+   Mono); a platform whose ● comes from another face may want a pixel more or less, which is why
+   scripts/geometry.mjs measures the ink of the faces the page really resolved rather than reading
+   this number back: on such a platform the check fails and asks for the value it wants here. */
+[data-theme='amiga'] .settings .listened-glyph {
+  position: relative;
+  top: -5px;
+}
 /* The ♥ / ● column toggles come from fallback glyphs: full-size, centred on their checkbox. */
 [data-theme='amiga'] .settings .col-fav,
 [data-theme='amiga'] .settings .col-dot {
@@ -337,6 +445,7 @@
 }
 [data-theme='amiga'] .btn:focus-visible,
 [data-theme='amiga'] .opt:focus-visible,
+[data-theme='amiga'] .facet-help-btn:focus-visible,
 [data-theme='amiga'] input:focus-visible,
 [data-theme='amiga'] select:focus-visible {
   outline-color: #ffffff;

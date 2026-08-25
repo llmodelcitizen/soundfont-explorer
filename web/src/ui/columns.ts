@@ -21,10 +21,12 @@ export interface ColumnDef {
   glyph?: string;
   /** too narrow for a sort arrow: indicate the sort by colour only */
   noArrow?: boolean;
+  /** clicking the header restores the catalog order instead of cycling asc/desc */
+  resetsSort?: boolean;
 }
 
 export const COLUMNS: ColumnDef[] = [
-  { key: 'idx', label: '#', title: 'position in the current list', width: '3.2em', cls: 'idx', align: 'center', always: true },
+  { key: 'idx', label: '#', title: 'position in the current list', width: '3.2em', cls: 'idx', align: 'center', always: true, resetsSort: true },
   { key: 'chip', label: 'chip', title: 'sound chip / format', width: '4.6em', cls: 'badge' },
   { key: 'label', label: 'name', title: 'name', width: 'minmax(14em, 1fr)', cls: 'label', always: true },
   { key: 'engine', label: 'engine', title: 'render engine', width: '7.5em', cls: 'meta' },
@@ -43,6 +45,25 @@ export const COLUMNS: ColumnDef[] = [
 
 export const columnDef = (key: ColKey): ColumnDef => COLUMNS.find((c) => c.key === key)!;
 export const columnTitle = (c: ColumnDef, set?: SetDoc): string => (typeof c.title === 'function' ? c.title(set) : c.title);
+
+export interface SortState {
+  key: ColKey | null;
+  dir: 1 | -1;
+}
+
+/**
+ * The sort a click on `key` produces: ascending, then descending, then back to the catalog
+ * order. A `resetsSort` column skips that cycle — '#' *is* the catalog order, and row numbers
+ * in reverse are of no use to anyone, so its header restores that order in one click.
+ */
+export function nextSort(cur: SortState, key: ColKey): SortState {
+  // looked up without columnDef()'s non-null assertion: an unrecognised key starts an
+  // ascending sort (what the cycle did before this function existed) instead of throwing
+  if (COLUMNS.some((c) => c.key === key && c.resetsSort)) return { key: null, dir: 1 };
+  if (cur.key !== key) return { key, dir: 1 };
+  if (cur.dir === 1) return { key, dir: -1 };
+  return { key: null, dir: 1 };
+}
 
 /** the columns shown for a preference list: always-on ones are forced; model order */
 export function visibleColumns(keys: readonly string[]): ColumnDef[] {
@@ -165,6 +186,8 @@ export function sortValue(key: ColKey, id: string, canonicalIdx: number, ctx: Ce
   const sv = ctx.set.variants[id];
   const f = v?.facets ?? {};
   switch (key) {
+    // no header click can ask for this any more ('#' is resetsSort in COLUMNS), but the row
+    // numbers *are* the catalog position: keep it numeric for any other caller of sortIds()
     case 'idx':
       return canonicalIdx;
     case 'size':

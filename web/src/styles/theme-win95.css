@@ -103,6 +103,8 @@
 [data-theme='win95'] .folder-count,
 [data-theme='win95'] .settings .small,
 [data-theme='win95'] .settings .setting-title,
+[data-theme='win95'] .share-heading,
+[data-theme='win95'] .share-params,
 [data-theme='win95'] .transport .clock {
   font-size: 11px;
 }
@@ -127,14 +129,16 @@
   line-height: 19.6px;
 }
 [data-theme='win95'] .search,
-[data-theme='win95'] .settings .num {
+[data-theme='win95'] .settings .num,
+[data-theme='win95'] .share-url {
   line-height: 19.6px;
 }
 @media (pointer: coarse) {
   /* base bumps these to 16px against iOS zoom; 22.4px is that size's modern line box, and
      Fixedsys is the face whose native size is 16px — the scaled 11px bitmap would smear */
   [data-theme='win95'] .search,
-  [data-theme='win95'] .settings .num {
+  [data-theme='win95'] .settings .num,
+  [data-theme='win95'] .share-url {
     line-height: 22.4px;
     font-family: 'Fixedsys Excelsior', 'Fixedsys', monospace;
     font-variant-ligatures: none;
@@ -242,7 +246,8 @@
 
 /* Sunken white fields. Comboboxes get a drawn face-and-bevel dropdown button. */
 [data-theme='win95'] .search,
-[data-theme='win95'] .settings .num {
+[data-theme='win95'] .settings .num,
+[data-theme='win95'] .share-url {
   background: #ffffff;
   color: #000000;
   border-color: var(--w95-edge-field);
@@ -307,6 +312,31 @@
   color: #808080;
 }
 
+/* The category help gadget is the title-bar "?" button; its balloon is the yellow system tooltip. */
+[data-theme='win95'] .facet-help-btn {
+  background: #c0c0c0;
+  color: #000000;
+  border-color: var(--w95-edge-raised);
+  box-shadow: var(--w95-raised);
+  border-radius: 0;
+}
+[data-theme='win95'] .facet-help-btn:hover {
+  background: #c0c0c0;
+  color: #000000;
+}
+[data-theme='win95'] .facet-help-btn:active,
+[data-theme='win95'] .facet-help-btn[data-open='true'] {
+  border-color: var(--w95-edge-pressed);
+  box-shadow: var(--w95-pressed);
+}
+[data-theme='win95'] .facet-tip {
+  background: #ffffe1;
+  color: #000000;
+  border: 1px solid #000000;
+  box-shadow: none;
+  border-radius: 0;
+}
+
 /* The variant list is a white window well; ListView column headers are raised face buttons. */
 [data-theme='win95'] .list {
   background: #ffffff;
@@ -335,6 +365,11 @@
 [data-theme='win95'] .hcell:active {
   box-shadow: inset 1px 1px #000000, inset -1px -1px #ffffff, inset 2px 2px #808080, inset -2px -2px #dfdfdf;
 }
+/* a spent header does not depress: base already takes its hand cursor and hover colour away, and
+   an Explorer button that flashes pressed would still promise the click aria-disabled denies */
+[data-theme='win95'] .hcell[aria-disabled='true']:active {
+  box-shadow: var(--w95-thumb);
+}
 [data-theme='win95'] .hcell.sorted {
   color: #000000;
   font-weight: 700;
@@ -355,7 +390,10 @@
 [data-theme='win95'] .row.audible .dot {
   background: #008000;
 }
+/* buffering outranks playing here as it does in base (the later rule wins): the LED blinks the
+   warning yellow while the audio is still arriving, whatever else the row is doing */
 [data-theme='win95'] .row.loading .dot {
+  background: var(--warn);
   border-color: #808080;
 }
 
@@ -381,9 +419,23 @@
 [data-theme='win95'] .row.sel.audible .label {
   color: #ffffff;
 }
+/* The LEDs keep base's precedence on the navy highlight — listened, then playing, then
+   buffering, each rule of the same weight as the one before it — and only change shade so they
+   read on it. Only the muted listened LED turns white: the playing one stays green for as long
+   as it is playing, as it does in the modern theme. On navy it lights up to the VGA bright
+   green of the 16-colour palette, because #008000 on #000080 is 3.1:1, a hair over the 3:1
+   floor for a 10px indicator, while #00ff00 reads at 11.7:1. */
 [data-theme='win95'] .row.sel.cached .dot,
 [data-theme='win95'] .row:hover.cached .dot {
   background: #ffffff;
+}
+[data-theme='win95'] .row.sel.audible .dot,
+[data-theme='win95'] .row:hover.audible .dot {
+  background: #00ff00;
+}
+[data-theme='win95'] .row.sel.loading .dot,
+[data-theme='win95'] .row:hover.loading .dot {
+  background: var(--warn);
 }
 [data-theme='win95'] .track.current .track-meta {
   color: #ffffff;
@@ -418,14 +470,27 @@
   color: #ffffff;
   border-bottom-color: #808080;
 }
-/* Give the debug caption enough chrome around its full-size title-bar buttons. */
+/* Give the debug caption enough chrome around its full-size title-bar buttons, with the
+   gadgets inset from the right edge by exactly the caption's own left padding (#39). */
 [data-theme='win95'] .dbg-head {
   box-sizing: border-box;
   height: 36px;
   padding-left: 8px;
+  padding-right: 8px;
 }
 [data-theme='win95'] .dbg-actions {
   align-items: center;
+}
+/* One height and one type size for both gadgets, each label centred in its box, as in modern. */
+[data-theme='win95'] .dbg-head .btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1;
 }
 /* Pane captions run edge to edge over their pane (and its scrollbar column), with the text and
    checkbox centred in the bar: base reserves 6px bottom padding that would ride them high on a
@@ -456,6 +521,12 @@
   background: #ffffff;
   color: #800000;
 }
+/* --warn is #ffff00, which the transport strip carries on navy: on the #c0c0c0 dialog face it
+   measures 1.69:1, less legible than the plain hint it replaces. A refusal has to be readable,
+   so it takes the same maroon this theme already gives 'clear all site data' (#34). */
+[data-theme='win95'] .settings .colfoot span.warn {
+  color: var(--bad);
+}
 
 /* Dialogs and the debug panel are gray windows: face-coloured outer ring, two-pixel bevel,
    and a full-bleed navy caption bar. */
@@ -481,7 +552,8 @@
 }
 /* Dialog control labels are black on the face, as in a real property sheet. */
 [data-theme='win95'] .settings .preserve,
-[data-theme='win95'] .settings .setting-title {
+[data-theme='win95'] .settings .setting-title,
+[data-theme='win95'] .share-heading {
   color: #000000;
 }
 /* The ♥ / ● column toggles come from fallback glyphs: full-size, centred on their checkbox. */
@@ -604,6 +676,10 @@
   outline: 1px dotted #000000;
   outline-offset: -4px;
 }
+[data-theme='win95'] .facet-help-btn:focus-visible {
+  outline: 1px dotted #000000;
+  outline-offset: -3px;
+}
 [data-theme='win95'] input:focus-visible,
 [data-theme='win95'] select:focus-visible {
   outline: 1px dotted #000000;
@@ -677,4 +753,11 @@
 [data-theme='win95'] .credits h1,
 [data-theme='win95'] .credits h2 {
   font-size: 22px;
+}
+
+/* the settings scroll box is its own formatting context, so this gap is no longer the collapse of
+   the last section's margin with the footer's — win95 is out of #40's scope and keeps the 14px it
+   had before the box existed (scripts/geometry.mjs pins it). */
+[data-theme='win95'] .settings .settings-foot {
+  margin-top: 14px;
 }

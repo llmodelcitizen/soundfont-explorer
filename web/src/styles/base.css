@@ -136,6 +136,7 @@ pre {
 }
 .btn:focus-visible,
 .opt:focus-visible,
+.facet-help-btn:focus-visible,
 input:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--accent);
@@ -244,11 +245,80 @@ select:focus-visible {
   overflow: auto;
 }
 .facet-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.75em;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--fg-dim);
-  margin: 4px 0 2px;
+  /* the bottom margin clears the help gadget's enlarged hit area below (see .facet-help-btn::after),
+     so the pad it gains never covers the first chip of the row underneath */
+  margin: 4px 0;
+}
+/* category help: a "?" gadget beside the heading, and the bubble it opens. The bubble is fixed,
+   so the scrolling facet panel cannot clip it; filters.ts anchors it under its own trigger. */
+.facet-help {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.facet-help-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: var(--btn-bg);
+  color: var(--fg-dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+/* The gadget is drawn small enough to sit inside a 0.75em heading; the area it answers to is not.
+   This pad takes the target to the 24x24 minimum of WCAG 2.5.8 without growing the panel: the inset
+   is measured from the padding box, so with border-box sizing it grows the 16px gadget to
+   14 + 2 x 5 = 24. The heading's own margin above keeps it off the first chip of the row below. */
+.facet-help-btn::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+.facet-help-btn:hover,
+.facet-help-btn[data-open='true'] {
+  background: var(--btn-hover);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.facet-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  /* above the mobile close-the-panel scrim (4), below the modal overlays (10) */
+  z-index: 6;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  /* a landscape phone is barely taller than this copy: scroll the overflow rather than hang it
+     off the bottom of the screen, where the caveat the reader came for is cut off. dvh is the
+     visible height that filters.ts clamps against, with vh left as the fallback for browsers
+     without it — 100vh includes the mobile URL bar, and would overflow by its height. */
+  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  padding: 6px 9px;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  /* the heading around it is small, uppercase and tracked out; running text is not */
+  font: var(--font);
+  text-transform: none;
+  letter-spacing: normal;
 }
 .opts {
   display: flex;
@@ -286,6 +356,10 @@ select:focus-visible {
   overflow: auto;
   min-height: 0;
   position: relative;
+}
+/* a closing dialog hands focus back here (tabindex -1); it is a container, not a control */
+.list:focus {
+  outline: none;
 }
 .rows {
   display: block;
@@ -459,6 +533,18 @@ select:focus-visible {
 .hcell.sorted {
   color: var(--accent);
 }
+/* A spent header ('#' while the list is already in the catalog order) has nothing left to do:
+   it drops every affordance of a live control — no hand cursor, no hover accent, a dimmed
+   label — so the pointer is told what aria-disabled tells a screen reader. */
+.hcell[aria-disabled='true'] {
+  cursor: default;
+}
+.hcell[aria-disabled='true']:hover {
+  color: var(--fg-dim);
+}
+.hcell[aria-disabled='true'] .hlabel {
+  opacity: 0.55;
+}
 .hcell .arrow {
   margin-left: 3px;
   font-size: 0.8em;
@@ -543,6 +629,10 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* the caption's nowrap content must not set this grid item's floor: without it the pane is
+     widened by the caption instead of the caption being narrowed by the pane, and the overflow
+     the Tracks caption measures itself against can never happen */
+  min-width: 0;
   background: var(--panel-2);
   padding: 8px 12px 0;
 }
@@ -550,6 +640,9 @@ select:focus-visible {
   margin-bottom: 0;
   /* fixed-height caption: flex-shrink must not crush it when the track list overflows */
   flex: none;
+  /* the caption's own overflow — what `cramped` measures — stays inside it, never over the rows
+     next to it, and is not painted for the frame between the first layout and the first measure */
+  overflow: hidden;
 }
 .track-rows {
   overflow: auto;
@@ -680,6 +773,25 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+/* Tracks caption: both options spelled out when they fit, shortened when they nearly fit, neither
+   when they do not (Settings always carries both, in full, at every window size) */
+.track-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+.np-head .lbl-short {
+  display: none;
+}
+.np-head.short .lbl-full {
+  display: none;
+}
+.np-head.short .lbl-short {
+  display: inline;
+}
+.np-head.cramped .track-toggles {
+  display: none;
 }
 .preserve input {
   accent-color: var(--accent);
@@ -880,6 +992,38 @@ select:focus-visible {
 .keymap td {
   padding: 2px 10px 2px 0;
 }
+/* A dialog with a close button at the foot scrolls its middle, never the button: the Amiga's
+   full-size key gadgets make the keys list taller than a phone (and than 800 px), and a close
+   button scrolled out of the box is a dialog with no visible way out (#33). */
+.overlay-box.keys,
+.overlay-box.share,
+.overlay-box.settings {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.keys .keymap-scroll,
+.share .share-scroll,
+.settings .settings-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.keymap-foot,
+.share-foot,
+/* the scroll box is its own formatting context, so the last section's bottom margin no longer
+   collapses into the footer's margin-top — without this they add up and the closing buttons sit
+   one section-gap too low (#40's centring, measured by scripts/geometry.mjs) */
+.settings .settings-scroll > .setting:last-child {
+  margin-bottom: 0;
+}
+.settings-foot {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-top: 14px;
+}
 kbd {
   background: var(--btn-bg);
   border: 1px solid var(--line);
@@ -933,6 +1077,16 @@ kbd {
   color: var(--fg-dim);
   margin-bottom: 6px;
 }
+.settings .trackopts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 8px;
+}
+.settings .trackopts label {
+  display: inline-flex;
+  margin-bottom: 0;
+}
 .settings .colgrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -953,6 +1107,10 @@ kbd {
 .settings .colfoot span {
   line-height: 1.3;
 }
+/* the Display hint doubles as the surface that says why full screen did not happen (#34) */
+.settings .colfoot span.warn {
+  color: var(--warn);
+}
 
 @media (pointer: coarse) {
   /* iOS zooms into focused inputs smaller than 16 px */
@@ -960,6 +1118,97 @@ kbd {
   .search {
     font-size: 16px;
   }
+  /* a 16 px "?" is a poor tap target: on a touch screen the gadget itself is the 24x24 minimum of
+     WCAG 2.5.8, so the pad it carries on desktop would only reach into the chips below */
+  .facet-help-btn {
+    width: 24px;
+    height: 24px;
+    line-height: 22px;
+  }
+  .facet-help-btn::after {
+    inset: 0;
+  }
+}
+
+/* share (#30): the link, a copy button, and what every parameter means */
+.share {
+  min-width: min(560px, 92vw);
+}
+.share-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.share-url {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  font: var(--mono);
+}
+@media (pointer: coarse) {
+  /* after the `font` shorthand above, which resets the size the iOS zoom guard just set: the
+     dialog opens with this field focused, so a sub-16px size would zoom the whole page in */
+  .share-url {
+    font-size: 16px;
+  }
+}
+/* two classes, like the .btn.primary rule it has to beat — one class alone never applied */
+.btn.share-copy {
+  flex: 0 0 auto;
+  padding: 4px 16px;
+}
+.share-opt {
+  display: block;
+}
+/* the same reason as the option's title, for a touch screen that never shows one */
+.share-why:not(:empty) {
+  display: block;
+  margin-top: 2px;
+}
+/* at the top of the track both links are the same string: the option is there but has nothing to do */
+.share-opt.off {
+  opacity: 0.6;
+}
+.share-note {
+  display: block;
+  min-height: 1.3em;
+}
+.share-heading {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  margin: 14px 0 6px;
+}
+.share-params {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 0;
+  font-size: 0.9em;
+}
+.share-params dt,
+.share-params dd {
+  margin: 0;
+  color: var(--fg-dim);
+  /* the themes are free to make --fg-dim the same ink as --fg (Amiga's palette has four colours):
+     the rows this link does not carry recede by weight, so the highlight reads in every theme */
+  opacity: 0.6;
+}
+.share-params dt.on,
+.share-params dd.on {
+  opacity: 1;
+}
+.share-params dt.on {
+  color: var(--accent);
+}
+.share-params dd.on {
+  color: var(--fg);
 }
 
 /* debug */
@@ -1035,7 +1284,9 @@ kbd {
 @media (max-width: 720px) {
   .top {
     flex-wrap: wrap;
-    gap: 6px 8px;
+    /* 4px between controls, not 6: with share alongside settings/debug that is what keeps the
+       row unwrapped down to the same widths as before the button existed (#30) */
+    gap: 6px 4px;
   }
   .top .title {
     font-size: 1.25em;
@@ -1044,6 +1295,14 @@ kbd {
   }
   .top .spacer {
     display: none;
+  }
+  /* one control row, always: below 360 px the icon gadgets give some side padding back, or the
+     volume slider wraps onto a line of its own (#30) */
+  .top .btn.icon {
+    padding: 4px 5px;
+  }
+  .top .btn:not(.icon) {
+    padding: 4px 8px;
   }
   .songpicker {
     flex: 1 1 100%;
@@ -1152,6 +1411,12 @@ kbd {
     display: none;
   }
 
+  .share-row {
+    flex-wrap: wrap;
+  }
+  .share-copy {
+    flex: 1 1 100%;
+  }
   .debug {
     right: 4px;
     left: 4px;
@@ -1163,6 +1428,12 @@ kbd {
   }
   .row .label {
     font-size: 0.95em;
+  }
+}
+/* every phone from 360 px up (the narrowest common one is 360) keeps the full tap target */
+@media (min-width: 360px) and (max-width: 720px) {
+  .top .btn.icon {
+    padding: 4px 8px;
   }
 }
 /* phone portrait: Now Playing height is draggable (handle above it) */
@@ -1177,6 +1448,15 @@ kbd {
     max-height: none;
     height: 100%;
     border-top: 0;
+  }
+  /* Open filters: the handle steps aside with the pane it resizes, and the list pane takes the
+     whole grid. The handle is positioned, so left in its row it paints its bar over the filter
+     buttons of a panel tall enough to reach into the (now empty) Now Playing rows. */
+  .filters-open .main {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .filters-open .hsplit {
+    display: none;
   }
   /* the five buttons stretch to fill the line (equal widths) next to ▲ ▼ */
   .transport > .btn,

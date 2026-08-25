@@ -4,9 +4,26 @@ import type { SetDoc } from '../contracts/set';
 import { songTitle, type SongEntry } from '../contracts/songs';
 import { clear, fmtBytes, h, setPressed } from './dom';
 
+/** Downloads are off; the disabled button's tooltip is the whole explanation the listener gets. */
+export function downloadButton(): HTMLButtonElement {
+  return h('button', { class: 'btn', type: 'button', disabled: true, title: 'Downloads are not available for this session' }, '⤓ download') as HTMLButtonElement;
+}
+
 export interface NowPlayingActions {
   isFavorite(id: string): boolean;
   toggleFavorite(id: string): boolean;
+}
+
+/** the tier pill: what you are hearing right now — the scrubbing tier or the listening one */
+export function tierLabel(t: 's' | 'l' | null, set: SetDoc): string {
+  if (t === 'l') return `listening · ${set.listen.bitrate}k`;
+  if (t === 's') return `scrubbing · ${set.scrub.bitrate}k`;
+  return '';
+}
+
+/** the pill's tooltip: both tiers, named as the pill names them, with their bitrates */
+export function tierTitle(set: SetDoc): string {
+  return `audio tier: scrubbing (${set.scrub.bitrate} kbps) or listening (${set.listen.bitrate} kbps)`;
 }
 
 export class NowPlaying {
@@ -18,14 +35,14 @@ export class NowPlaying {
   private favoriteBtn: HTMLButtonElement | null = null;
 
   constructor(private readonly catalog: CatalogDoc, private readonly set: SetDoc, private readonly song: SongEntry, private actions: NowPlayingActions) {
-    this.tierEl = h('span', { class: 'tier', title: `audio tier: scrub (${set.scrub.bitrate} kbps) or listen (${set.listen.bitrate} kbps)` }, '');
+    this.tierEl = h('span', { class: 'tier', title: tierTitle(set) }, '');
     this.statusEl = h('span', { class: 'np-status' }, '');
     this.body = h('div', { class: 'np-body' }, h('p', { class: 'muted' }, 'Select a variant (↑/↓) to hear the song through it.'));
     this.el = h('section', { class: 'nowplaying', 'aria-live': 'polite' }, h('div', { class: 'np-head' }, h('span', { class: 'np-title' }, 'now playing'), this.tierEl, this.statusEl), this.body);
   }
 
   setTier(t: 's' | 'l' | null): void {
-    this.tierEl.textContent = t === 'l' ? `listen · ${this.set.listen.bitrate}k` : t === 's' ? `scrub · ${this.set.scrub.bitrate}k` : '';
+    this.tierEl.textContent = tierLabel(t, this.set);
     this.tierEl.className = `tier ${t ?? ''}`;
   }
 
@@ -50,8 +67,7 @@ export class NowPlaying {
       this.paintFav(fav, id);
       fav.blur();
     });
-    const dl = h('button', { class: 'btn', type: 'button', disabled: true, title: 'downloads are coming in a later release' }, '⤓ download') as HTMLButtonElement;
-    return h('div', { class: 'np-actions' }, fav, dl);
+    return h('div', { class: 'np-actions' }, fav, downloadButton());
   }
 
   refreshFavorite(id: string): void {
