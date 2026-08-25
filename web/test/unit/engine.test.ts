@@ -204,6 +204,23 @@ describe('Engine', () => {
     expect(h.engine.status.kind).toBe('ended');
   });
 
+  it('re-selecting the pending target does not restart the switch timeout', async () => {
+    const h = harness(30, 20);
+    h.engine.select('v0');
+    h.engine.play();
+    await h.run(300);
+    for (let i = 0; i < 10; i++) h.ff.failUrls.add(`/a/test/g/g1/000${i}.pk`);
+    h.engine.select('v25');
+    for (let i = 0; i < 3; i++) {
+      await h.run(2000);
+      expect(h.engine.status.kind).toBe('loading');
+      h.engine.select('v25'); // impatient re-select while still pending
+    }
+    await h.run(2500); // 8.5 s after the first select
+    expect(h.engine.status.kind).toBe('wontload');
+    expect(h.engine.audible).toBe('v0');
+  });
+
   it('last select wins: a burst of selects commits only the final one (no queueing)', async () => {
     const h = harness(30, 8, { decodeMs: 150 });
     h.engine.select('v0');

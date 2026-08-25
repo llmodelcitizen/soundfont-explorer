@@ -262,7 +262,9 @@ export class Engine {
     if (!Object.hasOwn(this.set.variants, variant)) return;
     const token = ++this.seq;
     if (variant === this.audible && !this.pending && this.audibleChain && !this.audibleChain.releasing && this.timeline.playing) return;
-    this.pending = { token, variant, sinceMs: this.nowMs(), selectedAtMs, fade: AUDIO.SWITCH_XFADE };
+    // re-selecting the target we are already waiting for must not restart its timeout
+    const sinceMs = this.pending?.variant === variant ? this.pending.sinceMs : this.nowMs();
+    this.pending = { token, variant, sinceMs, selectedAtMs, fade: AUDIO.SWITCH_XFADE };
     if (!this.timeline.playing && this.endedNaturally) {
       // the song finished on its own: a new choice means "hear this one" → start over from 0
       this.endedNaturally = false;
