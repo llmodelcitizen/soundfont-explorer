@@ -65,6 +65,18 @@ class ConflictError(RuntimeError):
     """library.json changed underneath us — a second writer exists."""
 
 
+def canon_persist_blockers(local_ids: set[str], bucket_ids: set[str], entries: dict) -> list[str]:
+    """Tracks the persisted canon/songs.json lists and the library still expects to be built,
+    but which the local songs.json lacks (#16). On a healthy box this is empty: a full run
+    rebuilds every such track and a --only run merges into a songs.json that already lists
+    them. Anything here means songs/ on the box is stale (a restore that never happened,
+    the bundle's committed stub) and persisting would shrink the bucket copy to match.
+    Drops the library explains — deleted, hidden, refused — are legitimate."""
+    return sorted(sid for sid in bucket_ids - local_ids
+                  if (e := entries.get(sid)) is not None and not e.get("hidden")
+                  and e["canon"]["status"] not in ("refused", "unparsed"))
+
+
 class Library:
     def __init__(self) -> None:
         self.cfg = get_config()
@@ -423,19 +435,49 @@ class Library:
                 # a targeted run should report the tracks it ran, not the library totals
                 result["ran"] = {sid: dict(self.doc["entries"][sid]["canon"])
                                  for sid in only if sid in self.doc["entries"]}
-        result["persisted"] = self._persist_canon_products()
+        result["persisted"] = self._persist_canon_products(full_run=only is None)
         return result
 
-    def _persist_canon_products(self) -> bool:
+    def _bucket_canon_ids(self) -> set[str] | None:
+        """Ids in the persisted canon/songs.json; None before the first persist."""
+        s3 = self.cfg.s3
+        try:
+            r = s3.get_object(Bucket=self.cfg.bucket, Key="canon/songs.json")
+        except s3.exceptions.NoSuchKey:
+            return None
+        return {e["id"] for e in json.load(r["Body"])["songs"]}
+
+    def _persist_canon_products(self, full_run: bool) -> bool:
         """Canon outputs are derived state inside the disposable app dir: an app update or
         a relaunch replaces it wholesale, which reset the render list to the bundle's
         25-song stub (2026-08-24). Persist them to the bucket; bootstrap.sh and
-        sfadmin-update restore them."""
+        sfadmin-update restore them.
+
+        The bucket copy is the only durable one, so a persist from a stale songs/ tree must
+        not go through (#16): refuse — raise, so the run reports it — when the local
+        songs.json lacks tracks the bucket copy has and the library still expects, and
+        prune canon/rendered/ only after a full run. A --only run is additive (canon.py
+        merges into the existing songs.json and never removes a canonical MIDI), so it can
+        never justify deleting a key; stale keys go on the next full run."""
         repo, bucket = self.cfg.repo, self.cfg.bucket
         songs = os.path.join(repo, "songs")
-        cmds = [["aws", "s3", "sync", os.path.join(songs, "rendered") + "/",
-                 f"s3://{bucket}/canon/rendered/", "--size-only", "--delete",
-                 "--only-show-errors"]]
+        with open(os.path.join(songs, "songs.json")) as fh:
+            local_ids = {e["id"] for e in json.load(fh)["songs"]}
+        bucket_ids = self._bucket_canon_ids()
+        if bucket_ids is not None:
+            with self.lock:
+                missing = canon_persist_blockers(local_ids, bucket_ids, self.doc["entries"])
+            if missing:
+                raise RuntimeError(
+                    f"refusing to persist canon products: the local songs.json lacks "
+                    f"{len(missing)} tracks the bucket copy has ({', '.join(missing[:5])}"
+                    f"{'…' if len(missing) > 5 else ''}) — songs/ on this box is stale; "
+                    "run a full Canon check (no selection) to rebuild it")
+        sync = ["aws", "s3", "sync", os.path.join(songs, "rendered") + "/",
+                f"s3://{bucket}/canon/rendered/", "--size-only", "--only-show-errors"]
+        if full_run:
+            sync.append("--delete")
+        cmds = [sync]
         for f in ("songs.json", "corpus-imports.json", "canon-report.json"):
             if os.path.exists(os.path.join(songs, f)):
                 cmds.append(["aws", "s3", "cp", os.path.join(songs, f),
