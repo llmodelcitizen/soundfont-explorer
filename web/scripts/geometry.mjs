@@ -85,7 +85,9 @@ async function measure(theme, viewport, label) {
       const outer = rect(button);
       if (!outer) return null;
       const svg = rect(button.querySelector('svg'));
-      return { outer, svg, label: button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '' };
+      // `text` is kept apart from `label`: a gadget that draws its meaning must announce one and
+      // render the other, and only the two side by side can tell a drawing from a text glyph.
+      return { outer, svg, text: button.textContent?.trim() ?? '', label: button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '' };
     }).filter(Boolean);
     const gap = (selector) => {
       const element = document.querySelector(selector);
@@ -157,6 +159,10 @@ async function measure(theme, viewport, label) {
     const namedRects = {};
     for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) namedRects[selector] = rect(document.querySelector(selector));
     const headerControls = allRects('.top > .themepick, .top > .btn, .top > .vol-top');
+    // share / settings / debug / keys are one drawn set: same box, same weight, no text glyph
+    // between them. The keys gadget joined it when its '?' became a drawn keycap, and the whole
+    // point of drawing it once is that the numbers below come out the same in all three themes.
+    const headerGadgets = buttonInfo('.top > .btn.icon');
     const mainButtons = buttonInfo('.transport > .btn');
     const stepButtons = buttonInfo('.transport .steps > .btn');
     const selected = document.querySelector('.rows .row.sel');
@@ -235,6 +241,7 @@ async function measure(theme, viewport, label) {
       },
       headerCenters: headerControls.map((item) => item.cy),
       headerOverlaps: overlaps(headerControls),
+      headerGadgets,
       paneOverlaps: overlaps(allRects('.main > .left, .main > .right')),
       mainButtons,
       stepButtons,
@@ -1058,6 +1065,17 @@ for (const [label, viewport] of Object.entries(viewports)) {
       }
     }
     if (snapshot.headerCenters.length > 1) assert(Math.max(...snapshot.headerCenters) - Math.min(...snapshot.headerCenters) <= 1, `${label}/${snapshot.theme}: header controls are not vertically centered`);
+    // The header gadgets are one drawn set — share, settings, debug and the keys keycap. Each is
+    // one inline SVG inheriting currentColor, so these numbers must not move between the themes;
+    // a gadget that fell back to a text glyph shows up here as leftover text or a missing <svg>.
+    assert(snapshot.headerGadgets.length === 4, `${label}/${snapshot.theme}: ${snapshot.headerGadgets.length} drawn header gadgets, expected 4: ${JSON.stringify(snapshot.headerGadgets.map((gadget) => gadget.label))}`);
+    for (const gadget of snapshot.headerGadgets) {
+      assert(gadget.text === '', `${label}/${snapshot.theme}: the ${gadget.label} gadget still carries the text glyph ${JSON.stringify(gadget.text)}`);
+      assert(gadget.svg && close(gadget.svg.w, 18, 0.5) && close(gadget.svg.h, 18, 0.5), `${label}/${snapshot.theme}: the ${gadget.label} gadget draws ${JSON.stringify(gadget.svg)}, not the shared 18px box`);
+      if (gadget.svg) assert(close(gadget.outer.cx, gadget.svg.cx, 0.5) && close(gadget.outer.cy, gadget.svg.cy, 0.5), `${label}/${snapshot.theme}: off-center ${gadget.label} icon`);
+    }
+    // and the one that opens the keys screen is still announced as that control, not as a picture
+    assert(snapshot.headerGadgets.some((gadget) => gadget.label === 'keyboard shortcuts'), `${label}/${snapshot.theme}: no header gadget announces itself as the keyboard-shortcuts control`);
     assert(snapshot.settingsFontReset.guidance === 'Click or tap the title bar to cycle font selection (modern theme only)', `${label}/${snapshot.theme}: font guidance is missing: ${JSON.stringify(snapshot.settingsFontReset)}`);
     assert(snapshot.settingsFontReset.equalButtons && snapshot.settingsFontReset.resetBelow && snapshot.settingsFontReset.fitsViewport, `${label}/${snapshot.theme}: font reset row geometry is wrong: ${JSON.stringify(snapshot.settingsFontReset)}`);
     // The closing buttons sit centred in the room below the last section (#40, modern+amiga only:

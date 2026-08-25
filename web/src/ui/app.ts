@@ -454,7 +454,20 @@ export class App {
       this.setTheme(themeSel.value as ThemeName);
       themeSel.blur();
     });
-    const helpBtn = h('button', { class: 'btn', type: 'button', title: 'keys (?)' }, '?');
+    // The gadget is a keycap, because the screen behind it lists every shortcut as a <kbd> chip:
+    // the icon is one of those chips drawn small, and the key drawn on it is the key that opens it.
+    // One inline SVG serves all three themes — stroked in currentColor, it takes the navy title
+    // bar's white, Workbench blue's white and modern's ink with no per-theme asset, and stays
+    // inside the document like every other header gadget (this site ships as static files).
+    // The 18px box and 2px stroke are the share/settings/debug ones, so the four weigh the same.
+    // aria-label carries the name the '?' text used to give: the drawing itself is aria-hidden.
+    const helpBtn = h('button', { class: 'btn icon keys-btn', type: 'button', title: 'keys (?)', 'aria-label': 'keyboard shortcuts' });
+    helpBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      // the keycap, then the "?" on its face: the glyph is centred on the cap and inset far enough
+      // that the two strokes never touch at 18px, where a 2px stroke is only 1.5 device pixels
+      '<rect x="2.5" y="3" width="19" height="18" rx="3.5"/>' +
+      '<path d="M9.8 9.9a2.3 2.3 0 1 1 3 2.2c-.5.25-.8.6-.8 1"/><path d="M12 16.7h.01"/></svg>';
     helpBtn.addEventListener('click', () => this.keymap.toggle());
     // phone-portrait volume (the transport's slider is hidden there); mirrors the transport's value
     const volTop = h('input', { type: 'range', class: 'vol vol-top', min: '0', max: '1', step: '0.01', value: String(this.volume), 'aria-label': 'volume' }) as HTMLInputElement;
