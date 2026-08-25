@@ -101,19 +101,25 @@ export class RunsView {
     const gen = this.pollGen;
     this.timer = window.setTimeout(async () => {
       this.timer = null;
-      try {
-        const list = this.root.querySelector('.runlist');
-        if (list) await this.renderRuns(list as HTMLElement);
-      } catch (e) {
-        // renderRuns handles its own GET; what is left are the layout calls around it
-        // (scroll anchoring, fitLogBox). Rejecting here would end the poll chain for the
-        // rest of the session with nothing on screen to say so.
-        this.note(`runs refresh: ${(e as Error).message}`, true);
-      }
+      const list = this.root.querySelector<HTMLElement>('.runlist');
+      if (list) await this.refreshRuns(list);
       // stop() (tab switch) or a fresh load() may have landed while renderRuns was in
       // flight; clearTimeout alone cannot catch that, so re-arm only for our generation
       if (gen === this.pollGen) this.poll();
     }, 5000);
+  }
+
+  /** renderRuns() with the layout work it ends with (scroll anchoring, fitLogBox) reported
+   *  on the status line instead of thrown. renderRuns catches its own GET but not that, and
+   *  every caller is a timer callback or a click handler: a rejection there is unhandled —
+   *  it would end the poll chain for the rest of the session, or leave a click's own
+   *  "done" on screen over a list that never refreshed, either way with nothing said. */
+  private async refreshRuns(host: HTMLElement): Promise<void> {
+    try {
+      await this.renderRuns(host);
+    } catch (e) {
+      this.note(`runs refresh: ${(e as Error).message}`, true);
+    }
   }
 
   private async render(): Promise<void> {
@@ -286,7 +292,7 @@ export class RunsView {
           } catch (e) {
             this.note(`terminate: ${(e as Error).message}`, true);
           }
-          await this.renderRuns(host);
+          await this.refreshRuns(host);
         };
         actions.append(t);
       } else if (!r.finisher.songs_json_published) {
@@ -299,7 +305,7 @@ export class RunsView {
           } catch (e) {
             this.note(`finisher: ${(e as Error).message}`, true);
           }
-          await this.renderRuns(host);
+          await this.refreshRuns(host);
         };
         actions.append(f);
       }

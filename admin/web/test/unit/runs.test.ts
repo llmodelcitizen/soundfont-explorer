@@ -153,6 +153,26 @@ describe('RunsView actions', () => {
     await until(() => ff.count('GET', '/api/runs') === 2); // the list is still refreshed
   });
 
+  it('reports a refresh that throws after the finisher POST', async () => {
+    // The trailing `await this.renderRuns(host)` sits outside the handler's try, and
+    // renderRuns only catches its own GET — the layout work it ends with (scroll
+    // anchoring, fitLogBox) rejected unhandled out of the click handler, leaving
+    // "finisher done" on screen with the list never refreshed.
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run()] }))
+      .on('GET', '/api/runs/r1/logs', () => ({ events: [{ t: 0, msg: 'hi' }] }))
+      .on('POST', '/api/runs/r1/finish', () => ({ ok: true }));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click(); // an open log box makes the next render scroll-anchor
+    await until(() => ff.count('GET', '/api/runs/r1/logs') === 1);
+    vi.stubGlobal('scrollBy', () => { throw new Error('layout is gone'); });
+
+    button(v, 'Run finisher').click();
+    await until(() => status(v).classList.contains('error'), 200);
+    expect(status(v).textContent).toBe('runs refresh: layout is gone');
+  });
+
   it('reports a terminate failure', async () => {
     const ff = api()
       .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running', status_summary: { RUNNING: 1 } })] }))
