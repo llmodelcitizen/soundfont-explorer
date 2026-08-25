@@ -10,6 +10,7 @@ Shape (docs/RENDER.md "Cloud runs"):
     instance in, and spot bills by the second.
 """
 import json, os, pathlib, subprocess, sys, threading, time, traceback
+from concurrent.futures import ThreadPoolExecutor
 
 # the image puts render/sfr and render/cloud side by side under /opt and sets PYTHONPATH=/opt, so
 # the shard reads the publish header table instead of carrying a copy that could drift (#14)
@@ -79,6 +80,53 @@ def _mem_units(workers: int) -> int:
 
 MEM_UNITS = int(os.environ.get("SFR_MEM_UNITS", "0")) or _mem_units(WORKERS)
 
+# --- publish concurrency (#25). The tail used to be one song at a time, one s5cmd process using
+# about one core, on a 96-core host: 12-15 minutes of near-idle per shard, paid again per
+# scheduling wave. All three knobs scale with the allocation and can be overridden per run.
+PUBLISH_POOL = int(os.environ.get("SFR_PUBLISH_POOL", "0")) or max(2, min(8, WORKERS // 8))
+MANIFEST_WORKERS = int(os.environ.get("SFR_MANIFEST_WORKERS", "0")) or max(1, WORKERS // PUBLISH_POOL)
+UPLOAD_WORKERS = int(os.environ.get("SFR_UPLOAD_WORKERS", "0")) or 32
+
+
+class Phases:
+    """Per-phase wall time and throughput for this child, printed as one JSON line at exit.
+
+    The issue's acceptance criteria are numeric ("no low-utilisation interval longer than 30 s",
+    "tail under 10% of shard wall time"), and none of them can be argued about without this."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.songs: dict[str, dict] = {}
+        self.stage_s = 0.0
+        self.render_s = 0.0
+        self.started = time.monotonic()
+
+    def record(self, song: str, **kw) -> None:
+        with self.lock:
+            self.songs.setdefault(song, {}).update(kw)
+
+    def summary(self, published: int, failed: int) -> dict:
+        with self.lock:
+            manifest = [v.get("manifest_s", 0.0) for v in self.songs.values()]
+            upload = [v.get("upload_s", 0.0) for v in self.songs.values()]
+            wall = time.monotonic() - self.started
+            # the tail is what happens after rendering stops: that is the number to drive down
+            tail = max(0.0, wall - self.stage_s - self.render_s)
+            return {
+                "shard": INDEX, "wall_s": round(wall, 1),
+                "stage_s": round(self.stage_s, 1), "render_s": round(self.render_s, 1),
+                "post_render_tail_s": round(tail, 1),
+                "tail_fraction": round(tail / wall, 3) if wall else None,
+                "manifest_s_total": round(sum(manifest), 1),
+                "upload_s_total": round(sum(upload), 1),
+                "songs_published": published, "songs_failed": failed,
+                "publish_pool": PUBLISH_POOL, "manifest_workers": MANIFEST_WORKERS,
+                "upload_workers": UPLOAD_WORKERS, "render_workers": WORKERS,
+            }
+
+
+PHASES = Phases()
+
 
 def log(*a):
     print(f"[shard {INDEX}]", *a, flush=True)
@@ -106,7 +154,8 @@ def stage_inputs(needed: list[str]) -> None:
     sf2 = [p for p in FONTS.iterdir() if p.suffix.lower() == ".sf2"]
     n = len(sf2)
     b = sum(p.stat().st_size for p in sf2)
-    log(f"staged {n} fonts ({b / 2**30:.1f} GiB), songs and catalog in {time.monotonic() - t:.0f}s")
+    PHASES.stage_s = time.monotonic() - t
+    log(f"staged {n} fonts ({b / 2**30:.1f} GiB), songs and catalog in {PHASES.stage_s:.0f}s")
 
 
 def sfr(*args: str) -> subprocess.CompletedProcess:
@@ -129,17 +178,30 @@ def expected(song: str, sel: list[str]) -> int:
     return n
 
 
-def sync_commands(public: pathlib.Path, bucket: str) -> list[list[str]]:
-    """One `s5cmd sync` per object kind under out/public, stamping the Content-Type and
-    Cache-Control sfr.publish prescribes. A bare sync sends no Cache-Control at all and the type
-    /etc/mime.types guesses (application/x-tex-pk for a .pk), so CloudFront held fleet-published
-    audio for a day instead of a year (#14). --include also keeps a stray .pk.tmp out of the bucket."""
+def sync_commands(public: pathlib.Path, bucket: str, song: str | None = None,
+                  workers: int = 0) -> list[list[str]]:
+    """`s5cmd sync` commands stamping the Content-Type and Cache-Control sfr.publish prescribes.
+    A bare sync sends no Cache-Control at all and the type /etc/mime.types guesses
+    (application/x-tex-pk for a .pk), so CloudFront held fleet-published audio for a day instead
+    of a year (#14). --include also keeps a stray .pk.tmp out of the bucket.
+
+    With `song`, the source is that song's own subtree (a/<song>/, s/<song>/) rather than the
+    accumulated a/ and s/ roots. Publishing song N used to re-walk everything songs 1..N-1 had
+    already written — quadratic listing work, on the critical path, per song (#25). The shared
+    catalog document under c/ is not song-scoped and rides with the first publish.
+    """
     cmds = []
     for pre, glob, ctype in OBJECT_KINDS:
-        d = public / pre
-        if d.exists():
-            cmds.append(["s5cmd", "sync", "--size-only", "--include", glob, "--content-type", ctype,
-                         "--cache-control", IMMUTABLE, f"{d}/", f"s3://{bucket}/{pre}/"])
+        rel = pre if (song is None or pre == "c") else f"{pre}/{song}"
+        d = public / rel
+        if not d.exists():
+            continue
+        cmd = ["s5cmd"]
+        if workers > 0:
+            cmd += ["--numworkers", str(workers)]        # transfer concurrency is a knob, not a default
+        cmd += ["sync", "--size-only", "--include", glob, "--content-type", ctype,
+                "--cache-control", IMMUTABLE, f"{d}/", f"s3://{bucket}/{rel}/"]
+        cmds.append(cmd)
     return cmds
 
 
@@ -154,7 +216,11 @@ def publish_song(song: str, partial_ok: bool = False) -> bool:
     t = time.monotonic()
     r = subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", str(SONGS),
                         "--catalog", str(CATALOG), "--work", str(WORK), "--out", str(OUT),
-                        "manifest", "--song", song, "--thorough", *(["--allow-partial"] if partial_ok else [])],
+                        "manifest", "--song", song, "--thorough",
+                        # validation is one opusdec per segment and trivially parallel: give it the
+                        # cores this container was allocated instead of manifest.py's default (#25)
+                        "--workers", str(MANIFEST_WORKERS),
+                        *(["--allow-partial"] if partial_ok else [])],
                        capture_output=True, text=True)
     sys.stdout.write(r.stdout[-4000:])
     if r.returncode:
@@ -168,23 +234,34 @@ def publish_song(song: str, partial_ok: bool = False) -> bool:
     if got <= 0:
         log(f"!! {song}: manifest produced {got} variants — NOT publishing")
         return False
+    manifest_s = time.monotonic() - t
     # objects under a/ c/ s/ are immutable and content-addressed, so they go straight to the
     # site bucket; songs.json is written once at the end by submit.py, not per shard.
-    for cmd in sync_commands(OUT / "public", SITE_BUCKET):
+    t_up = time.monotonic()
+    for cmd in sync_commands(OUT / "public", SITE_BUCKET, song=song, workers=UPLOAD_WORKERS):
         sh(cmd)
-    log(f"published {song}: {got} variants in {time.monotonic() - t:.0f}s")
+    upload_s = time.monotonic() - t_up
+    PHASES.record(song, manifest_s=manifest_s, upload_s=upload_s, variants=got)
+    log(f"published {song}: {got} variants in {manifest_s + upload_s:.0f}s "
+        f"(manifest {manifest_s:.0f}s, upload {upload_s:.0f}s)")
     return True
 
 
 def publisher(songs: list[str], sel: list[str], done: threading.Event, state: dict) -> None:
-    """Poll for songs whose jobs have all landed and publish them while rendering continues.
+    """Publish songs as they finish rendering, several at once, while rendering continues.
 
-    `state` is shared with main(): "left" = songs not yet attempted, "failed" = songs that did
-    not publish. Every failure has to land in "failed": a publish that raised (s5cmd, the
-    manifest subprocess, a bad plan count) used to kill this daemon thread silently, and
+    `state` is shared with main(): "left" = songs not yet handed to the pool, "failed" = songs
+    that did not publish. Every failure has to land in "failed": a publish that raised (s5cmd,
+    the manifest subprocess, a bad plan count) used to kill this daemon thread silently, and
     main() — which looked only at `failed` — exited 0 with the songs simply missing from the
-    site (#12)."""
+    site (#12).
+
+    The pool is what stops the tail being serial (#25). Order still matters for cache locality
+    while rendering, but a song that is *ready* need not wait for the previous song's upload:
+    manifest is CPU work and s5cmd is network work, so several overlap happily.
+    """
     left, failed = state["left"], state["failed"]
+    lock = threading.Lock()
 
     def attempt(song: str) -> None:
         try:
@@ -193,26 +270,35 @@ def publisher(songs: list[str], sel: list[str], done: threading.Event, state: di
             log(f"!! publishing {song} raised:\n{traceback.format_exc()}")
             ok = False
         if not ok:
-            failed.append(song)
+            with lock:
+                failed.append(song)
 
+    pool = ThreadPoolExecutor(max_workers=PUBLISH_POOL, thread_name_prefix="publish")
+    futures: list = []
     try:
         want = {s: expected(s, sel) for s in songs}
         while left:
             for song in list(left):
-                n = len(list((WORK / "renders" / song).glob("*/meta.json"))) if (WORK / "renders" / song).exists() else 0
+                d = WORK / "renders" / song
+                n = len(list(d.glob("*/meta.json"))) if d.exists() else 0
                 if n >= want[song]:
                     left.remove(song)
-                    attempt(song)
+                    futures.append(pool.submit(attempt, song))
             if left and not done.wait(20):
                 continue
             if done.is_set():
                 break
         while left:                  # renderer finished; publish whatever remains
-            attempt(left.pop(0))
+            futures.append(pool.submit(attempt, left.pop(0)))
     except Exception:
         log(f"!! publisher died, {len(left)} song(s) will not be published:\n{traceback.format_exc()}")
-        while left:
-            failed.append(left.pop(0))
+        with lock:
+            while left:
+                failed.append(left.pop(0))
+    finally:
+        # a song handed to the pool is no longer in `left`, so main() cannot see it as unpublished:
+        # every future has to be waited on here, inside the thread main() joins.
+        pool.shutdown(wait=True)
 
 
 def unexpected_failures(songs: list[str]) -> list[tuple]:
@@ -257,7 +343,8 @@ def main() -> int:
     songsel = [a for s in songs for a in ("--song", s)]
     rc = sfr("render", *songsel, *sel, "--workers", str(WORKERS),
              "--mem-units", str(MEM_UNITS)).returncode
-    log(f"render finished rc={rc} in {time.monotonic() - t:.0f}s")
+    PHASES.render_s = time.monotonic() - t
+    log(f"render finished rc={rc} in {PHASES.render_s:.0f}s")
 
     done.set()
     pub.join(timeout=3600)
@@ -266,6 +353,11 @@ def main() -> int:
         # the process is about to exit and take the daemon thread with it mid-upload
         log(f"!! publisher still running after 3600 s; unpublished: {' '.join(state['left'])}")
         failed += [s for s in state["left"] if s not in failed]
+
+    published = len(songs) - len(failed)
+    # one machine-readable line per child: the acceptance criteria in #25 are numeric and this is
+    # what they are measured from (tail fraction, per-phase wall time, concurrency actually used)
+    log("phases " + json.dumps(PHASES.summary(published, len(failed))))
 
     bad = unexpected_failures(songs)
     if bad:

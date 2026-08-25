@@ -78,6 +78,33 @@ data "aws_subnets" "default" {
   }
 }
 
+# Which AZs actually offer the instance types this fleet asks for. Handing Batch a subnet in an
+# AZ that offers none of them is not a capacity problem that clears: every launch into it fails
+# with "c7a.24xlarge is not supported in us-east-1b" for the life of the fleet, and the retries
+# are noise an operator has to read past while the array sits RUNNABLE (#25).
+data "aws_ec2_instance_type_offerings" "azs" {
+  filter {
+    name   = "instance-type"
+    values = var.instance_types
+  }
+  location_type = "availability-zone"
+}
+
+data "aws_subnet" "fleet" {
+  for_each = toset(data.aws_subnets.default.ids)
+  id       = each.value
+}
+
+locals {
+  # an AZ is usable when it offers at least one configured type; Spot allocation picks among
+  # whatever the pool actually has, so a partial match is fine — an empty one never is
+  usable_azs = toset(data.aws_ec2_instance_type_offerings.azs.locations)
+  fleet_subnets = [
+    for id, sn in data.aws_subnet.fleet : id
+    if contains(local.usable_azs, sn.availability_zone)
+  ]
+}
+
 resource "aws_security_group" "fleet" {
   name        = local.name
   description = "Soundfont Explorer render fleet: egress only"
@@ -309,7 +336,7 @@ resource "aws_batch_compute_environment" "fleet" {
     desired_vcpus       = 0
     instance_type       = var.instance_types
     instance_role       = aws_iam_instance_profile.instance.arn
-    subnets             = data.aws_subnets.default.ids
+    subnets             = local.fleet_subnets
     security_group_ids  = [aws_security_group.fleet.id]
     tags                = local.tags
 

@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse, json, os, pathlib, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import preflight  # noqa: E402
+from eta import RunForecast  # noqa: E402
 from planner import (estimate, job_count, plan_shards, song_durations,  # noqa: E402
                      variant_counts, variants_per_song)
 
@@ -54,6 +56,35 @@ def set_state(ce: str, state: str) -> None:
     print(f"[submit] compute environment {ce} -> {state}")
 
 
+def observe(job_id: str, shards: int, summary: dict, concurrent: int | None, *, aws=aws) -> RunForecast:
+    """Build the forecast from the array's children: what they took, and how long the running
+    ones have been going. Best-effort — a failed listing gives an empty (all-unknown) forecast."""
+    done, tails, elapsed = [], [], []
+    try:
+        children = []
+        for status in ("SUCCEEDED", "FAILED", "RUNNING"):
+            got = aws("batch", "list-jobs", "--array-job-id", job_id, "--job-status", status)
+            children += got.get("jobSummaryList", [])
+        now_ms = time.time() * 1000
+        for c in children:
+            started, stopped = c.get("startedAt"), c.get("stoppedAt")
+            if started and stopped:
+                done.append((stopped - started) / 1000)
+            elif started:
+                elapsed.append(max(0.0, (now_ms - started) / 1000))
+    except Exception:
+        pass
+    return RunForecast(
+        total_shards=shards,
+        concurrent=concurrent,
+        finished=int(summary.get("SUCCEEDED", 0)) + int(summary.get("FAILED", 0)),
+        running=int(summary.get("RUNNING", 0)),
+        child_durations_s=done,
+        publish_tail_s=tails,
+        running_elapsed_s=elapsed,
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--song", action="append", default=[])
@@ -64,6 +95,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--max-usd", type=float, default=60.0,
                     help="refuse to submit above this estimate; raise deliberately")
+    ap.add_argument("--force", action="store_true",
+                    help="submit even when the preflight says the fleet cannot run the shards")
     args = ap.parse_args()
 
     songs = song_ids(args)
@@ -101,6 +134,24 @@ def main() -> int:
                         "--delete", "--only-show-errors", *skip], check=True)
     print(f"[submit] staged shards.json, songs/ and catalog/ to s3://{rf['fonts_bucket']}/")
 
+    # Batch accepts an array the account cannot run: the CE ceiling and the regional Spot quota
+    # are different limits, and Auto Scaling retries MaxSpotInstanceCountExceeded in silence
+    # while the array sits RUNNABLE. Say so here rather than 40 minutes into four waves (#25).
+    cap = preflight.gather(rf["compute_environment"], rf["job_definition"], len(shards))
+    for line in cap.report():
+        print(f"[preflight] {line}")
+    bad_pools = preflight.unusable_pools_for(rf)
+    for line in bad_pools:
+        print(f"[preflight] pool never launches: {line}")
+    if not cap.ok and not args.force:
+        sys.exit("[preflight] REFUSING: not one shard's worth of Spot vCPUs is available. Raise the "
+                 f"quota (aws service-quotas request-service-quota-increase --service-code ec2 "
+                 f"--quota-code {preflight.SPOT_VCPU_QUOTA_CODE} --desired-value {cap.planned_vcpus}), "
+                 "reduce --shards, or pass --force.")
+    if cap.degraded:
+        print(f"[preflight] WARNING: this run will take {cap.waves} scheduling waves. Every wave pays "
+              "its own publish tail; raising the Spot quota is what makes it one.")
+
     set_state(rf["compute_environment"], "ENABLED")
     job_id = None
     try:
@@ -109,10 +160,22 @@ def main() -> int:
                   *(["--array-properties", f"size={len(shards)}"] if len(shards) > 1 else []))
         job_id = sub["jobId"]
         print(f"[submit] job {job_id}  (aws batch describe-jobs --jobs {job_id})")
+        stalled = 0
         while True:
             j = aws("batch", "describe-jobs", "--jobs", job_id)["jobs"][0]
             st = j.get("arrayProperties", {}).get("statusSummary") or {j["status"]: 1}
             print(f"[submit] {time.strftime('%H:%M:%S')} {st}", flush=True)
+            forecast = observe(job_id, len(shards), st, cap.concurrent_shards, aws=aws)
+            for line in forecast.lines():
+                print(f"[eta] {line}", flush=True)
+            # nothing running and nothing finishing: that is Auto Scaling failing, not progress
+            if not st.get("RUNNING") and (st.get("RUNNABLE") or st.get("PENDING")):
+                stalled += 1
+                if stalled % 4 == 0:
+                    for line in preflight.recent_scaling_failures(rf["compute_environment"]):
+                        print(f"[submit] scaling: {line}", flush=True)
+            else:
+                stalled = 0
             if j["status"] in ("SUCCEEDED", "FAILED"):
                 print(f"[submit] terminal: {j['status']}")
                 return 0 if j["status"] == "SUCCEEDED" else 1

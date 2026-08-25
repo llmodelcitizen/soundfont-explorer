@@ -101,16 +101,23 @@ class TestShardSync(unittest.TestCase):
         report = json.dumps({"songs": {"x": {"variants": 3}}})
         calls = []
         with tempfile.TemporaryDirectory() as td:
-            (Path(td) / "public" / "a").mkdir(parents=True)
+            # the song's own subtree, plus a neighbour that must NOT be re-walked (#25)
+            (Path(td) / "public" / "a" / "x").mkdir(parents=True)
+            (Path(td) / "public" / "a" / "other").mkdir(parents=True)
             with mock.patch.object(shard, "OUT", Path(td)), \
                  mock.patch.object(shard, "sh", side_effect=lambda argv, **kw: calls.append(argv)), \
                  mock.patch.object(shard.subprocess, "run",
                                    return_value=subprocess.CompletedProcess([], 0, stdout="report\n" + report, stderr="")), \
                  contextlib.redirect_stdout(io.StringIO()):
                 self.assertTrue(shard.publish_song("x"))
-        self.assertEqual([c[:2] for c in calls], [["s5cmd", "sync"]] * 2)
+        # s5cmd, then tuning flags (#25 sets --numworkers), then the sync verb
+        self.assertEqual(len(calls), 2)
         for c in calls:
+            self.assertEqual(c[0], "s5cmd")
+            self.assertIn("sync", c)
             self.assertEqual(_flag(c, "--cache-control"), publish.IMMUTABLE)
+            self.assertTrue(c[-1].startswith("s3://site/a/x/"), c)
+            self.assertNotIn("other", c[-2])
             self.assertIn(_flag(c, "--content-type"), (OPUS, PK))
 
 
