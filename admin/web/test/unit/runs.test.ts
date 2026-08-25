@@ -141,5 +141,8 @@ describe('RunsView actions', () => {
     await until(() => status(v).textContent !== '');
     expect(status(v).textContent).toBe('terminate: batch says no');
     expect(status(v).classList.contains('error')).toBe(true);
+    // the refresh moved out of the catch: the list is reloaded even when the POST failed,
+    // so a run Batch terminated anyway still shows its real state
+    await until(() => ff.count('GET', '/api/runs') === 2);
   });
 });
