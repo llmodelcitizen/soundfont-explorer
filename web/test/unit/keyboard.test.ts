@@ -20,6 +20,7 @@ function actions(): KeyActions {
     pinA: vi.fn(),
     ab: vi.fn(),
     filters: vi.fn(),
+    fullscreen: vi.fn(),
     theme: vi.fn(),
     debug: vi.fn(),
     keymap: vi.fn(),
@@ -27,7 +28,7 @@ function actions(): KeyActions {
   };
 }
 
-function key(target: EventTarget, value: string, repeat = false): void {
+function key(target: EventTarget, value: string, repeat = false, shiftKey = false): void {
   const event = new Event('keydown', { cancelable: true });
   Object.defineProperties(event, {
     key: { value },
@@ -35,7 +36,7 @@ function key(target: EventTarget, value: string, repeat = false): void {
     metaKey: { value: false },
     ctrlKey: { value: false },
     altKey: { value: false },
-    shiftKey: { value: false },
+    shiftKey: { value: shiftKey },
   });
   target.dispatchEvent(event);
 }
@@ -56,9 +57,24 @@ describe('keyboard shortcuts', () => {
     uninstall();
   });
 
+  it('separates F (filters) from Shift + F (full screen)', () => {
+    const target = new EventTarget();
+    const a = actions();
+    const uninstall = installKeyboard(target as unknown as Window, a);
+
+    key(target, 'f');
+    key(target, 'F', false, true);
+
+    expect(a.filters).toHaveBeenCalledTimes(1);
+    expect(a.fullscreen).toHaveBeenCalledTimes(1);
+    uninstall();
+  });
+
   it('shows every added shortcut in the key guide', () => {
     expect(KEYMAP).toContainEqual(['X', 'stop and rewind']);
     expect(KEYMAP).toContainEqual(['V', 'favorite / unfavorite current variant']);
+    // issue #34: the full-screen shortcut is documented in the '?' screen
+    expect(KEYMAP).toContainEqual(['Shift + F', 'full screen']);
   });
 
   it('says in the key guide that Tab moves focus inside the filter bar', () => {

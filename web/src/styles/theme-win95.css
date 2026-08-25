@@ -103,6 +103,8 @@
 [data-theme='win95'] .folder-count,
 [data-theme='win95'] .settings .small,
 [data-theme='win95'] .settings .setting-title,
+[data-theme='win95'] .share-heading,
+[data-theme='win95'] .share-params,
 [data-theme='win95'] .transport .clock {
   font-size: 11px;
 }
@@ -127,14 +129,16 @@
   line-height: 19.6px;
 }
 [data-theme='win95'] .search,
-[data-theme='win95'] .settings .num {
+[data-theme='win95'] .settings .num,
+[data-theme='win95'] .share-url {
   line-height: 19.6px;
 }
 @media (pointer: coarse) {
   /* base bumps these to 16px against iOS zoom; 22.4px is that size's modern line box, and
      Fixedsys is the face whose native size is 16px — the scaled 11px bitmap would smear */
   [data-theme='win95'] .search,
-  [data-theme='win95'] .settings .num {
+  [data-theme='win95'] .settings .num,
+  [data-theme='win95'] .share-url {
     line-height: 22.4px;
     font-family: 'Fixedsys Excelsior', 'Fixedsys', monospace;
     font-variant-ligatures: none;
@@ -242,7 +246,8 @@
 
 /* Sunken white fields. Comboboxes get a drawn face-and-bevel dropdown button. */
 [data-theme='win95'] .search,
-[data-theme='win95'] .settings .num {
+[data-theme='win95'] .settings .num,
+[data-theme='win95'] .share-url {
   background: #ffffff;
   color: #000000;
   border-color: var(--w95-edge-field);
@@ -465,14 +470,27 @@
   color: #ffffff;
   border-bottom-color: #808080;
 }
-/* Give the debug caption enough chrome around its full-size title-bar buttons. */
+/* Give the debug caption enough chrome around its full-size title-bar buttons, with the
+   gadgets inset from the right edge by exactly the caption's own left padding (#39). */
 [data-theme='win95'] .dbg-head {
   box-sizing: border-box;
   height: 36px;
   padding-left: 8px;
+  padding-right: 8px;
 }
 [data-theme='win95'] .dbg-actions {
   align-items: center;
+}
+/* One height and one type size for both gadgets, each label centred in its box, as in modern. */
+[data-theme='win95'] .dbg-head .btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1;
 }
 /* Pane captions run edge to edge over their pane (and its scrollbar column), with the text and
    checkbox centred in the bar: base reserves 6px bottom padding that would ride them high on a
@@ -503,6 +521,12 @@
   background: #ffffff;
   color: #800000;
 }
+/* --warn is #ffff00, which the transport strip carries on navy: on the #c0c0c0 dialog face it
+   measures 1.69:1, less legible than the plain hint it replaces. A refusal has to be readable,
+   so it takes the same maroon this theme already gives 'clear all site data' (#34). */
+[data-theme='win95'] .settings .colfoot span.warn {
+  color: var(--bad);
+}
 
 /* Dialogs and the debug panel are gray windows: face-coloured outer ring, two-pixel bevel,
    and a full-bleed navy caption bar. */
@@ -528,7 +552,8 @@
 }
 /* Dialog control labels are black on the face, as in a real property sheet. */
 [data-theme='win95'] .settings .preserve,
-[data-theme='win95'] .settings .setting-title {
+[data-theme='win95'] .settings .setting-title,
+[data-theme='win95'] .share-heading {
   color: #000000;
 }
 /* The ♥ / ● column toggles come from fallback glyphs: full-size, centred on their checkbox. */

@@ -3,7 +3,7 @@ import { SF2_INFO_KEYS, engineLabel, parseCatalog, tagNames } from '../../src/co
 import { parseSet } from '../../src/contracts/set';
 import { ContractError, parseSongs, songTitle } from '../../src/contracts/songs';
 import { FilterIndex } from '../../src/state/filterIndex';
-import { buildSearch, decodeFilters, encodeFilters, parseUrl } from '../../src/state/urlstate';
+import { URL_PARAM_HELP, URL_PARAM_ORDER, buildSearch, decodeFilters, encodeFilters, paramsIn, parseUrl, shareLinks, type UrlState } from '../../src/state/urlstate';
 
 const catalogDoc = {
   schema: 1,
@@ -188,5 +188,76 @@ describe('URL state: cleared filters', () => {
     expect(parseUrl('').filters).toBeUndefined();
     expect(parseUrl(buildSearch({ song: 'x', filters: {} })).filters).toEqual({});
     expect(parseUrl(buildSearch({ filters: { engine: new Set(['adlmidi']) } })).filters).toEqual({ engine: new Set(['adlmidi']) });
+  });
+});
+
+describe('URL parameter order', () => {
+  // issue #30: one order everywhere the app writes its URL, with the start time always last so a
+  // link can be trimmed back to "from the top" by cutting at the final `&`.
+  const full: UrlState = { song: 'x', variant: 'adl-b0', filters: { engine: new Set(['adlmidi']) }, q: 'fat man', theme: 'win95', loop: true, t: 42 };
+
+  it('writes every parameter in URL_PARAM_ORDER, t last', () => {
+    expect(URL_PARAM_ORDER.at(-1)).toBe('t');
+    const search = buildSearch(full);
+    expect([...new URLSearchParams(search).keys()]).toEqual(['song', 'v', 'f', 'q', 'theme', 'loop', 't']);
+    expect(search.endsWith('&t=42')).toBe(true);
+    expect(paramsIn(search)).toEqual([...URL_PARAM_ORDER]);
+  });
+
+  it('keeps t last whichever other parameters are present', () => {
+    for (const st of [{ t: 5 }, { song: 'x', t: 5 }, { theme: 'amiga', t: 5 }, { loop: true, t: 5 }, { q: 'z', t: 5 }, { filters: {}, t: 5 }] as UrlState[]) {
+      expect([...new URLSearchParams(buildSearch(st)).keys()].at(-1)).toBe('t');
+    }
+  });
+
+  it('still round-trips through parseUrl after the reorder', () => {
+    const back = parseUrl(buildSearch(full));
+    expect(back).toMatchObject({ song: 'x', variant: 'adl-b0', q: 'fat man', theme: 'win95', loop: true, t: 42 });
+    expect([...back.filters!.engine!]).toEqual(['adlmidi']);
+  });
+
+  it('leaves out a start time that rounds to zero', () => {
+    // the *written* value decides: `t=0` is not a start time, it is a useless extra parameter
+    // that makes the share dialog's two links differ for no reason
+    expect(buildSearch({ song: 'x', t: 0.4 })).toBe('?song=x');
+    expect(buildSearch({ song: 'x', t: 0.5 })).toBe('?song=x&t=1');
+    expect(paramsIn(buildSearch({ song: 'x', t: 0.4 }))).toEqual(['song']);
+    expect(shareLinks({ song: 'x', t: 0.4 }, 'https://e.test/').withTime).toBe('https://e.test/?song=x');
+  });
+
+  it('lists only the parameters a link actually carries', () => {
+    expect(paramsIn(buildSearch({ song: 'x', t: 9 }))).toEqual(['song', 't']);
+    expect(paramsIn('')).toEqual([]);
+    expect(paramsIn('?nonsense=1')).toEqual([]);
+  });
+});
+
+describe('share links', () => {
+  const base = 'https://example.test/';
+  const st: UrlState = { song: 'x', variant: 'adl-b0', theme: 'amiga', t: 42.6 };
+
+  it('offers the same link with and without the timestamp', () => {
+    const { withTime, withoutTime } = shareLinks(st, base);
+    expect(withoutTime).toBe(`${base}?song=x&v=adl-b0&theme=amiga`);
+    expect(withTime).toBe(`${base}?song=x&v=adl-b0&theme=amiga&t=43`);
+    // the two differ only by the trailing t=, because t is written last
+    expect(withTime.startsWith(withoutTime)).toBe(true);
+    expect(withTime.slice(withoutTime.length)).toBe('&t=43');
+    expect(parseUrl(withTime.slice(base.length)).t).toBe(43);
+    expect(parseUrl(withoutTime.slice(base.length)).t).toBeUndefined();
+  });
+
+  it('leaves the state it was given alone, and collapses to one link at the top of the track', () => {
+    const input: UrlState = { song: 'x', t: 42 };
+    shareLinks(input, base);
+    expect(input.t).toBe(42);
+    const top = shareLinks({ song: 'x', t: 0 }, base);
+    expect(top.withTime).toBe(top.withoutTime);
+    expect(top.withTime).toBe(`${base}?song=x`);
+  });
+
+  it('explains every parameter it can write', () => {
+    expect(Object.keys(URL_PARAM_HELP).sort()).toEqual([...URL_PARAM_ORDER].sort());
+    for (const key of URL_PARAM_ORDER) expect(URL_PARAM_HELP[key].length).toBeGreaterThan(10);
   });
 });

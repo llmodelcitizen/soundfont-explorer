@@ -425,6 +425,7 @@ describe('keyboard reach', () => {
       debug: vi.fn(),
       keymap: vi.fn(),
       settings: vi.fn(),
+      fullscreen: vi.fn(),
     };
   }
 

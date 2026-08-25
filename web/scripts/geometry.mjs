@@ -3,20 +3,26 @@
  * Compare modern, Windows 95, and Amiga geometry — and the behaviour that only a real browser
  * shows — at desktop and phone sizes.
  *
- * This is a MANUAL check, not part of CI: it needs a published catalog with real audio (`out/public`
- * on http://127.0.0.1:8000) and a dev server, neither of which a PR runner has. Run it by hand:
+ *   --url=…          the running dev server (default http://127.0.0.1:5173/)
+ *   --audio=none     the site behind it serves manifests but no audio (test/fixtures/site, which
+ *                    is what CI runs): missing /a/ objects are then not console errors. Every
+ *                    measurement here is layout, so nothing else changes.
+ *
+ * CI runs this against that fixture site (the `geometry` job). To run it by hand against real
+ * audio instead:
  *
  *   python3 -m http.server 8000 --directory out/public   # in one shell
  *   cd web && npm run dev                                # in another
  *   cd web && npm run test:geometry [-- --url=http://localhost:5173/]
  *
- * Anything that can be pinned without a browser belongs in `web/test/unit` instead, where CI runs it.
+ * Anything that can be pinned without a browser belongs in `web/test/unit` instead.
  */
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => arg.replace(/^--/, '').split('=')));
 const url = args.url ?? 'http://127.0.0.1:5173/';
+const noAudio = args.audio === 'none';
 const viewports = {
   desktop: { width: 1280, height: 800 },
   phone: { width: 390, height: 844 },
@@ -39,7 +45,9 @@ async function measure(theme, viewport, label) {
   const page = await browser.newPage({ viewport, hasTouch: label === 'phone' });
   page.on('pageerror', (error) => errors.push(`${label}/${theme}: ${String(error)}`));
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(`${label}/${theme}: ${message.text()}`);
+    if (message.type() !== 'error') return;
+    if (noAudio && /\/a\//.test(message.location()?.url ?? '')) return; // no audio in the fixture site
+    errors.push(`${label}/${theme}: ${message.text()}`);
   });
   const target = new URL(url);
   target.searchParams.set('theme', theme);
@@ -116,11 +124,35 @@ async function measure(theme, viewport, label) {
       const result = outer && title ? {
         height: outer.h,
         paddingLeft: style.paddingLeft,
+        paddingRight: style.paddingRight,
         captionOffset: title.cy - outer.cy,
         buttonOffsets: buttons.map((button) => button.cy - outer.cy),
+        buttonHeights: buttons.map((button) => button.h),
+        buttonFontSizes: Array.from(document.querySelectorAll('.dbg-actions .btn')).map((button) => getComputedStyle(button).fontSize),
+        // the right-hand gadgets must be inset from the caption's right edge by its own left padding (#39)
+        buttonInsetRight: buttons.length ? outer.right - Math.max(...buttons.map((button) => button.right)) : null,
+        titleInsetLeft: title.x - outer.x,
       } : null;
       if (wasHidden) debug.classList.add('hidden');
       return result;
+    })();
+    // issue #38 (amiga): every shortcut in the '?' screen sits in a roomy box, text centred
+    const keymapKeys = (() => {
+      const overlay = document.querySelector('#keymap-title')?.closest('.overlay');
+      if (!overlay) return null;
+      const wasHidden = overlay.classList.contains('hidden');
+      overlay.classList.remove('hidden');
+      const keys = Array.from(overlay.querySelectorAll('.keymap kbd')).map((key) => {
+        const box = rect(key);
+        const range = document.createRange();
+        range.selectNodeContents(key);
+        const text = range.getBoundingClientRect();
+        return box && text.width ? { w: box.w, h: box.h, fontSize: getComputedStyle(key).fontSize, dx: text.x + text.width / 2 - box.cx, dy: text.y + text.height / 2 - box.cy } : null;
+      }).filter(Boolean);
+      const closeButton = rect(overlay.querySelector('.close-keymap'));
+      const legacyHint = Array.from(overlay.querySelectorAll('p')).some((p) => /esc to close/i.test(p.textContent ?? ''));
+      if (wasHidden) overlay.classList.add('hidden');
+      return { keys, hasCloseButton: !!closeButton, legacyHint };
     })();
     const namedRects = {};
     for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) namedRects[selector] = rect(document.querySelector(selector));
@@ -210,6 +242,7 @@ async function measure(theme, viewport, label) {
       states,
       titleTypography,
       debugTitleBar,
+      keymapKeys,
       amigaVerticalAlignment: {
         tracks: verticallyCenteredHeader('.tracks .np-head'),
         nowPlaying: verticallyCenteredHeader('.nowplaying .np-head'),
@@ -385,6 +418,53 @@ async function measure(theme, viewport, label) {
       listenedGlyph,
       font: { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') },
     };
+  });
+  // issues #33 / #30: both dialogs open for real (the button, not a class flip), so what is
+  // asserted is what someone actually sees — the close button inside the box and on screen.
+  result.dialogs = await page.evaluate(() => {
+    const box = (element) => {
+      if (!element) return null;
+      const r = element.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+    };
+    // an element is only usable if it is inside its dialog's visible box *and* inside the viewport
+    const reachable = (outer, inner) => !!outer && !!inner && inner.top >= outer.top - 0.5 && inner.bottom <= outer.bottom + 0.5 && inner.top >= -0.5 && inner.bottom <= innerHeight + 0.5;
+    const click = (selector) => document.querySelector(selector)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    click('.settings .close-settings');
+    const probe = (openSelector, boxSelector, closeSelector) => {
+      click(openSelector);
+      const dialog = document.querySelector(boxSelector);
+      if (!dialog) return null;
+      const outer = box(dialog);
+      const inner = box(dialog.querySelector(closeSelector));
+      const state = {
+        // a box that has to scroll to reach its own close button has hidden the way out
+        scrolls: dialog.scrollHeight > dialog.clientHeight + 0.5,
+        scrollTop: dialog.scrollTop,
+        closeReachable: reachable(outer, inner),
+        closeFocused: document.activeElement === dialog.querySelector(closeSelector),
+        fitsViewport: !!outer && outer.top >= -0.5 && outer.bottom <= innerHeight + 0.5,
+      };
+      return { dialog, state };
+    };
+    const keys = probe('.top [title="keys (?)"]', '.overlay-box.keys', '.close-keymap');
+    click('.close-keymap');
+    const share = probe('.top .share-btn', '.overlay-box.share', '.close-share');
+    const field = document.querySelector('.share-url');
+    const shareButton = document.querySelector('.top .share-btn');
+    const gear = document.querySelector('.top [aria-label="settings"]');
+    const shareState = share
+      ? {
+          ...share.state,
+          // issue #30 spells out the placement and the "highlighted" link
+          leftOfTheGear: !!shareButton && !!gear && shareButton.nextElementSibling === gear,
+          fieldFocused: document.activeElement === field,
+          fieldSelected: !!field && field.selectionStart === 0 && field.selectionEnd === field.value.length && field.value.length > 0,
+          fieldFontSize: field ? getComputedStyle(field).fontSize : null,
+        }
+      : null;
+    click('.close-share');
+    return { keys: keys?.state ?? null, share: shareState };
   });
   await page.close();
   return result;
@@ -1030,6 +1110,46 @@ for (const [label, viewport] of Object.entries(viewports)) {
     assert(titleBar?.height === 36 && titleBar.paddingLeft === '8px', `${label}/${themed.theme}: debug title bar does not have the themed dimensions: ${JSON.stringify(titleBar)}`);
     assert(titleBar && close(titleBar.captionOffset, 0, 0.5), `${label}/${themed.theme}: debug caption is not vertically centered: ${JSON.stringify(titleBar)}`);
     assert(titleBar?.buttonOffsets.every((offset) => close(offset, 0, 0.5)), `${label}/${themed.theme}: debug title-bar buttons are not vertically centered: ${JSON.stringify(titleBar)}`);
+    // issue #39: the gadgets are inset from the right by the caption's own left padding, and share one height and type size
+    assert(titleBar?.paddingRight === titleBar?.paddingLeft, `${label}/${themed.theme}: debug title-bar buttons do not match the caption's left padding: ${JSON.stringify(titleBar)}`);
+    assert(titleBar && close(titleBar.buttonInsetRight, titleBar.titleInsetLeft, 0.5), `${label}/${themed.theme}: debug title-bar buttons are not inset like the caption: ${JSON.stringify(titleBar)}`);
+    assert(titleBar && new Set(titleBar.buttonHeights.map((h) => Math.round(h))).size === 1, `${label}/${themed.theme}: debug title-bar buttons are not the same height: ${JSON.stringify(titleBar)}`);
+    assert(titleBar && new Set(titleBar.buttonFontSizes).size === 1, `${label}/${themed.theme}: debug title-bar buttons do not share one font size: ${JSON.stringify(titleBar)}`);
+  }
+  // issue #33: the keys screen closes with a real button in every theme, not a line of prose —
+  // and the button is where the eye is, not scrolled out of the box (an element far below the
+  // dialog's visible area still measures non-null, which is what let the Amiga overflow ship).
+  for (const themed of [modern, win95, amiga]) {
+    assert(themed.keymapKeys?.hasCloseButton && !themed.keymapKeys.legacyHint, `${label}/${themed.theme}: the keys screen has no close button: ${JSON.stringify(themed.keymapKeys)}`);
+    const keys = themed.dialogs?.keys;
+    assert(keys?.closeReachable, `${label}/${themed.theme}: the keys screen's close button is not inside the visible box: ${JSON.stringify(keys)}`);
+    assert(keys?.closeFocused, `${label}/${themed.theme}: the keys screen does not open with its close button focused: ${JSON.stringify(keys)}`);
+    assert(keys && !keys.scrolls, `${label}/${themed.theme}: the keys box scrolls itself instead of scrolling its list: ${JSON.stringify(keys)}`);
+    assert(keys?.fitsViewport, `${label}/${themed.theme}: the keys screen does not fit the viewport: ${JSON.stringify(keys)}`);
+  }
+  // issue #30: share sits immediately left of the gear, and its dialog opens with the whole link
+  // selected, at a size iOS will not zoom into, with the close button on screen.
+  for (const themed of [modern, win95, amiga]) {
+    const share = themed.dialogs?.share;
+    assert(share?.leftOfTheGear, `${label}/${themed.theme}: the share button is not immediately left of the settings gear: ${JSON.stringify(share)}`);
+    assert(share?.fieldFocused && share.fieldSelected, `${label}/${themed.theme}: the share dialog does not open with the link focused and selected: ${JSON.stringify(share)}`);
+    assert(share?.closeReachable && share.fitsViewport && !share.scrolls, `${label}/${themed.theme}: the share dialog does not fit its box: ${JSON.stringify(share)}`);
+    // the field takes focus the moment the dialog opens: below 16px iOS zooms the whole page in
+    if (label === 'phone') assert(share?.fieldFontSize === '16px', `${label}/${themed.theme}: the share link field is not 16px on a coarse pointer: ${JSON.stringify(share)}`);
+  }
+  // issue #38: amiga only — one roomy, uniform gadget per shortcut, the key centred inside it,
+  // at the same type size as everywhere else, and none of it leaking into the other two themes.
+  const amigaKeys = amiga.keymapKeys?.keys ?? [];
+  const widest = (snapshot) => Math.max(...(snapshot.keymapKeys?.keys ?? []).map((key) => key.w));
+  const shortest = (snapshot) => Math.min(...(snapshot.keymapKeys?.keys ?? []).map((key) => key.h));
+  assert(amigaKeys.length > 0, `${label}/amiga: no shortcut gadgets were measured`);
+  assert(new Set(amigaKeys.map((key) => Math.round(key.w))).size === 1, `${label}/amiga: shortcut gadgets are not one width: ${JSON.stringify(amigaKeys.slice(0, 3))}`);
+  assert(widest(amiga) >= widest(modern) + 16 && shortest(amiga) >= shortest(modern) + 8, `${label}/amiga: shortcut gadgets are no bigger than the modern theme's: ${widest(amiga)}×${shortest(amiga)} vs ${widest(modern)}×${shortest(modern)}`);
+  assert(amigaKeys.every((key) => close(key.dx, 0, 1) && close(key.dy, 0, 1.5)), `${label}/amiga: shortcut keys are not centred in their gadget: ${JSON.stringify(amigaKeys.slice(0, 3))}`);
+  assert(new Set(amigaKeys.map((key) => key.fontSize)).size === 1, `${label}/amiga: shortcut gadgets do not share one type size: ${JSON.stringify(amigaKeys.slice(0, 3))}`);
+  for (const themed of [modern, win95]) {
+    // only the Amiga theme gives every key one uniform box; elsewhere each still hugs its text
+    assert(new Set((themed.keymapKeys?.keys ?? []).map((key) => Math.round(key.w))).size > 1, `${label}/${themed.theme}: the amiga-only shortcut gadget size leaked into this theme: ${JSON.stringify(themed.keymapKeys?.keys.slice(0, 3))}`);
   }
   for (const [name, alignment] of Object.entries(amiga.amigaVerticalAlignment)) {
     if (name === 'favoriteContent' || name === 'listenedContentSize') continue;
@@ -1317,6 +1437,41 @@ async function nowPlayingTierPill() {
 }
 
 await nowPlayingTierPill();
+
+/**
+ * Issue #30, the narrow-phone band the two measured viewports miss. Adding the share button to
+ * the header cost it a control row at the widths below; these are the widths at which each theme
+ * kept its controls on one row *before* the button existed, so they are the budget it has to fit
+ * into. The volume slider counts: it is the control that drops to a line of its own first.
+ */
+const ONE_CONTROL_ROW_FROM = { modern: 350, win95: 320, amiga: 340 };
+for (const [theme, width] of Object.entries(ONE_CONTROL_ROW_FROM)) {
+  for (const w of [width, 390]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 568 }, hasTouch: true });
+    const target = new URL(url);
+    target.searchParams.set('theme', theme);
+    await page.goto(target.href, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.rows .row', { timeout: 20000 });
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
+    const header = await page.evaluate(() => {
+      const shown = Array.from(document.querySelector('.top').children).filter((child) => getComputedStyle(child).display !== 'none' && child.getBoundingClientRect().height > 0);
+      // the track name and the song dropdown each take a line of their own on a phone by design
+      const controls = shown.filter((child) => !child.classList.contains('title') && !child.classList.contains('songpicker'));
+      const icons = Array.from(document.querySelectorAll('.top .btn.icon')).map((button) => +button.getBoundingClientRect().width.toFixed(1));
+      // controls on one row share a centre line to within a pixel; a wrapped one is ~30px below
+      const centres = controls.map((child) => { const box = child.getBoundingClientRect(); return box.y + box.height / 2; }).sort((a, b) => a - b);
+      const rows = centres.reduce((n, centre, i) => (i && centre - centres[i - 1] > 8 ? n + 1 : n), 1);
+      return { rows, controls: controls.map((child) => child.className), icons };
+    });
+    assert(header.rows === 1, `${w}px/${theme}: the header controls take ${header.rows} rows: ${JSON.stringify(header.controls)}`);
+    // and the icon gadgets only give their side padding back on the narrow phones that need it
+    const min = w >= 360 ? 34 : 28;
+    assert(Math.min(...header.icons) >= min, `${w}px/${theme}: header icon buttons are only ${Math.min(...header.icons)}px wide`);
+    await page.close();
+  }
+}
 
 await browser.close();
 if (errors.length) failures.push(...errors);

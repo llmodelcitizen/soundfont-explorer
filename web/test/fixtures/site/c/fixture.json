@@ -1,0 +1,1061 @@
+{
+ "engines": [
+  {
+   "commit": "c462209",
+   "id": "adlmidi",
+   "label": "libADLMIDI",
+   "license": "LGPL-3.0-or-later (library), GPL-3.0 (utils); embedded banks: see fm_banks/LICENSE-*.txt and catalog/review.md",
+   "url": "https://github.com/Wohlstand/libADLMIDI",
+   "version": "1.6.2"
+  },
+  {
+   "commit": null,
+   "id": "fluidsynth",
+   "label": "FluidSynth",
+   "license": "LGPL-2.1-or-later",
+   "url": "https://www.fluidsynth.org/",
+   "version": "2.4.4"
+  },
+  {
+   "commit": "3e66123",
+   "id": "opnmidi",
+   "label": "libOPNMIDI",
+   "license": "LGPL-2.1+ / GPL-2+ / GPL-3+ / MIT by part (README 'License'); Nuked OPN2 LGPL-2.1+, MAME YM2612/YM2608 GPL-2+, GENS LGPL-2.1+, YMFM BSD-3, NP2 fmgen MIT-like; opnmidiplay GPL-3; banks: see /opt/banks/wopn/*.readme.txt and catalog/opn_banks.json",
+   "url": "https://github.com/Wohlstand/libOPNMIDI",
+   "version": "1.6.1"
+  },
+  {
+   "commit": "be48aeb",
+   "id": "edmidi",
+   "label": "libEDMIDI (Emu De MIDI: OPLL + SCC)",
+   "license": "zlib-style (LICENSE.txt, Mitsutaka Okazaki 2004); emu2413/emu2212/emu2149 by Okazaki; MIDI sequencer MIT; edmidi-render (render/edmidi-render/) is part of this repo",
+   "url": "https://github.com/Wohlstand/libEDMIDI",
+   "version": "1.0.0"
+  },
+  {
+   "commit": null,
+   "id": "timidity",
+   "label": "TiMidity++ / FreePats (GUS patches)",
+   "license": "TiMidity++ GPL-2+; FreePats 2006 patch set GPL-2+ with the FreePats exception (see /usr/share/doc/freepats/copyright in the image)",
+   "url": "https://timidity.sourceforge.net/ ; https://freepats.zenvoid.org/",
+   "version": "2.14.0-8.3+b1 (debian trixie) + freepats 20060219-4"
+  },
+  {
+   "commit": "a48ef92",
+   "id": "sc55",
+   "label": "Nuked-SC55 (jcmoyer fork)",
+   "license": "MAME-style non-commercial licence (LICENSE): redistributions may not be sold or used commercially; see catalog/review.md",
+   "url": "https://github.com/jcmoyer/Nuked-SC55",
+   "version": "0.7.0"
+  },
+  {
+   "commit": "6e7c01f",
+   "id": "munt",
+   "label": "Munt mt32emu (MT-32 / CM-32L)",
+   "license": "libmt32emu LGPL-2.1+; mt32emu-smf2wav GPL-3+; libsmf BSD",
+   "url": "https://github.com/munt/munt",
+   "version": "libmt32emu 2.8.3, mt32emu-smf2wav 1.9.3"
+  }
+ ],
+ "facets": {
+  "bank_map": [
+   {
+    "count": 38,
+    "value": "drums_only"
+   },
+   {
+    "count": 302,
+    "value": "gm"
+   },
+   {
+    "count": 34,
+    "value": "gm2"
+   },
+   {
+    "count": 193,
+    "value": "gs_var"
+   },
+   {
+    "count": 40,
+    "value": "melodic_only"
+   },
+   {
+    "count": 22,
+    "value": "multi"
+   },
+   {
+    "count": 9,
+    "value": "non_gm"
+   },
+   {
+    "count": 12,
+    "value": "xg"
+   }
+  ],
+  "chip": [
+   {
+    "count": 10,
+    "value": "cqm"
+   },
+   {
+    "count": 10,
+    "value": "esfm"
+   },
+   {
+    "count": 1,
+    "value": "gus"
+   },
+   {
+    "count": 2,
+    "value": "la"
+   },
+   {
+    "count": 27,
+    "value": "opl2"
+   },
+   {
+    "count": 79,
+    "value": "opl3"
+   },
+   {
+    "count": 2,
+    "value": "opll"
+   },
+   {
+    "count": 7,
+    "value": "opn2"
+   },
+   {
+    "count": 7,
+    "value": "opna"
+   },
+   {
+    "count": 9,
+    "value": "pcm_rom"
+   },
+   {
+    "count": 2,
+    "value": "scc"
+   },
+   {
+    "count": 495,
+    "value": "sf2"
+   }
+  ],
+  "completeness": [
+   {
+    "count": 1,
+    "value": "drums_only"
+   },
+   {
+    "count": 537,
+    "value": "full_gm"
+   },
+   {
+    "count": 14,
+    "value": "melodic_only"
+   },
+   {
+    "count": 26,
+    "value": "partial"
+   },
+   {
+    "count": 72,
+    "value": "single_instrument"
+   }
+  ],
+  "decade": [
+   {
+    "count": 20,
+    "value": "1980s"
+   },
+   {
+    "count": 201,
+    "value": "1990s"
+   },
+   {
+    "count": 87,
+    "value": "2000s"
+   },
+   {
+    "count": 83,
+    "value": "2010s"
+   },
+   {
+    "count": 45,
+    "value": "2020s"
+   },
+   {
+    "count": 214,
+    "value": "unknown"
+   }
+  ],
+  "engine": [
+   {
+    "count": 126,
+    "value": "adlmidi"
+   },
+   {
+    "count": 3,
+    "value": "edmidi"
+   },
+   {
+    "count": 495,
+    "value": "fluidsynth"
+   },
+   {
+    "count": 2,
+    "value": "munt"
+   },
+   {
+    "count": 14,
+    "value": "opnmidi"
+   },
+   {
+    "count": 9,
+    "value": "sc55"
+   },
+   {
+    "count": 1,
+    "value": "timidity"
+   }
+  ],
+  "lineage": [
+   {
+    "count": 18,
+    "value": "console"
+   },
+   {
+    "count": 49,
+    "value": "creative"
+   },
+   {
+    "count": 143,
+    "value": "fm_bank"
+   },
+   {
+    "count": 11,
+    "value": "fm_sampled"
+   },
+   {
+    "count": 290,
+    "value": "generic"
+   },
+   {
+    "count": 8,
+    "value": "gravis"
+   },
+   {
+    "count": 52,
+    "value": "gs_compat"
+   },
+   {
+    "count": 59,
+    "value": "roland"
+   },
+   {
+    "count": 20,
+    "value": "yamaha_xg"
+   }
+  ],
+  "quality": [
+   {
+    "count": 4,
+    "value": "broken_drums"
+   },
+   {
+    "count": 6,
+    "value": "miss_ins"
+   },
+   {
+    "count": 18,
+    "value": "mt32"
+   },
+   {
+    "count": 7,
+    "value": "non_gm"
+   }
+  ],
+  "size": [
+   {
+    "count": 97,
+    "value": "100MB-1GB"
+   },
+   {
+    "count": 190,
+    "value": "16-100MB"
+   },
+   {
+    "count": 148,
+    "value": "2-16MB"
+   },
+   {
+    "count": 209,
+    "value": "<2MB"
+   },
+   {
+    "count": 6,
+    "value": ">1GB"
+   }
+  ],
+  "type": [
+   {
+    "count": 143,
+    "value": "fm"
+   },
+   {
+    "count": 2,
+    "value": "la"
+   },
+   {
+    "count": 505,
+    "value": "sampled"
+   }
+  ]
+ },
+ "schema": 1,
+ "variants": [
+  {
+   "aliases": [],
+   "bank": {
+    "family": "AIL",
+    "kind": "embedded",
+    "name": "The Fat Man 2op set, default AIL",
+    "number": 0,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b0",
+   "label": "AIL default (The Fat Man 2-op)",
+   "legal_note": null,
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 0 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "0-ail-the-fat-man-2op-set-default-ail",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "free",
+    "license_hint": "mit",
+    "provenance": "AIL default 2-op bank (star_control_3.opl): The Fat Man tone library, MIT; AIL2 release is permissive",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "Bisqwit",
+    "kind": "embedded",
+    "name": "selection of 4op and 2op",
+    "number": 1,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "2010s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b1",
+   "label": "Bisqwit (adlmidi 4-op/2-op mix)",
+   "legal_note": null,
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 1 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "1-bisqwit-selection-of-4op-and-2op",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "gpl",
+    "license_hint": "gpl",
+    "provenance": "Bisqwit's GM bank released with the original adlmidi project (GPLv3+)",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "HMI",
+    "kind": "embedded",
+    "name": "Descent, Asterix",
+    "number": 2,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b2",
+   "label": "HMI (Descent, Asterix)",
+   "legal_note": "libADLMIDI embedded bank, license_hint=game_release: Descent / Asterix & Obelix HMI bank pair; Fat Man + AdLib SDK instruments, shipped with the game (see https://github.com/Wohlstand/libADLMIDI/issues/301)",
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 2 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "2-hmi-descent-asterix",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "unknown",
+    "license_hint": "game_release",
+    "provenance": "Descent / Asterix & Obelix HMI bank pair; Fat Man + AdLib SDK instruments, shipped with the game",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "HMI",
+    "kind": "embedded",
+    "name": "Normality",
+    "number": 7,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b7",
+   "label": "HMI (Normality)",
+   "legal_note": null,
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 7 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "7-hmi-normality",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "free",
+    "license_hint": "mit_derived",
+    "provenance": "Normality: modified Fat Man 2-op bank",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "HMI",
+    "kind": "embedded",
+    "name": "Shattered Steel",
+    "number": 8,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b8",
+   "label": "HMI (Shattered Steel)",
+   "legal_note": "libADLMIDI embedded bank, license_hint=game_release: Shattered Steel bank shipped with the game (see https://github.com/Wohlstand/libADLMIDI/issues/301)",
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 8 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "8-hmi-shattered-steel",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "unknown",
+    "license_hint": "game_release",
+    "provenance": "Shattered Steel bank shipped with the game",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "HMI",
+    "kind": "embedded",
+    "name": "Theme Park",
+    "number": 9,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b9",
+   "label": "HMI (Theme Park)",
+   "legal_note": null,
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 9 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "9-hmi-theme-park",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "free",
+    "license_hint": "ail2_permissive",
+    "provenance": "Theme Park: MT-32-style bank from AdLib SDK examples + AIL2 default bank",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "HMI",
+    "kind": "embedded",
+    "name": "MegaPatch by LoudMouth",
+    "number": 10,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b10",
+   "label": "HMI (MegaPatch by LoudMouth)",
+   "legal_note": "libADLMIDI embedded bank, license_hint=unknown: 'MegaPatch' by LoudMouth Inc. (3D Table Sports); LoudMouth's terms are not documented (see https://github.com/Wohlstand/libADLMIDI/issues/301)",
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 10 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "10-hmi-megapatch-by-loudmouth",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "unknown",
+    "license_hint": "unknown",
+    "provenance": "'MegaPatch' by LoudMouth Inc. (3D Table Sports); LoudMouth's terms are not documented",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "HMI",
+    "kind": "embedded",
+    "name": "MegaPatch - Aces of the Deep",
+    "number": 11,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b11",
+   "label": "HMI (MegaPatch - Aces of the Deep)",
+   "legal_note": "libADLMIDI embedded bank, license_hint=unknown: Aces of the Deep: mixture of MegaPatch, AdLib SDK and Creative sample-bank instruments (see https://github.com/Wohlstand/libADLMIDI/issues/301)",
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 11 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "11-hmi-megapatch-aces-of-the-deep",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "unknown",
+    "license_hint": "unknown",
+    "provenance": "Aces of the Deep: mixture of MegaPatch, AdLib SDK and Creative sample-bank instruments",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "HMI",
+    "kind": "embedded",
+    "name": "MegaPatch - Earthsiege",
+    "number": 12,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b12",
+   "label": "HMI (MegaPatch - Earthsiege)",
+   "legal_note": "libADLMIDI embedded bank, license_hint=unknown: Earthsiege: deeply modified LoudMouth MegaPatch (see https://github.com/Wohlstand/libADLMIDI/issues/301)",
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 12 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "12-hmi-megapatch-earthsiege",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "unknown",
+    "license_hint": "unknown",
+    "provenance": "Earthsiege: deeply modified LoudMouth MegaPatch",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "HMI",
+    "kind": "embedded",
+    "name": "Anvil of Dawn",
+    "number": 13,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b13",
+   "label": "HMI (Anvil of Dawn)",
+   "legal_note": null,
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 13 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "13-hmi-anvil-of-dawn",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "free",
+    "license_hint": "mit_derived",
+    "provenance": "Anvil of Dawn: modified Fat Man 2-op bank",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "DMX",
+    "kind": "embedded",
+    "name": "Bobby Prince v2",
+    "number": 14,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b14",
+   "label": "DMX Bobby Prince v2 (Doom II)",
+   "legal_note": "libADLMIDI embedded bank, license_hint=game_release: doom2.op2: Paul Radek's DMX bank modified by Bobby Prince, shipped with Doom II (see https://github.com/Wohlstand/libADLMIDI/issues/301)",
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 14 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "14-dmx-bobby-prince-v2",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "unknown",
+    "license_hint": "game_release",
+    "provenance": "doom2.op2: Paul Radek's DMX bank modified by Bobby Prince, shipped with Doom II",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "DMX",
+    "kind": "embedded",
+    "name": "Cygnus Studios, default DMX",
+    "number": 15,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b15",
+   "label": "DMX default (Heretic, Hexen)",
+   "legal_note": "libADLMIDI embedded bank, license_hint=game_release: heretic.op2: Paul Radek's default DMX bank as shipped with Heretic (see https://github.com/Wohlstand/libADLMIDI/issues/301)",
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 15 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "15-dmx-cygnus-studios-default-dmx",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "unknown",
+    "license_hint": "game_release",
+    "provenance": "heretic.op2: Paul Radek's default DMX bank as shipped with Heretic",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "DMX",
+    "kind": "embedded",
+    "name": "Bobby Prince v1",
+    "number": 16,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b16",
+   "label": "DMX Bobby Prince v1 (Doom)",
+   "legal_note": "libADLMIDI embedded bank, license_hint=game_release: doom1.op2: Paul Radek's DMX bank modified by Bobby Prince, shipped with Doom (see https://github.com/Wohlstand/libADLMIDI/issues/301)",
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 16 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "16-dmx-bobby-prince-v1",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "unknown",
+    "license_hint": "game_release",
+    "provenance": "doom1.op2: Paul Radek's DMX bank modified by Bobby Prince, shipped with Doom",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  },
+  {
+   "aliases": [],
+   "bank": {
+    "family": "AIL",
+    "kind": "embedded",
+    "name": "Discworld, Grandest Fleet, etc.",
+    "number": 17,
+    "pass": null,
+    "tags": {
+     "broken_drums": false,
+     "fourop": false,
+     "melodic_only": false,
+     "miss_ins": false,
+     "mt32": false,
+     "non_gm": false,
+     "pseudo_fourop": false
+    }
+   },
+   "chip": "opl3",
+   "engine": "adlmidi",
+   "facets": {
+    "bank_map": "gm",
+    "chip": "opl3",
+    "completeness": "full_gm",
+    "decade": "1990s",
+    "engine": "adlmidi",
+    "instrument": null,
+    "lineage": "fm_bank",
+    "quality": [],
+    "size": "<2MB",
+    "type": "fm"
+   },
+   "id": "adl-b17",
+   "label": "AIL (Discworld, Grandest Fleet, etc.)",
+   "legal_note": null,
+   "render": {
+    "cmd": "adlmidiplay <song>.mid -f32 -vm 0 --gain 2.0 --emu-nuked 17 1",
+    "core": "nuked"
+   },
+   "requires_rom": false,
+   "slug": "17-ail-discworld-grandest-fleet-etc",
+   "source": {
+    "bytes": null,
+    "file": null,
+    "license_flag": "free",
+    "license_hint": "mit_derived",
+    "provenance": "Discworld / Grandest Fleet: modified Fat Man 2-op bank",
+    "sf2": null,
+    "sha256": null,
+    "url": "https://github.com/Wohlstand/libADLMIDI/blob/c46220909879dc552d7632467be553f4bf2a9e21/fm_banks/list-of-banks.txt"
+   },
+   "type": "fm"
+  }
+ ]
+}

@@ -1,7 +1,7 @@
 /**
  * Keymap (plan §10): ↑/↓ variant · PgUp/PgDn ±10 · Home/End · Space · ←/→ ±5 s (Shift ±30 s) ·
  * X stop · V favorite · L loop · M mute · / search · Esc · [ ] song · P pin A · Tab A/B ·
- * F filters · T theme · D debug · ? keymap.
+ * F filters · Shift+F full screen · T theme · D debug · S settings · ? keymap.
  * ↑/↓ go through the InputPolicy (with e.repeat); everything else bypasses it.
  * The filter bar is the exception: while focus is inside it Tab moves focus rather than firing A/B,
  * and inside the facet panel Space presses the focused chip rather than playing (issue #26).
@@ -24,6 +24,7 @@ export interface KeyActions {
   pinA(): void;
   ab(): void;
   filters(): void;
+  fullscreen(): void;
   theme(): void;
   debug(): void;
   keymap(): void;
@@ -46,6 +47,7 @@ export const KEYMAP: [string, string][] = [
   ['P', 'pin current variant as A'],
   ['Tab', 'A/B with the pinned variant (outside the filter bar, where Tab moves focus)'],
   ['F', 'filters'],
+  ['Shift + F', 'full screen'],
   ['T', 'theme'],
   ['D', 'debug panel'],
   ['S', 'settings'],
@@ -152,7 +154,9 @@ export function installKeyboard(target: Window, a: KeyActions): () => void {
         a.pinA();
         break;
       case 'f':
-        a.filters();
+        // Shift is the only modifier the keymap uses: F opens the filters, Shift+F goes full screen
+        if (e.shiftKey) a.fullscreen();
+        else a.filters();
         break;
       case 't':
         a.theme();

@@ -18,13 +18,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // During development the manifests/audio come from `python3 -m http.server` on out/public
-    proxy: {
-      '^/songs\\.json$': 'http://127.0.0.1:8000',
-      '^/c/': 'http://127.0.0.1:8000',
-      '^/s/': 'http://127.0.0.1:8000',
-      '^/a/': 'http://127.0.0.1:8000',
-    },
+    // During development the manifests/audio come from `python3 -m http.server` on out/public;
+    // SFP_DATA_ORIGIN points the same routes at test/fixtures/site for the CI layout harness.
+    proxy: Object.fromEntries(
+      ['^/songs\\.json$', '^/c/', '^/s/', '^/a/'].map((route) => [route, process.env.SFP_DATA_ORIGIN ?? 'http://127.0.0.1:8000']),
+    ),
   },
   test: {
     include: ['test/unit/**/*.test.ts'],

@@ -46,7 +46,9 @@ export class VariantList {
     this.sticky = h('div', { class: 'row sticky hidden', role: 'option' });
     this.sticky.style.gridTemplateColumns = STICKY_COLS;
     this.body = h('div', { class: 'rows', role: 'listbox', 'aria-label': 'variants' });
-    this.el = h('div', { class: 'list' }, this.head, this.sticky, this.body);
+    // focusable on purpose, never by Tab: closing a dialog hands focus back here rather than
+    // dropping it on <body>, where the window keymap's Tab = A/B would strand it
+    this.el = h('div', { class: 'list', tabindex: '-1' }, this.head, this.sticky, this.body);
     this.body.addEventListener('click', (e) => {
       const row = (e.target as HTMLElement).closest('.row') as HTMLElement | null;
       if (row && row.dataset.index) this.cb.onClick(Number(row.dataset.index));

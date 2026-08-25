@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { captureFocus, restoreFocus } from '../../src/ui/focus';
+import { captureFocus, restoreFocusMemento } from '../../src/ui/rebuildFocus';
 
 /**
  * The unit suite runs without a DOM, so these are the parts of Element the module touches:
@@ -56,7 +56,7 @@ describe('keeping the keyboard across a rebuild', () => {
     const memento = captureFocus(asElement(before), asElement(search));
 
     const after = tree(); // buildUi() cleared the root and made every control again
-    expect(restoreFocus(asElement(after), memento)).toBe(true);
+    expect(restoreFocusMemento(asElement(after), memento)).toBe(true);
     expect(after.find('search').focused).toBe(true);
     expect(after.find('list').focused).toBe(false);
   });
@@ -70,7 +70,7 @@ describe('keeping the keyboard across a rebuild', () => {
     expect(memento?.selection).toEqual({ start: 3, end: 3 });
 
     const after = tree();
-    restoreFocus(asElement(after), memento);
+    restoreFocusMemento(asElement(after), memento);
     expect(after.find('search').selectionStart).toBe(3);
   });
 
@@ -79,14 +79,14 @@ describe('keeping the keyboard across a rebuild', () => {
     expect(captureFocus(asElement(root), null)).toBeNull();
     expect(captureFocus(asElement(root), asElement(root))).toBeNull();
     expect(captureFocus(asElement(root), asElement(el('body', el('stray')).find('stray')))).toBeNull();
-    expect(restoreFocus(asElement(root), null)).toBe(false);
+    expect(restoreFocusMemento(asElement(root), null)).toBe(false);
   });
 
   it('leaves focus alone when the rebuilt tree is a different shape', () => {
     const before = tree();
     const memento = captureFocus(asElement(before), asElement(before.find('facets')));
     const after = el('root', el('header'), el('main', el('filters', el('search'))));
-    expect(restoreFocus(asElement(after), memento)).toBe(false);
+    expect(restoreFocusMemento(asElement(after), memento)).toBe(false);
     expect(after.find('search').focused).toBe(false);
   });
 });
