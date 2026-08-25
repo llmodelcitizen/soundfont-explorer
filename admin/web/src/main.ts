@@ -48,21 +48,27 @@ function shell(me: Me): void {
   const runs = new RunsView();
   const main = el('main', {});
   const tabs = el('nav', { class: 'tabs' });
+  // Every tab shows its view with an un-awaited load(). Each load() reports its own failed
+  // fetch inside the view, but a throw from the render path would reject unhandled and
+  // leave the tab blank with nothing said; only the Library tab used to catch that.
+  const showFailure = (what: string) => (e: Error): void => {
+    if (isSessionExpired(e)) return; // already on the way to /auth/login
+    main.replaceChildren(el('div', { class: 'notice' }, `${what} failed to load: ${e.message}`));
+  };
   const views: [string, () => void][] = [
     ['Library', () => {
       runs.stop();
       main.replaceChildren(lib.root);
-      lib.load().catch((e) => main.replaceChildren(
-        el('div', { class: 'notice' }, `library failed to load: ${e.message}`)));
+      lib.load().catch(showFailure('library'));
     }],
     ['Renders', () => {
       main.replaceChildren(runs.root);
-      runs.load();
+      runs.load().catch(showFailure('renders'));
     }],
     ['Published', () => {
       runs.stop();
       main.replaceChildren(pub.root);
-      pub.load();
+      pub.load().catch(showFailure('published'));
     }],
   ];
   const pub = new PublishedView();

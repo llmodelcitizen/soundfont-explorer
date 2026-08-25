@@ -52,6 +52,21 @@ describe('boot failures', () => {
   });
 });
 
+describe('tab switching', () => {
+  it('says so when a view throws while rendering instead of going blank', async () => {
+    const ff = api()
+      // a doc without `songs` (an older/newer server) makes RunsView throw inside render(),
+      // past the try that covers its own GET
+      .on('GET', '/api/render/songs', () => ({ render_enabled: true }))
+      .on('GET', '/api/runs', () => ({ runs: [] }));
+    await boot(ff);
+    button('Renders').click();
+    await until(() => document.querySelector('main .notice') !== null);
+    expect(document.querySelector('main .notice')!.textContent)
+      .toMatch(/^renders failed to load: /);
+  });
+});
+
 describe('shell buttons', () => {
   it('Update & restart comes back (with the error) when the request fails', async () => {
     const ff = api().on('POST', '/api/update', () => { throw new Fail(500, 'no update path'); });
