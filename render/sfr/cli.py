@@ -242,10 +242,12 @@ def cmd_manifest(args) -> int:
 
 
 def cmd_publish(args) -> int:
-    from .publish import prune, publish
+    from .publish import prune, publish, restamp
     paths = paths_from(args)
     if args.prune:
         return prune(paths, args.bucket, dry_run=args.dry_run)
+    if args.restamp:
+        return restamp(paths, args.bucket, args.distribution, dry_run=args.dry_run)
     return publish(paths, args.bucket, args.distribution, dry_run=args.dry_run)
 
 
@@ -307,6 +309,9 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("publish", help="aws s3 sync out/public (dry-run first!)"); add_path_args(s)
     s.add_argument("--bucket"); s.add_argument("--distribution")
     s.add_argument("--dry-run", action="store_true"); s.add_argument("--prune", action="store_true")
+    s.add_argument("--restamp", action="store_true",
+                   help="rewrite Content-Type / Cache-Control on objects already in the bucket to what "
+                        "publish sends (backfill for #14); --dry-run lists what would change")
     s = sub.add_parser("status", help="summarize work/renders"); add_path_args(s)
     s.add_argument("--json", action="store_true")
     s = sub.add_parser("worker", help="phase-2 upload worker (stub)"); add_path_args(s)
