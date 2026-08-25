@@ -74,6 +74,26 @@ export class TrackPositions {
 
 type Ledger = Record<string, Record<string, number>>;
 
+/**
+ * Keep only the {song: {variant: seconds}} shape. Anything else in the stored value (an older
+ * build's layout, a hand-edited entry) is dropped: add() writes `this.data[song][variant]`
+ * from the rAF loop, and a number or string where an object is expected would throw there and
+ * stop the whole UI loop.
+ */
+export function sanitizeLedger(raw: unknown): Ledger {
+  const out: Ledger = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [song, vs] of Object.entries(raw as Record<string, unknown>)) {
+    if (!vs || typeof vs !== 'object' || Array.isArray(vs)) continue;
+    const entry: Record<string, number> = {};
+    for (const [v, sec] of Object.entries(vs as Record<string, unknown>)) {
+      if (typeof sec === 'number' && Number.isFinite(sec) && sec >= 0) entry[v] = sec;
+    }
+    if (Object.keys(entry).length) out[song] = entry;
+  }
+  return out;
+}
+
 /** periodic flush while playing; the app also flushes on song change, visibilitychange→hidden and pagehide */
 const LEDGER_FLUSH_MS = 15_000;
 
@@ -83,7 +103,7 @@ export class ListenedLedger {
   private lastFlush = 0;
 
   constructor(private readonly now: () => number = () => Date.now()) {
-    this.data = read<Ledger>(LISTENED_KEY) ?? {};
+    this.data = sanitizeLedger(read<unknown>(LISTENED_KEY));
   }
 
   seconds(song: string, variant: string): number {
