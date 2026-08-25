@@ -85,6 +85,22 @@ class EnsureZipTests(unittest.TestCase):
         libzip.ensure_zip(self.cache, "v3", self.files)
         self.assertFalse(os.path.exists(v1))
 
+    def test_a_temp_left_by_a_killed_build_is_swept(self):
+        """The in-process finally covers a normal failure, but a process killed mid-build
+        (an sfadmin restart) leaves `<out>.<pid>-<tid>.tmp` behind, and the sweep only
+        looked at library-*.zip — so those accumulated in the cache dir for ever (#19)."""
+        orphan = libzip.zip_path(self.cache, "v0") + ".999-1234.tmp"
+        with open(orphan, "wb") as fh:
+            fh.write(b"half a zip")
+        fresh = libzip.zip_path(self.cache, "v0") + ".999-5678.tmp"   # another box, building now
+        with open(fresh, "wb") as fh:
+            fh.write(b"half a zip")
+        os.utime(orphan, (0, 0))
+        out = libzip.ensure_zip(self.cache, "v1", self.files)
+        self.assertFalse(os.path.exists(orphan))
+        self.assertTrue(os.path.exists(fresh))    # too young to be anything but a live build
+        self.check(out)
+
     def test_failed_build_leaves_no_temp_and_no_zip(self):
         def files():
             yield self.files[0]

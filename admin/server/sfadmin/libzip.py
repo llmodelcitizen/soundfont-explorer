@@ -21,6 +21,11 @@ _build_lock = threading.Lock()
 # the 500 this module exists to remove. Every hand-out touches the file, and a build only
 # drops versions nobody has asked for in this long (#19).
 KEEP_STALE_S = 300
+# a build's private temp is removed by the finally below, but a process killed mid-build
+# (an sfadmin restart during a zip build) leaves one behind for ever — it is not a
+# library-*.zip, so the sweep never saw it. Well past any real build, so a temp another
+# process is still writing (its mtime grows as it writes) is never taken (#19).
+STALE_TMP_S = 3600
 
 
 def zip_path(cache: str, updated_at: str | None) -> str:
@@ -46,10 +51,22 @@ def ensure_zip(cache: str, updated_at: str | None, files: Iterable[tuple[str, st
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
-        now = time.time()
-        for f in os.listdir(cache):  # drop stale versions, now that the new one is in place
-            if f.startswith("library-") and f.endswith(".zip") and f != os.path.basename(out):
-                p = os.path.join(cache, f)
-                if now - os.path.getmtime(p) > KEEP_STALE_S:
-                    os.remove(p)
+        _sweep(cache, os.path.basename(out))
     return out
+
+
+def _sweep(cache: str, keep: str) -> None:
+    """Drop stale versions (now that the new one is in place) and abandoned temps."""
+    now = time.time()
+    for f in os.listdir(cache):
+        if not f.startswith("library-") or f == keep:
+            continue
+        age = STALE_TMP_S if f.endswith(".tmp") else KEEP_STALE_S if f.endswith(".zip") else None
+        if age is None:
+            continue
+        p = os.path.join(cache, f)
+        try:
+            if now - os.path.getmtime(p) > age:
+                os.remove(p)
+        except OSError:      # vanished under us, or another process got there first
+            pass
