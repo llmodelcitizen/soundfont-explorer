@@ -161,7 +161,11 @@ describe('RunsView actions', () => {
     const ff = api()
       .on('GET', '/api/runs', () => ({ runs: [run()] }))
       .on('GET', '/api/runs/r1/logs', () => ({ events: [{ t: 0, msg: 'hi' }] }))
-      .on('POST', '/api/runs/r1/finish', () => ({ ok: true }));
+      // /finish returns the updated run record (the route does): the handler reads
+      // finisher.songs_json_published off it before refreshing the list (#19)
+      .on('POST', '/api/runs/r1/finish', () => run({
+        finisher: { ran_at: '2026-08-24T02:00:00Z', songs_json_published: true, error: null },
+      }));
     const v = mount(ff);
     await v.load();
     button(v, 'Logs').click(); // an open log box makes the next render scroll-anchor
