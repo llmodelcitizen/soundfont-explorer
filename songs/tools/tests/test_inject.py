@@ -91,6 +91,20 @@ class InjectTests(unittest.TestCase):
         m2 = S.Smf(0, 96, [[ch(0, 0xC0, 3), ch(0, 0x90, 60, 100), ch(48, 0x80, 60, 0)]])
         self.assertEqual(IP.check_programs(m2), [])
 
+    def test_first_note_is_the_earliest_across_tracks(self):
+        """Channel 1 is played from two tracks. Track 1 sets its program at tick 500, before ITS
+        first note (tick 1000); track 2 already has a note at tick 0. The gate must look at the
+        tick-0 note (no program precedes it), not at the first track that uses the channel."""
+        t0 = [S.Event(0, "meta", 0xFF, (500000).to_bytes(3, "big"), 0x51)]
+        t1 = [ch(500, 0xC0, 40), ch(1000, 0x90, 60, 100), ch(1200, 0x80, 60, 0)]
+        t2 = [ch(0, 0x90, 64, 100), ch(480, 0x80, 64, 0)]
+        self.assertEqual(IP.check_programs(S.Smf(1, 480, [t0, t1, t2])), [1])
+        # the same file with the program change on track 2 before the tick-0 note passes
+        t2b = [ch(0, 0xC0, 40), ch(0, 0x90, 64, 100), ch(480, 0x80, 64, 0)]
+        self.assertEqual(IP.check_programs(S.Smf(1, 480, [t0, t1, t2b])), [])
+        # and the track order must not matter: same file, tracks swapped
+        self.assertEqual(IP.check_programs(S.Smf(1, 480, [t0, t2, t1])), [1])
+
 
 class DiagnosticTests(unittest.TestCase):
     def test_deterministic_and_complete(self):
@@ -117,10 +131,6 @@ class DiagnosticTests(unittest.TestCase):
         self.assertTrue(150 < S.midi_end_seconds(m) < 185)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestDefaultDrumRules(unittest.TestCase):
     """Imports rarely carry a program change on channel 10. check_programs still demands one (so
     every engine picks the same kit); default_drum_rules supplies the GM default rather than
@@ -144,3 +154,9 @@ class TestDefaultDrumRules(unittest.TestCase):
         m = S.Smf(0, 96, [[ch(0, 0x90, 60, 100)]])
         self.assertEqual(IP.default_drum_rules(m), [])
         self.assertEqual(IP.check_programs(m), [1])
+
+
+# Keep this guard LAST: unittest.main() runs (and exits) the moment it is reached, so any test
+# class defined below it is silently skipped when the file is run as a script.
+if __name__ == "__main__":
+    unittest.main()
