@@ -52,3 +52,6 @@ songs/rendered/*/
 songs/rendered/*.mid
 songs/corpus-imports.json
 songs/canon-report.json
+
+# agent worktrees (created by Claude Code workflows; never part of the repo)
+.claude/worktrees/
