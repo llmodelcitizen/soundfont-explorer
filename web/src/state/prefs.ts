@@ -79,13 +79,17 @@ type Ledger = Record<string, Record<string, number>>;
  * build's layout, a hand-edited entry) is dropped: add() writes `this.data[song][variant]`
  * from the rAF loop, and a number or string where an object is expected would throw there and
  * stop the whole UI loop.
+ *
+ * The maps are prototype-less: JSON.parse keeps a stored key of '__proto__' as an own property,
+ * but `out[song] = entry` on a plain object would set the object's prototype instead of a key
+ * (silently losing that song, and every variant of it, on the next flush).
  */
 export function sanitizeLedger(raw: unknown): Ledger {
-  const out: Ledger = {};
+  const out = Object.create(null) as Ledger;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
   for (const [song, vs] of Object.entries(raw as Record<string, unknown>)) {
     if (!vs || typeof vs !== 'object' || Array.isArray(vs)) continue;
-    const entry: Record<string, number> = {};
+    const entry = Object.create(null) as Record<string, number>;
     for (const [v, sec] of Object.entries(vs as Record<string, unknown>)) {
       if (typeof sec === 'number' && Number.isFinite(sec) && sec >= 0) entry[v] = sec;
     }
@@ -113,7 +117,7 @@ export class ListenedLedger {
   /** add `dt` seconds of playback; returns the new total */
   add(song: string, variant: string, dt: number): number {
     if (!(dt > 0)) return this.seconds(song, variant);
-    const s = (this.data[song] ??= {});
+    const s = (this.data[song] ??= Object.create(null) as Record<string, number>);
     const v = (s[variant] ?? 0) + dt;
     s[variant] = v;
     this.dirty = true;
@@ -135,7 +139,7 @@ export class ListenedLedger {
   }
 
   resetAll(): void {
-    this.data = {};
+    this.data = Object.create(null) as Ledger;
     this.dirty = true;
     this.flush();
   }

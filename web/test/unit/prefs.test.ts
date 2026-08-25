@@ -90,4 +90,21 @@ describe('listened ledger: stored shape', () => {
     expect(sanitizeLedger({ s: { v: 1.5 } })).toEqual({ s: { v: 1.5 } });
     expect(sanitizeLedger(undefined)).toEqual({});
   });
+
+  it('keeps a song literally called __proto__ as an own key instead of setting a prototype', () => {
+    // JSON.parse makes '__proto__' an own property; assigning it onto a plain object would not
+    const raw: unknown = JSON.parse('{"__proto__": {"a": 4}, "s1": {"b": 2}}');
+    const clean = sanitizeLedger(raw);
+    expect(Object.prototype.hasOwnProperty.call(clean, '__proto__')).toBe(true);
+    expect(Object.getPrototypeOf({})).toBe(Object.prototype); // nothing global was touched
+    // (an object *literal* cannot express this: `{ __proto__: x }` sets the prototype)
+    const round = JSON.parse(JSON.stringify(clean)) as Record<string, unknown>;
+    expect(Object.entries(round)).toEqual([['__proto__', { a: 4 }], ['s1', { b: 2 }]]);
+    withStorage({ 'sfp.listened.v1': JSON.stringify(JSON.parse('{"__proto__": {"a": 4}}')) }, () => {
+      const l = new ListenedLedger(() => 0);
+      expect(l.seconds('__proto__', 'a')).toBe(4); // survives the round trip, not silently dropped
+      expect(l.add('__proto__', 'a', 1)).toBe(5);
+      expect([...l.listened('__proto__', 1)]).toEqual(['a']);
+    });
+  });
 });
