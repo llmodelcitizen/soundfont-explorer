@@ -239,10 +239,13 @@ export class SegmentStore {
       try {
         const pack = await this.fetcher.get(loc.url, { priority, sticky: true, tag: 'pack' });
         // every member waiting on this pack shares one fetch promise and wakes up here with the
-        // same ArrayBuffer: split it once, not once per waiter (24 splits of a 24-member pack)
+        // same ArrayBuffer: split it once, not once per waiter (24 splits of a 24-member pack).
+        // Mark it ingested only once the split succeeded: a pack whose bytes do not parse must
+        // let every waiter see the parse error, not just the first one, with the rest reporting
+        // a misleading 'member N missing from pack' (and overwriting lastError with it).
         if (!this.ingested.has(pack)) {
-          this.ingested.add(pack);
           this.ingestPack(loc.url, pack);
+          this.ingested.add(pack);
           this.stats.wholePacks++;
         }
       } catch (e) {

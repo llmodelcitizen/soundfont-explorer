@@ -69,4 +69,22 @@ describe('SegmentStore', () => {
     await flush(40);
     expect(h.store.stats.wholePacks).toBe(2);
   });
+
+  it('gives every waiter on an unparseable pack the parse error, not \u2018member missing\u2019', async () => {
+    // the pack is marked ingested only after the split succeeds, so the seven waiters that wake
+    // up behind the first one do not skip the split and report a misleading missing-member error
+    const ids = Array.from({ length: 8 }, (_, i) => `v${i}`);
+    const { set, objects } = makeSet(ids);
+    const url = packUrl(set, 'g0', 0);
+    objects.set(url, objects.get(url)!.slice(0, -1)); // truncated: splitPack() throws on the size
+    const store = new SegmentStore(set, new Fetcher(8, new FakeFetch(objects).fn, () => 0), new FakeDecoder(), { decodedBytes: 8 << 20, compressedBytes: 8 << 20 }, () => 0);
+    // priority 0 is urgent, so every request takes the whole pack and shares the one fetch
+    const settled = await Promise.allSettled(ids.map((v) => store.request({ v, tier: 's', i: 0 }, 0)));
+    expect(settled.every((r) => r.status === 'rejected')).toBe(true);
+    const reasons = settled.map((r) => (r.status === 'rejected' ? String((r.reason as Error).message) : ''));
+    expect(reasons.filter((m) => /SFPK: size mismatch/.test(m)).length).toBe(8);
+    expect(reasons.filter((m) => /missing from pack/.test(m))).toEqual([]);
+    expect(store.lastError).toMatch(/SFPK: size mismatch/);
+    expect(store.stats.wholePacks).toBe(0); // nothing was ingested
+  });
 });
