@@ -24,9 +24,17 @@ class TestLoudness(unittest.TestCase):
     def test_gain(self):
         self.assertAlmostEqual(gain_db(-21.3, -3.2, S), 1.7)        # TP-limited: -1.5 - -3.2 = 1.7 < 5.3
         self.assertAlmostEqual(gain_db(-21.3, -9.0, S), 5.3)        # loudness-limited
-        self.assertAlmostEqual(gain_db(-60.0, -50.0, S), 30.0)      # clamp
+        self.assertAlmostEqual(gain_db(-60.0, -50.0, S), 30.0)      # amplification IS capped
         self.assertAlmostEqual(gain_db(10.0, 2.0, S), -26.0)
-        self.assertAlmostEqual(gain_db(30.0, 20.0, S), -30.0)
+        self.assertAlmostEqual(gain_db(30.0, 20.0, S), -46.0)       # loudness-limited, still uncapped
+        # attenuation is NOT capped (#27): this render needs 36.5 dB off to meet the ceiling and
+        # the old symmetric clamp handed 6.5 dB of it back, so the master clipped
+        self.assertAlmostEqual(gain_db(-16.0, 35.0, S), -36.5)
+        for bad in (float("inf"), float("-inf"), float("nan")):
+            with self.assertRaises(JobError):
+                gain_db(-21.3, bad, S)      # an untrustworthy peak must stop the render
+            with self.assertRaises(JobError):
+                gain_db(bad, -3.2, S)
         self.assertTrue(is_silent(-51, S))
         self.assertTrue(is_silent(float("-inf"), S))
         self.assertTrue(is_silent(float("nan"), S))

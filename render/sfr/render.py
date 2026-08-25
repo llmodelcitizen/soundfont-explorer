@@ -9,7 +9,7 @@ from . import PIPELINE_VERSION, engines
 from .engines import ffmpeg_input_args
 from .config import Paths, load_engines
 from .jobs import Job, State, classify, clean_dir, now_iso, read_meta, write_meta
-from .loudness import gain_db, is_silent, master_pcm, measure
+from .loudness import PEAK_TOLERANCE_DB, assert_peak_safe, gain_db, is_silent, master_pcm, measure, measured_peak_dbtp
 from .ogg import OggError, opus_info
 from .encode import decode_padded, encode_tiers
 from .sched import JobError, Outcome, WeightedSemaphore, run
@@ -100,6 +100,9 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                     return _fail(job, paths, meta, "silent", f"integrated loudness {meas['input_i']} LUFS", t0)
                 # ---- 3. gain, 4. master -----------------------------------
                 g = gain_db(meas["input_i"], meas["input_tp"], job.settings)
+                # the arithmetic must be safe before anything is written (#27); a JobError here
+                # fails the job with a specific reason rather than publishing a clipped master
+                assert_peak_safe(meas["input_tp"], g, job.settings)
                 meta["gain_db"] = round(g, 3)
                 off = float(job.engine_meta.get("start_offset_s") or 0.0)
                 drift = float(job.engine_meta.get("drift_ppm") or 0.0)
@@ -111,6 +114,14 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                                  master_flac=job.master_path(paths) if keep_masters else None,
                                  in_args=ffmpeg_input_args(spec))
                 timings["master_s"] = round(time.monotonic() - tms, 2)
+                # ... and the artifact must be safe too: gain arithmetic can be right while the
+                # filter chain is wrong, and what users hear is the PCM, not the sum (#27)
+                out_tp = measured_peak_dbtp(pcm, job.settings)
+                meta["output_tp"] = round(out_tp, 3)
+                if out_tp > job.settings.tp_ceiling_dbtp + PEAK_TOLERANCE_DB:
+                    return _fail(job, paths, meta, "peak-unsafe",
+                                 f"mastered output peaks at {out_tp:.3f} dBTP, over the "
+                                 f"{job.settings.tp_ceiling_dbtp} dBTP ceiling", t0)
             finally:
                 if sem is not None and weight:
                     sem.release(weight)

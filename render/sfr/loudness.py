@@ -6,6 +6,7 @@ loudnorm's dynamic second pass.
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 
@@ -72,18 +73,72 @@ def parse_loudnorm(stderr: str) -> dict:
         try:
             out[k] = float(v)
         except (TypeError, ValueError):
-            out[k] = float("-inf")
+            # -inf here is not a measurement, it is a parse failure wearing one: as a true peak
+            # it disables the ceiling entirely (min(target - I, ceiling + inf)) and masters hot.
+            # parse_ebur128's _f() has always raised on this; so does this path now (#27).
+            raise JobError("measure", f"loudnorm {k} is not a number: {v!r}") from None
     return out
 
 
+# The mastered signal must sit under the ceiling; the tolerance covers the %.4f rounding of the
+# `volume=` filter argument and float noise, and nothing else.
+PEAK_TOLERANCE_DB = 0.01
+
+
 def gain_db(input_i: float, input_tp: float, settings: RenderSettings) -> float:
+    """Linear gain for this render: the quieter of the loudness target and the peak ceiling.
+
+    The clamp is ASYMMETRIC on purpose (#27). `+gain_clamp_db` is a policy limit — do not
+    amplify a quiet render into noise. There is no matching policy for attenuation: cutting is
+    what keeps the master under the true-peak ceiling, and the old symmetric
+    `max(-clamp, ...)` silently handed back gain a hot renderer needed removed, so the master
+    clipped and nothing downstream checked. Required attenuation is applied in full.
+    """
+    if not math.isfinite(input_tp):
+        # -inf/nan reaches `min()` as a winner and yields a nonsense gain (+inf clamps to +clamp).
+        # A measurement we cannot trust must stop the render, never master on a guess.
+        raise JobError("master", f"true peak is not a finite number: {input_tp!r}")
+    if not math.isfinite(input_i):
+        raise JobError("master", f"integrated loudness is not a finite number: {input_i!r}")
     g = min(settings.lufs_target - input_i, settings.tp_ceiling_dbtp - input_tp)
-    c = settings.gain_clamp_db
-    return max(-c, min(c, g))
+    return min(g, settings.gain_clamp_db)
+
+
+def peak_after_gain(input_tp: float, gain: float) -> float:
+    return input_tp + gain
+
+
+def assert_peak_safe(input_tp: float, gain: float, settings: RenderSettings, *, what: str = "master") -> None:
+    """Fail closed when the gain about to be applied would leave the master over the ceiling.
+
+    This is the invariant, stated once: `input_tp + gain_db <= tp_ceiling_dbtp`. It is checked
+    on the arithmetic here and again on the artifact in render.py, because arithmetic can be
+    right while the filter chain is wrong.
+    """
+    if not math.isfinite(input_tp) or not math.isfinite(gain):
+        raise JobError(what, f"peak check has non-finite inputs: tp={input_tp!r} gain={gain!r}")
+    peak = peak_after_gain(input_tp, gain)
+    if peak > settings.tp_ceiling_dbtp + PEAK_TOLERANCE_DB:
+        raise JobError(what, f"peak-unsafe: {peak:.3f} dBTP after {gain:.3f} dB of gain exceeds the "
+                             f"{settings.tp_ceiling_dbtp} dBTP ceiling")
 
 
 def is_silent(input_i: float, settings: RenderSettings) -> bool:
     return not (input_i > settings.silent_below_lufs)   # handles -inf / nan
+
+
+def measured_peak_dbtp(pcm: bytes, settings: RenderSettings, timeout_s: int = 300) -> float:
+    """True peak of the mastered s16 stream, measured by feeding it back through ebur128.
+
+    The stream is already in memory, so this costs one more ffmpeg pass over data that never
+    touches disk. It is the check that covers the artifact rather than the arithmetic: a wrong
+    filter chain, a resampler overshoot or a bad drift correction all show up here (#27).
+    """
+    argv = ["ffmpeg", "-hide_banner", "-nostats", "-f", "s16le", "-ac", "2",
+            "-ar", str(settings.sample_rate), "-i", "pipe:0",
+            "-af", "ebur128=peak=true", "-f", "null", "-"]
+    res = run(argv, timeout_s=timeout_s, what="verify peak", input_bytes=pcm)
+    return parse_ebur128(res.stderr.decode("utf-8", "replace"))["input_tp"]
 
 
 def master_filter(gain: float, settings: RenderSettings, duration_s: int, *,

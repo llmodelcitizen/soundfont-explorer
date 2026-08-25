@@ -92,7 +92,8 @@ class TestSemaphore(unittest.TestCase):
         self.assertEqual(sem.available, 4)
 
 
-def _fake_render(job: Job, paths: Paths, status="ok", lufs=-21.3, gain=5.3, spec=None, master_kept=None):
+def _fake_render(job: Job, paths: Paths, status="ok", lufs=-21.3, gain=5.3, spec=None, master_kept=None,
+                 tp=-9.0):
     """Lay down a plausible work/renders/<song>/<variant> using the fixture as every segment.
     master_kept=None leaves the key out of meta.json (a meta older than the flag)."""
     data = FIX.read_bytes()
@@ -106,7 +107,10 @@ def _fake_render(job: Job, paths: Paths, status="ok", lufs=-21.3, gain=5.3, spec
         (job.listen_dir(paths) / f"{k:03d}.opus").write_bytes(data)
     write_meta(job.meta_path(paths), {"status": status, "spec_hash": spec or job.spec_hash,
                                       "master_hash": job.master_hash, "render_hash": job.render_hash,
-                                      "lufs": lufs, "tp": -1.5, "gain_db": gain, "song": job.song_id,
+                                      # a coherent loudness-limited render: -9.0 + 5.3 = -3.7 dBTP, under the -1.5 ceiling.
+                                      # tp + gain_db is a published invariant now (#27).
+                                      "lufs": lufs, "tp": tp, "gain_db": gain, "song": job.song_id,
+                                      "output_tp": round(tp + gain, 3),
                                       "variant": job.variant_id,
                                       **({} if master_kept is None else {"master_kept": master_kept})})
 

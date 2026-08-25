@@ -242,6 +242,27 @@ def cmd_manifest(args) -> int:
     return 3 if report.get("refused") else 0
 
 
+def cmd_audit_peaks(args) -> int:
+    """Report every render that breaks the peak invariant or predates the current pipeline (#27).
+
+    Exit 0 only when both lists are empty: that is the acceptance criterion, so it is the exit
+    status a run script can gate on."""
+    from . import PIPELINE_VERSION
+    from .validate import peak_violations
+    paths = paths_from(args)
+    report = peak_violations(paths, load_settings(paths), current_pipeline=PIPELINE_VERSION)
+    print(json.dumps(report if args.json else
+                     {k: (len(v) if isinstance(v, list) else v) for k, v in report.items()}, indent=1))
+    if not args.json:
+        for row in report["unsafe"][:20]:
+            print(f"  UNSAFE  {row['song']}/{row['variant']}: {row['why']}")
+        for row in report["stale"][:5]:
+            print(f"  stale   {row['song']}/{row['variant']}: pipeline {row['pipeline_version']}")
+        if len(report["stale"]) > 5:
+            print(f"  stale   … and {len(report['stale']) - 5} more")
+    return 1 if (report["unsafe"] or report["stale"] or report["unreadable"]) else 0
+
+
 def cmd_publish(args) -> int:
     from .publish import prune, publish, restamp
     paths = paths_from(args)
@@ -313,6 +334,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--restamp", action="store_true",
                    help="rewrite Content-Type / Cache-Control on objects already in the bucket to what "
                         "publish sends (backfill for #14); --dry-run lists what would change")
+    s = sub.add_parser("audit-peaks", help="every render that breaks the peak ceiling or predates the pipeline")
+    add_path_args(s)
+    s.add_argument("--json", action="store_true", help="full detail rather than counts")
     s = sub.add_parser("status", help="summarize work/renders"); add_path_args(s)
     s.add_argument("--json", action="store_true")
     s = sub.add_parser("worker", help="phase-2 upload worker (stub)"); add_path_args(s)
@@ -343,6 +367,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_manifest(args)
         if args.cmd == "publish":
             return cmd_publish(args)
+        if args.cmd == "audit-peaks":
+            return cmd_audit_peaks(args)
         if args.cmd == "status":
             return cmd_status(args)
         if args.cmd == "calibrate":

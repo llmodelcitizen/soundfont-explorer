@@ -17,6 +17,13 @@ from .helpers import ENGINES_JSON, adl_variant, song
 from .test_pack_manifest import FIX, _fake_render
 
 
+def _fake_peak(pcm, settings):
+    """The artifact peak check is a second ffmpeg pass over the mastered PCM (#27). These fakes
+    produce bytes, not audio, so report the value the faked measurement + gain imply: exactly at
+    the ceiling, which is safe."""
+    return settings.tp_ceiling_dbtp
+
+
 class TestRunJob(unittest.TestCase):
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
@@ -72,6 +79,7 @@ class TestRunJob(unittest.TestCase):
         with mock.patch.object(render_mod.engines, "get", lambda name: FakeEngine), \
                 mock.patch.object(render_mod, "run", fake_run), \
                 mock.patch.object(render_mod, "measure", fake_measure), \
+                mock.patch.object(render_mod, "measured_peak_dbtp", _fake_peak), \
                 mock.patch.object(render_mod, "master_pcm", fake_master_pcm), \
                 mock.patch.object(render_mod, "decode_padded", fake_decode_padded), \
                 mock.patch.object(render_mod, "encode_tiers", fake_encode_tiers):

@@ -156,12 +156,13 @@ class TestRomIdentity(unittest.TestCase):
 
     def test_non_rom_hashes_are_pinned(self):
         # every published object is keyed by master_hash, so its inputs are a contract: adding the
-        # ROM digest (#21) must not move a single non-ROM hash. Values computed before the change.
-        self.assertEqual(Job(song(), sf2_variant(), SETTINGS, self.EMETA).master_hash, "e4c1e4cfb94c")
+        # ROM digest (#21) must not move a single non-ROM hash. Re-pinned for PIPELINE_VERSION 3
+        # (#27: peak-safe mastering invalidates every artifact mastered under the old rule).
+        self.assertEqual(Job(song(), sf2_variant(), SETTINGS, self.EMETA).master_hash, "d894f4b13979")
         self.assertEqual(Job(song(), adl_variant(), SETTINGS, ENGINES_JSON["engines"]["adlmidi"]).master_hash,
-                         "5e4f30ba360f")
+                         "b1f0224a8ac4")
         self.assertEqual(Job(song(), sf2_variant(), SETTINGS, self.EMETA, rom_sha256="f" * 64).master_hash,
-                         "e4c1e4cfb94c")   # ignored unless requires_rom
+                         "d894f4b13979")   # ignored unless requires_rom
 
     def test_rom_contents_key_rom_variants(self):
         a = Job(song(), rom_variant(), SETTINGS, self.EMETA, rom_sha256="a" * 64)
