@@ -277,7 +277,7 @@ select:focus-visible {
   cursor: pointer;
 }
 .facet-help-btn:hover,
-.facet-help-btn[aria-expanded='true'] {
+.facet-help-btn[data-open='true'] {
   background: var(--btn-hover);
   color: var(--fg);
   border-color: var(--accent);
@@ -290,6 +290,10 @@ select:focus-visible {
   z-index: 6;
   width: max-content;
   max-width: min(320px, calc(100vw - 16px));
+  /* a landscape phone is barely taller than this copy: scroll the overflow rather than hang it
+     off the bottom of the screen, where the caveat the reader came for is cut off */
+  max-height: calc(100vh - 16px);
+  overflow: auto;
   padding: 6px 9px;
   background: var(--panel);
   color: var(--fg);

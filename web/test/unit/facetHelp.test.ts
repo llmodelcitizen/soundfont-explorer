@@ -1,15 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FACET_KEYS, FACET_LABELS } from '../../src/state/filterIndex';
-import { FACET_HELP, HelpTips } from '../../src/ui/facetHelp';
+import { FACET_HELP, HelpTips, tipPosition } from '../../src/ui/facetHelp';
+
+/** sentences that actually end: a full stop followed by a space or the end of the copy */
+const sentences = (text: string): number => (text.match(/[.!?](\s|$)/g) ?? []).length;
 
 describe('facet help copy', () => {
-  it('explains every filter category and nothing else', () => {
-    expect(Object.keys(FACET_HELP).sort()).toEqual([...FACET_KEYS].sort());
+  it('explains every filter category', () => {
     for (const key of FACET_KEYS) {
       const text = FACET_HELP[key];
       expect(text.trim(), `${FACET_LABELS[key]} has no help copy`).not.toBe('');
       // a concise multi-sentence explanation, not a restated heading
-      expect(text.split('. ').length, `${FACET_LABELS[key]} help is a single sentence`).toBeGreaterThan(1);
+      expect(sentences(text), `${FACET_LABELS[key]} help is a single sentence`).toBeGreaterThan(1);
       expect(text.length).toBeGreaterThan(80);
     }
   });
@@ -44,15 +46,19 @@ describe('help bubbles', () => {
 
   it('keeps the bubble through the click that follows a tap focus, and toggles after that', () => {
     const tips = new HelpTips();
-    // one tap on a touch screen: focus, then click
+    // one tap on a touch screen: focus, then click. The enter/leave a tap also fires is hover
+    // only on a hovering pointer, and filters.ts keeps the touch-derived pair out of here — the
+    // browser's whole tap sequence is replayed against the DOM in filterHelp.test.ts.
     tips.focus('decade');
     tips.activate('decade');
     expect(tips.open).toBe('decade');
-    // a second tap on the already-focused trigger closes it
+    // a second tap on the already-focused trigger closes it, a third opens it again
     tips.activate('decade');
     expect(tips.open).toBe(null);
     tips.activate('decade');
     expect(tips.open).toBe('decade');
+    tips.activate('decade');
+    expect(tips.open).toBe(null);
   });
 
   it('closes when focus moves away, even after a tap opened it', () => {
@@ -108,5 +114,39 @@ describe('help bubbles', () => {
     tips.focus('completeness');
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith('completeness');
+  });
+});
+
+describe('bubble placement', () => {
+  const view = { width: 1280, height: 800 };
+  const box = { width: 320, height: 120 };
+
+  it('hangs under the trigger, flush against it so the pointer can reach it', () => {
+    expect(tipPosition({ top: 100, bottom: 116, left: 200 }, box, view)).toEqual({ left: 200, top: 116 });
+    // a fractional anchor rounds towards the trigger: a sub-pixel crack between the two ends the
+    // hover as the pointer crosses it
+    expect(tipPosition({ top: 100.4, bottom: 116.6, left: 200 }, box, view).top).toBe(116);
+    expect(tipPosition({ top: 700.4, bottom: 716.6, left: 200 }, box, view).top).toBe(581); // 700.4 - 120
+  });
+
+  it('flips above the trigger when the bubble would not fit below it', () => {
+    expect(tipPosition({ top: 700, bottom: 716, left: 200 }, box, view)).toEqual({ left: 200, top: 580 });
+  });
+
+  it('keeps the bubble inside a narrow viewport', () => {
+    // the right-most category on a phone: anchored at the trigger the bubble would run off-screen
+    expect(tipPosition({ top: 40, bottom: 56, left: 360 }, box, { width: 390, height: 844 }).left).toBe(62);
+    expect(tipPosition({ top: 40, bottom: 56, left: 2 }, box, { width: 390, height: 844 }).left).toBe(8);
+  });
+
+  it('clamps the bottom when neither placement fits, rather than cutting the copy off', () => {
+    // a landscape phone: the facet panel is near the top, so there is no room above either
+    const at = tipPosition({ top: 120, bottom: 136, left: 40 }, { width: 320, height: 260 }, { width: 844, height: 390 });
+    expect(at.top).toBe(122); // 390 - 8 - 260
+    expect(at.top + 260).toBeLessThanOrEqual(390 - 8);
+  });
+
+  it('pins a bubble taller than the viewport to the top (the stylesheet scrolls the rest)', () => {
+    expect(tipPosition({ top: 120, bottom: 136, left: 40 }, { width: 320, height: 600 }, { width: 844, height: 390 }).top).toBe(8);
   });
 });

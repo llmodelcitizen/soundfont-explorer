@@ -320,7 +320,7 @@
   color: #000000;
 }
 [data-theme='win95'] .facet-help-btn:active,
-[data-theme='win95'] .facet-help-btn[aria-expanded='true'] {
+[data-theme='win95'] .facet-help-btn[data-open='true'] {
   border-color: var(--w95-edge-pressed);
   box-shadow: var(--w95-pressed);
 }

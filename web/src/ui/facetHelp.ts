@@ -1,7 +1,8 @@
 /**
- * Help copy for every filter category, plus the state behind the "?" affordance beside each
- * heading. One bubble is open at a time, opened by pointer hover, keyboard focus or tap and
- * dismissed by Escape, a second tap, leaving the trigger, or focus moving away (issue #26).
+ * Help copy for every filter category, plus the state and geometry behind the "?" affordance
+ * beside each heading. One bubble is open at a time, opened by pointer hover, keyboard focus or
+ * tap and dismissed by Escape, a second tap, a click or tap outside it, leaving the trigger, or
+ * focus moving away (issue #26).
  */
 import type { FacetKey } from '../state/filterIndex';
 
@@ -100,4 +101,37 @@ export class HelpTips {
     this.shown = next;
     this.onChange(next);
   }
+}
+
+/** a rectangle as getBoundingClientRect gives it (only the edges the bubble is anchored to) */
+export interface Anchor {
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+/**
+ * Where a bubble goes, in viewport (position: fixed) coordinates: under its trigger when it fits
+ * there, above it when it does not, and always clamped inside the viewport — a bubble that hangs
+ * off the bottom of a landscape phone loses the end of its copy, which for quality is the whole
+ * point of the text (issue #26).
+ *
+ * The bubble sits flush against the trigger (rounded away from it, so no sub-pixel crack opens
+ * between them): a pointer moving off the "?" to read the bubble must never cross ground that
+ * belongs to neither, because that ends the hover and takes the bubble down with it (WCAG 1.4.13).
+ */
+export function tipPosition(
+  anchor: Anchor,
+  box: { readonly width: number; readonly height: number },
+  view: { readonly width: number; readonly height: number },
+  pad = 8,
+): { left: number; top: number } {
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+  const below = Math.floor(anchor.bottom);
+  const above = Math.ceil(anchor.top - box.height);
+  const lowest = view.height - pad - box.height; // the lowest top edge that still fits
+  return {
+    left: Math.round(clamp(anchor.left, pad, Math.max(pad, view.width - pad - box.width))),
+    top: Math.floor(clamp(below > lowest && above >= pad ? above : below, pad, Math.max(pad, lowest))),
+  };
 }

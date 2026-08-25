@@ -55,6 +55,10 @@ export function installKeyboard(target: Window, a: KeyActions): () => void {
     const t = e.target as HTMLElement | null;
     return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
   };
+  // The facet panel is a field of buttons — one per filter value, plus the category help triggers
+  // (issue #26). Tab has to walk them, so A/B only claims the key outside the panel; without this
+  // the first Tab into the panel is also the last, and eight of the nine "?" are unreachable.
+  const inFilterPanel = (e: KeyboardEvent) => !!(e.target as HTMLElement | null)?.closest?.('.facets');
   const down = (e: KeyboardEvent) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (isTyping(e)) {
@@ -102,6 +106,7 @@ export function installKeyboard(target: Window, a: KeyActions): () => void {
         a.skip(e.shiftKey ? 30 : 5);
         return;
       case 'Tab':
+        if (inFilterPanel(e)) return;
         e.preventDefault();
         if (!e.repeat) a.ab();
         return;

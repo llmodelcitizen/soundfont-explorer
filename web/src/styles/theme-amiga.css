@@ -154,12 +154,15 @@
   border-color: #000000;
   box-shadow: var(--amiga-out);
   border-radius: 0;
-  /* Topaz is a bitmap face: keep the glyph at the size the rest of the theme draws it */
+  /* Topaz is a bitmap face: keep the glyph at the size the rest of the theme draws it, and give
+     the gadget the two extra pixels that keeps the "?" off its own border */
   font-size: 14px;
   line-height: 14px;
+  width: 18px;
+  height: 18px;
 }
 [data-theme='amiga'] .facet-help-btn:hover,
-[data-theme='amiga'] .facet-help-btn[aria-expanded='true'] {
+[data-theme='amiga'] .facet-help-btn[data-open='true'] {
   background: #f08000;
   color: #000000;
   border-color: #000000;

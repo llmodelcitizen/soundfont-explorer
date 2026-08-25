@@ -318,6 +318,7 @@ export class App {
 
   private buildUi(sel: Selection, query: string): void {
     if (this.uninstallKeys) this.uninstallKeys();
+    this.filters?.dispose(); // the old bar's document-level help listeners go with its DOM
     clear(this.root);
     // the new FilterBar starts closed: a `filters-open` left over from the previous song would
     // keep Now Playing hidden on phones (and the scrim it pointed at is gone with the old root)

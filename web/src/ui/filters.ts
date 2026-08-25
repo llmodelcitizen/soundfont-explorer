@@ -1,7 +1,7 @@
 /** Filter bar: facet groups with live counts, OR within / AND across; search box; hidden chip. */
 import { FACET_KEYS, FACET_LABELS, type FacetKey, type FilterIndex, type Selection } from '../state/filterIndex';
 import { clear, h, setPressed } from './dom';
-import { FACET_HELP, HelpTips } from './facetHelp';
+import { FACET_HELP, HelpTips, tipPosition } from './facetHelp';
 
 export interface FilterCallbacks {
   onChange(sel: Selection, query: string): void;
@@ -46,19 +46,23 @@ export const VALUE_LABELS: Record<string, string> = {
 
 export const label = (v: string): string => VALUE_LABELS[v] ?? v.replace(/_/g, ' ');
 
+/**
+ * Grace after the pointer leaves a help trigger, before its bubble goes. The bubble sits against
+ * its trigger, but a pointer heading for the middle of the text leaves the trigger sideways first
+ * and crosses the heading — without the grace the bubble would vanish on the way to being read
+ * (WCAG 1.4.13 Hoverable).
+ */
+const HOVER_GRACE_MS = 220;
+
 /** anchor a help bubble under its trigger, nudged to stay inside the viewport (it is position: fixed) */
 function placeTip(btn: HTMLElement, tip: HTMLElement): void {
   tip.style.left = '0px';
   tip.style.top = '0px';
-  const anchor = btn.getBoundingClientRect();
   const box = tip.getBoundingClientRect();
   if (!box.width || !box.height) return; // never laid out: nothing sensible to anchor to
-  const pad = 8;
-  const gap = 6;
-  const below = anchor.bottom + gap;
-  const above = anchor.top - gap - box.height;
-  tip.style.left = `${Math.round(Math.min(Math.max(pad, anchor.left), Math.max(pad, window.innerWidth - pad - box.width)))}px`;
-  tip.style.top = `${Math.round(below + box.height > window.innerHeight - pad && above >= pad ? above : below)}px`;
+  const at = tipPosition(btn.getBoundingClientRect(), box, { width: window.innerWidth, height: window.innerHeight });
+  tip.style.left = `${at.left}px`;
+  tip.style.top = `${at.top}px`;
 }
 
 export class FilterBar {
@@ -71,8 +75,9 @@ export class FilterBar {
   favoritesOnly = false;
   private favBtn!: HTMLButtonElement;
   /** the per-category "?" trigger and its bubble, rebuilt with the panel */
-  private helpEls = new Map<FacetKey, { btn: HTMLElement; tip: HTMLElement }>();
+  private helpEls = new Map<FacetKey, { btn: HTMLElement; tip: HTMLElement; wrap: HTMLElement }>();
   private help = new HelpTips((open) => this.paintHelp(open));
+  private helpLeave: ReturnType<typeof setTimeout> | null = null;
   private open = false;
   /** the facet panel is rebuilt lazily: only while open, or on opening if filters changed meanwhile */
   private stale = true;
@@ -108,17 +113,46 @@ export class FilterBar {
       this.favBtn.blur();
     });
     this.groups = h('div', { class: 'facets hidden' });
-    // the bubble is fixed, so the panel's own scrolling has to be passed on to it
+    // the bubble is fixed, so the panel's own scrolling — and any viewport change under it, such
+    // as a phone rotation — has to be passed on to it
     this.groups.addEventListener('scroll', () => this.trackHelp());
+    window.addEventListener('resize', this.onResize);
+    // A bubble is a transient overlay: a click or tap outside it drops it, and so does Escape.
+    // Both listen in the capture phase, so the Escape that dismissed a bubble never reaches the
+    // app keymap, which would close the whole filter panel with it (issue #26).
+    document.addEventListener('pointerdown', this.onOutsidePointer, true);
+    window.addEventListener('keydown', this.onEscape, true);
     this.el = h('div', { class: 'filterbar' }, h('div', { class: 'filterrow' }, toggle, this.favBtn, this.hiddenChip, this.search), this.groups);
   }
+
+  /** the bar is rebuilt for every song: let go of the listeners that outlive its own DOM */
+  dispose(): void {
+    this.cancelHelpLeave();
+    window.removeEventListener('resize', this.onResize);
+    document.removeEventListener('pointerdown', this.onOutsidePointer, true);
+    window.removeEventListener('keydown', this.onEscape, true);
+  }
+
+  private readonly onResize = (): void => this.trackHelp();
+
+  private readonly onOutsidePointer = (e: Event): void => {
+    if (e instanceof PointerEvent) this.outsideHelp(e);
+  };
+
+  private readonly onEscape = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && this.help.escape()) e.stopPropagation();
+  };
 
   toggle(force?: boolean): void {
     const next = force ?? !this.open;
     if (next === this.open) return;
     this.open = next;
     if (next && this.stale) this.render();
-    else if (!next) this.help.close(); // a bubble must not come back with the panel
+    else if (!next) {
+      // a bubble must not come back with the panel, nor the focus it was holding on to
+      this.cancelHelpLeave();
+      this.help.reset();
+    }
     this.groups.classList.toggle('hidden', !next);
     this.cb.onOpenChange?.(next);
   }
@@ -153,12 +187,37 @@ export class FilterBar {
   /** the "?" beside a category heading: hover, keyboard focus or tap shows the same description */
   private helpFor(key: FacetKey): HTMLElement {
     const id = `facet-help-${key}`;
-    const btn = h('button', { type: 'button', class: 'facet-help-btn', 'aria-expanded': 'false', 'aria-describedby': id, 'aria-label': `about the ${FACET_LABELS[key]} filter` }, '?');
+    const btn = h('button', { type: 'button', class: 'facet-help-btn', dataset: { open: 'false' }, 'aria-describedby': id, 'aria-label': `about the ${FACET_LABELS[key]} filter` }, '?');
     const tip = h('div', { class: 'facet-tip hidden', role: 'tooltip', id }, FACET_HELP[key]);
     const wrap = h('span', { class: 'facet-help' }, btn, tip);
-    // on the wrapper, so reading the bubble itself keeps it open
-    wrap.addEventListener('mouseenter', () => this.help.pointerEnter(key));
-    wrap.addEventListener('mouseleave', () => this.help.pointerLeave(key));
+    // On the wrapper, so reading the bubble itself keeps it open: it hangs against its trigger,
+    // and a pointer that clips the heading on the way there has the grace above to arrive. A tap
+    // emits the same enter/leave around its click, with pointerType 'touch': that is not hover,
+    // and taking it for hover left the bubble already open when the tap's click arrived, which
+    // toggled it straight back shut (issue #26).
+    wrap.addEventListener('pointerenter', (e) => {
+      if (e.pointerType === 'touch') return;
+      this.cancelHelpLeave();
+      this.help.pointerEnter(key);
+    });
+    wrap.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'touch') return;
+      this.cancelHelpLeave();
+      this.helpLeave = setTimeout(() => {
+        this.helpLeave = null;
+        this.help.pointerLeave(key);
+      }, HOVER_GRACE_MS);
+    });
+    // A tap on the bubble is aimed at the filter chips it covers, so it takes the bubble down —
+    // on the click rather than the press, so that the tap is spent here instead of toggling a
+    // chip the reader could not see. A mouse press is left alone: the copy stays selectable.
+    let tapped = false;
+    tip.addEventListener('pointerdown', (e) => {
+      tapped = e.pointerType === 'touch';
+    });
+    tip.addEventListener('click', () => {
+      if (tapped) this.help.close();
+    });
     btn.addEventListener('focus', () => this.help.focus(key));
     btn.addEventListener('blur', () => this.help.blur(key));
     btn.addEventListener('click', (e) => {
@@ -166,23 +225,37 @@ export class FilterBar {
       this.help.activate(key);
     });
     btn.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        // an Escape that closed a bubble stops here; one with nothing open still closes the panel
-        if (this.help.escape()) e.stopPropagation();
-      } else if (e.key === ' ' || e.key === 'Enter') {
-        // the button's own activation is enough: the global keymap must not also play/pause
-        e.stopPropagation();
-      }
+      // the button's own activation is enough: the global keymap must not also play/pause. Tab is
+      // deliberately left alone — keyboard.ts lets it walk the panel so every trigger is reachable.
+      if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
     });
-    this.helpEls.set(key, { btn, tip });
+    this.helpEls.set(key, { btn, tip, wrap });
     return wrap;
+  }
+
+  private cancelHelpLeave(): void {
+    if (this.helpLeave === null) return;
+    clearTimeout(this.helpLeave);
+    this.helpLeave = null;
+  }
+
+  /** a click or tap anywhere but the open bubble and its own trigger drops it */
+  private outsideHelp(e: PointerEvent): void {
+    const key = this.help.open;
+    const els = key && this.helpEls.get(key);
+    if (!els) return;
+    const target = e.target;
+    if (target instanceof Node && els.wrap.contains(target)) return;
+    this.help.close();
   }
 
   /** one bubble visible at a time, and every trigger's state announced */
   private paintHelp(open: FacetKey | null): void {
     for (const [key, { btn, tip }] of this.helpEls) {
       const on = key === open;
-      btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+      // a tooltip is not a disclosure: the stylesheets key off data-open, and a screen reader
+      // gets the copy from aria-describedby whether the bubble is painted or not
+      btn.dataset.open = on ? 'true' : 'false';
       tip.classList.toggle('hidden', !on);
       if (on) placeTip(btn, tip);
     }
@@ -201,6 +274,7 @@ export class FilterBar {
 
   private render(): void {
     this.stale = false;
+    this.cancelHelpLeave();
     this.help.reset();
     this.helpEls.clear();
     clear(this.groups);
