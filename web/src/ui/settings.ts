@@ -100,7 +100,7 @@ export class SettingsModal {
       h(
         'section',
         { class: 'setting' },
-        h('label', null, 'Mark a variant as listened (●) after ', input, ' s of playback'),
+        h('label', null, 'Mark a variant as listened (', h('span', { class: 'listened-glyph' }, '●'), ') after ', input, ' s of playback'),
         range,
         h('div', { class: 'btnrow' }, resetTrack, resetAll),
         h('p', { class: 'muted small' }, `current track: ${this.cb.trackTitle()}`),

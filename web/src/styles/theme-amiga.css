@@ -339,6 +339,13 @@
 [data-theme='amiga'] .settings .footrow {
   margin-top: 29px;
 }
+/* ● is not in Topaz, so it arrives from the fallback face on that face's own metrics: its ink
+   sits 3.5 px above the baseline at 14 px where Topaz's tall parentheses centre on 8.5 px, which
+   is why the dot reads as level with the bottom of the brackets. Lift it by the difference. */
+[data-theme='amiga'] .settings .listened-glyph {
+  position: relative;
+  top: -5px;
+}
 /* The ♥ / ● column toggles come from fallback glyphs: full-size, centred on their checkbox. */
 [data-theme='amiga'] .settings .col-fav,
 [data-theme='amiga'] .settings .col-dot {
