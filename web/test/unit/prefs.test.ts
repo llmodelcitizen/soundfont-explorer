@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, applyPreservePreference, loadPrefs, sanitizeLedger } from '../../src/state/prefs';
+import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, applyPreservePreference, bootPosition, loadPrefs, sanitizeLedger, urlPosition } from '../../src/state/prefs';
 
 describe('prefs + listened ledger', () => {
   it('defaults without localStorage', () => {
@@ -78,31 +78,54 @@ describe('per-track positions', () => {
   });
 });
 
-describe('turning "preserve track position" off', () => {
+describe('changing "preserve track position"', () => {
   /** a TrackPositions with two visited tracks, plus a spy for the URL's saved position */
   const scenario = () => {
     const positions = new TrackPositions();
     positions.remember('one', 12.5);
     positions.remember('two', 47);
-    let forgets = 0;
-    return { positions, forget: () => { forgets += 1; }, forgotten: () => forgets };
+    let syncs = 0;
+    return { positions, sync: () => { syncs += 1; }, synced: () => syncs };
   };
 
   it('zeroes every remembered position, not just future ones, and drops the URL position', () => {
     const s = scenario();
-    applyPreservePreference(true, false, s.positions, s.forget);
+    applyPreservePreference(true, false, s.positions, s.sync);
     expect(s.positions.recall('one')).toBe(0);
     expect(s.positions.recall('two')).toBe(0);
-    expect(s.forgotten()).toBe(1);
+    expect(s.synced()).toBe(1);
   });
 
-  it('leaves positions alone unless the option actually goes off', () => {
-    for (const [was, now] of [[true, true], [false, true], [false, false]] as const) {
+  // the symmetric case: nothing to clear, but the URL must carry a position again or a reload
+  // straight after re-enabling the option would start the audible track from zero
+  it('puts the URL position back when the option goes on again', () => {
+    const s = scenario();
+    applyPreservePreference(false, true, s.positions, s.sync);
+    expect(s.synced()).toBe(1);
+    expect(s.positions.recall('one')).toBe(12.5);
+  });
+
+  it('does nothing at all when the option did not change', () => {
+    for (const both of [true, false]) {
       const s = scenario();
-      applyPreservePreference(was, now, s.positions, s.forget);
+      applyPreservePreference(both, both, s.positions, s.sync);
       expect(s.positions.recall('one')).toBe(12.5);
-      expect(s.forgotten()).toBe(0);
+      expect(s.synced()).toBe(0);
     }
+  });
+});
+
+describe('which position survives a reload', () => {
+  it('restores a shared or bookmarked t= only while positions are preserved', () => {
+    expect(bootPosition(true, 90)).toBe(90);
+    expect(bootPosition(true, undefined)).toBe(0);
+    expect(bootPosition(false, 90)).toBe(0);
+  });
+
+  it('writes no position for a track that ran to its end, or when positions are not preserved', () => {
+    expect(urlPosition(true, false, 188)).toBe(188);
+    expect(urlPosition(true, true, 188)).toBeUndefined();
+    expect(urlPosition(false, false, 188)).toBeUndefined();
   });
 });
 

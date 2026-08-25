@@ -29,7 +29,7 @@ import { SongPicker } from './songpicker';
 import { adjacentTrackId, autoAdvanceTarget, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { captureFocus, restoreFocus, type FocusMemento } from './focus';
-import { Favorites, ListenedLedger, TrackPositions, applyPreservePreference, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
+import { Favorites, ListenedLedger, TrackPositions, applyPreservePreference, bootPosition, loadPrefs, savePrefs, urlPosition, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
 import { audioSession, createContext, installResumeOnGesture, unlock } from '../audio/unlock';
@@ -85,7 +85,7 @@ export class App {
       // the URL is rewritten from `this.prefs`: adopt the new preference before reacting to it
       this.prefs = p;
       savePrefs(p);
-      applyPreservePreference(wasPreserving, p.preserveTrackPosition, this.trackPositions, () => this.forgetUrlPosition());
+      applyPreservePreference(wasPreserving, p.preserveTrackPosition, this.trackPositions, () => this.syncUrlPosition());
       this.refreshListened();
       if (this.tracks) {
         this.tracks.autoNextBox.checked = p.autoNextTrack;
@@ -182,7 +182,9 @@ export class App {
     }
     this.catalog = catalog.value;
     this.installGlobalListeners();
-    await this.loadSong(songId, { setDoc: set.value, variant: this.url.variant, t: this.url.t });
+    // a shared or bookmarked `t=` is a saved position like any other: it only restores while the
+    // user preserves positions, otherwise the track they open starts at the beginning
+    await this.loadSong(songId, { setDoc: set.value, variant: this.url.variant, t: bootPosition(this.prefs.preserveTrackPosition, this.url.t) });
     this.tickUi();
     this.onHashChange();
   }
@@ -478,7 +480,7 @@ export class App {
           const wasPreserving = this.prefs.preserveTrackPosition;
           this.prefs = { ...this.prefs, preserveTrackPosition: v };
           savePrefs(this.prefs);
-          applyPreservePreference(wasPreserving, v, this.trackPositions, () => this.forgetUrlPosition());
+          applyPreservePreference(wasPreserving, v, this.trackPositions, () => this.syncUrlPosition());
           this.settings.setPrefs(this.prefs);
         },
       },
@@ -555,6 +557,12 @@ export class App {
         this.stoppedByUser = false;
       }
       this.onStatus(s);
+      if (s.kind === 'ended') {
+        // a track that ran to its end has no position left to resume from: zero the saved one and
+        // drop the `t=` the last seek left in the URL, so a reload does not land 2 s from the end
+        if (this.prefs.preserveTrackPosition) this.trackPositions.remember(this.song.id, 0);
+        this.syncUrl(true);
+      }
       const next = autoAdvanceTarget(this.songs.songs, this.song.id, s.kind, { loop: this.engine.timeline.loop, autoNext: this.prefs.autoNextTrack });
       if (next) this.switchSong(next, { play: true, auto: true });
     });
@@ -817,11 +825,12 @@ export class App {
   }
 
   /**
-   * The one saved position no map holds: the `t=` a reload would resume from. Dropped at once so
-   * the URL agrees with the preference. What is currently audible is left where it is — turning
-   * an option off must not yank the listener back to the start of the track they are hearing.
+   * Rewrite the one saved position no map holds: the `t=` a reload would resume from. Turning the
+   * preference off drops it at once so the URL agrees with the preference; turning it back on puts
+   * the audible position back, so a reload right afterwards resumes where the listener is. What is
+   * currently audible never moves — a checkbox must not yank the listener out of the track.
    */
-  private forgetUrlPosition(): void {
+  private syncUrlPosition(): void {
     if (!this.engine) return;
     this.syncUrl(true);
   }
@@ -923,8 +932,7 @@ export class App {
       writeUrl({
         song: this.song.id,
         variant: this.engine.audible ?? undefined,
-        // with positions not preserved a reload starts from the beginning: carry no `t=` to restore
-        t: this.prefs.preserveTrackPosition ? this.engine.position() : undefined,
+        t: urlPosition(this.prefs.preserveTrackPosition, this.engine.status.kind === 'ended', this.engine.position()),
         filters: this.filters.sel,
         q: this.filters.query,
         theme: this.theme,
