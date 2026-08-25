@@ -22,6 +22,9 @@ export interface FullscreenDocument {
 /** what to tell someone whose browser cannot do it (iPhone Safari, or an iframe without allowfullscreen) */
 export const FULLSCREEN_UNSUPPORTED = 'This browser has no full-screen mode for web pages. On iPhone, add the site to your Home Screen to get a window without browser chrome.';
 
+/** and what to tell someone whose browser can do it but turned this particular request down */
+export const FULLSCREEN_REFUSED = 'The browser refused that full-screen request. Try the full-screen button here instead.';
+
 export function fullscreenSupported(doc: FullscreenDocument | undefined = typeof document === 'undefined' ? undefined : (document as unknown as FullscreenDocument)): boolean {
   const el = doc?.documentElement;
   if (!el || (typeof el.requestFullscreen !== 'function' && typeof el.webkitRequestFullscreen !== 'function')) return false;
@@ -36,7 +39,8 @@ export function isFullscreen(doc: FullscreenDocument | undefined = typeof docume
 
 /**
  * Enter/leave full screen. Resolves true when the browser accepted the request, false when it
- * cannot (unsupported, or the request was rejected) — the caller shows FULLSCREEN_UNSUPPORTED.
+ * cannot — the caller tells the two apart with fullscreenSupported(): a browser with no element
+ * full screen gets FULLSCREEN_UNSUPPORTED, one that turned this request down FULLSCREEN_REFUSED.
  */
 export async function toggleFullscreen(doc: FullscreenDocument | undefined = typeof document === 'undefined' ? undefined : (document as unknown as FullscreenDocument), force?: boolean): Promise<boolean> {
   if (!doc) return false;

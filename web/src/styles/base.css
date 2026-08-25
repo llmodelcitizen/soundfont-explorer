@@ -287,6 +287,10 @@ select:focus-visible {
   min-height: 0;
   position: relative;
 }
+/* a closing dialog hands focus back here (tabindex -1); it is a container, not a control */
+.list:focus {
+  outline: none;
+}
 .rows {
   display: block;
   min-width: var(--row-min, 0);
@@ -884,20 +888,23 @@ select:focus-visible {
    full-size key gadgets make the keys list taller than a phone (and than 800 px), and a close
    button scrolled out of the box is a dialog with no visible way out (#33). */
 .overlay-box.keys,
-.overlay-box.share {
+.overlay-box.share,
+.overlay-box.settings {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .keys .keymap-scroll,
-.share .share-scroll {
+.share .share-scroll,
+.settings .settings-scroll {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 .keymap-foot,
-.share-foot {
+.share-foot,
+.settings-foot {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;

@@ -474,6 +474,12 @@
   background: #ffffff;
   color: #800000;
 }
+/* --warn is #ffff00, which the transport strip carries on navy: on the #c0c0c0 dialog face it
+   measures 1.69:1, less legible than the plain hint it replaces. A refusal has to be readable,
+   so it takes the same maroon this theme already gives 'clear all site data' (#34). */
+[data-theme='win95'] .settings .colfoot span.warn {
+  color: var(--bad);
+}
 
 /* Dialogs and the debug panel are gray windows: face-coloured outer ring, two-pixel bevel,
    and a full-bleed navy caption bar. */

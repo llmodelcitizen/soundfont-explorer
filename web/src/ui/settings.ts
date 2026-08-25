@@ -4,7 +4,8 @@ import { DEFAULT_PREFS, type Prefs } from '../state/prefs';
 import { COLUMNS, columnTitle } from './columns';
 import { isCompact } from '../config';
 import { clearAllSiteData } from '../state/wipe';
-import { FULLSCREEN_UNSUPPORTED, fullscreenSupported, isFullscreen, toggleFullscreen } from './fullscreen';
+import { FULLSCREEN_REFUSED, FULLSCREEN_UNSUPPORTED, fullscreenSupported, isFullscreen, toggleFullscreen } from './fullscreen';
+import { activeElement, restoreFocus, trapTab } from './focus';
 
 export interface SettingsCallbacks {
   onChange(p: Prefs): void;
@@ -12,6 +13,8 @@ export interface SettingsCallbacks {
   onResetAll(): void;
   onResetFont(): void;
   trackTitle(): string;
+  /** where focus goes when the dialog closes and the control that opened it is gone */
+  onClose?(): void;
 }
 
 /** what the Display hint says when nothing has gone wrong */
@@ -25,6 +28,7 @@ export class SettingsModal {
   private fullscreenHint: HTMLElement | null = null;
   /** why the last full-screen attempt did not happen, shown in place of the hint */
   private fullscreenNote = '';
+  private opener: HTMLElement | null = null;
 
   constructor(private prefs: Prefs, private cb: SettingsCallbacks) {
     this.box = h('div', { class: 'overlay-box settings', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'settings-title' });
@@ -36,7 +40,11 @@ export class SettingsModal {
       if (e.key === 'Escape') {
         this.toggle(false);
         e.stopPropagation();
+        return;
       }
+      // Tab wraps inside the box: at the window it is A/B, and focus that reaches <body> puts
+      // every global shortcut back in charge behind an aria-modal dialog (#34)
+      trapTab(this.box, e);
     });
     this.render();
   }
@@ -69,18 +77,29 @@ export class SettingsModal {
 
   /** show why full screen did not happen, where the explanation already lives (#34) */
   reportFullscreen(problem: string): void {
-    this.toggle(true);
+    // toggle(true) rebuilds the dialog, which is what refresh() exists to avoid: only open it
+    // when it is not already open, or a half-typed 'listened after' value goes with it
+    if (!this.visible) this.toggle(true);
     this.refresh(problem);
+    // on a short viewport (phone landscape) the Display hint is below the fold
+    this.fullscreenHint?.scrollIntoView?.({ block: 'nearest' });
   }
 
   toggle(force?: boolean): void {
+    const was = this.visible;
     this.visible = force ?? !this.visible;
     this.el.classList.toggle('hidden', !this.visible);
     if (this.visible) {
+      if (!was) this.opener = activeElement();
       this.render();
       // focus the close button, not the number field: a focused text input makes iOS zoom in
       (this.box.querySelector('.btn.close-settings') as HTMLButtonElement | null)?.focus({ preventScroll: true });
+      return;
     }
+    // a refusal is about one attempt, not about the browser: it must not outlive the dialog
+    this.fullscreenNote = '';
+    if (was) restoreFocus(this.opener, () => this.cb.onClose?.());
+    this.opener = null;
   }
 
   private render(): void {
@@ -117,7 +136,7 @@ export class SettingsModal {
     const fullscreen = h('button', { class: 'btn fullscreen-btn', type: 'button', disabled: !canFullscreen, title: canFullscreen ? 'fill the screen (Shift + F)' : FULLSCREEN_UNSUPPORTED }, isFullscreen() ? 'leave full screen' : 'full screen') as HTMLButtonElement;
     this.fullscreenBtn = fullscreen;
     // a rejected request (no user gesture, a permissions policy) resolves false instead of throwing
-    fullscreen.addEventListener('click', () => void toggleFullscreen().then((ok) => this.refresh(ok ? '' : FULLSCREEN_UNSUPPORTED)));
+    fullscreen.addEventListener('click', () => void toggleFullscreen().then((ok) => this.refresh(ok ? '' : fullscreenSupported() ? FULLSCREEN_REFUSED : FULLSCREEN_UNSUPPORTED)));
     const fullscreenHint = h('span', { class: 'muted small' }, this.fullscreenNote || (canFullscreen ? FULLSCREEN_HINT : FULLSCREEN_UNSUPPORTED));
     if (this.fullscreenNote) fullscreenHint.classList.add('warn');
     this.fullscreenHint = fullscreenHint;
@@ -129,46 +148,52 @@ export class SettingsModal {
     });
     this.box.append(
       h('h2', { id: 'settings-title' }, 'settings'),
+      // the settings scroll, the close button does not: on a short viewport it has to stay on
+      // screen to be a way out, exactly like the keys and share dialogs (#33)
       h(
-        'section',
-        { class: 'setting' },
-        h('label', null, 'Mark a variant as listened (●) after ', input, ' s of playback'),
-        range,
-        h('div', { class: 'btnrow' }, resetTrack, resetAll),
-        h('p', { class: 'muted small' }, `current track: ${this.cb.trackTitle()}`),
-      ),
-      h(
-        'section',
-        { class: 'setting' },
-        h('div', { class: 'setting-title' }, compact ? 'List columns (phone layout)' : 'List columns'),
+        'div',
+        { class: 'settings-scroll' },
         h(
-          'div',
-          { class: 'colgrid' },
-          COLUMNS.filter((c) => !c.always).map((c) => {
-            // the checkboxes edit the column set of the *current* layout (phone vs desktop)
-            const field = compact ? 'mobileColumns' : 'columns';
-            const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
-            box.checked = this.prefs[field].includes(c.key);
-            box.addEventListener('change', () => {
-              const cols = new Set(this.prefs[field]);
-              if (box.checked) cols.add(c.key);
-              else cols.delete(c.key);
-              this.prefs = { ...this.prefs, [field]: COLUMNS.filter((x) => cols.has(x.key)).map((x) => x.key) };
-              this.cb.onChange(this.prefs);
-            });
-            return h('label', { class: `preserve col-${c.key}`, title: columnTitle(c) }, box, ` ${c.label}`);
-          }),
+          'section',
+          { class: 'setting' },
+          h('label', null, 'Mark a variant as listened (●) after ', input, ' s of playback'),
+          range,
+          h('div', { class: 'btnrow' }, resetTrack, resetAll),
+          h('p', { class: 'muted small' }, `current track: ${this.cb.trackTitle()}`),
         ),
-        h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order.')),
-        h('div', { class: 'btnrow colfoot fontfoot' }, resetFont, h('span', { class: 'muted small' }, 'Click or tap the title bar to cycle font selection (modern theme only)')),
+        h(
+          'section',
+          { class: 'setting' },
+          h('div', { class: 'setting-title' }, compact ? 'List columns (phone layout)' : 'List columns'),
+          h(
+            'div',
+            { class: 'colgrid' },
+            COLUMNS.filter((c) => !c.always).map((c) => {
+              // the checkboxes edit the column set of the *current* layout (phone vs desktop)
+              const field = compact ? 'mobileColumns' : 'columns';
+              const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
+              box.checked = this.prefs[field].includes(c.key);
+              box.addEventListener('change', () => {
+                const cols = new Set(this.prefs[field]);
+                if (box.checked) cols.add(c.key);
+                else cols.delete(c.key);
+                this.prefs = { ...this.prefs, [field]: COLUMNS.filter((x) => cols.has(x.key)).map((x) => x.key) };
+                this.cb.onChange(this.prefs);
+              });
+              return h('label', { class: `preserve col-${c.key}`, title: columnTitle(c) }, box, ` ${c.label}`);
+            }),
+          ),
+          h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order.')),
+          h('div', { class: 'btnrow colfoot fontfoot' }, resetFont, h('span', { class: 'muted small' }, 'Click or tap the title bar to cycle font selection (modern theme only)')),
+        ),
+        h(
+          'section',
+          { class: 'setting' },
+          h('div', { class: 'setting-title' }, 'Display'),
+          h('div', { class: 'btnrow colfoot' }, fullscreen, fullscreenHint),
+        ),
       ),
-      h(
-        'section',
-        { class: 'setting' },
-        h('div', { class: 'setting-title' }, 'Display'),
-        h('div', { class: 'btnrow colfoot' }, fullscreen, fullscreenHint),
-      ),
-      h('div', { class: 'btnrow' }, close, wipe),
+      h('div', { class: 'btnrow settings-foot' }, close, wipe),
     );
   }
 }

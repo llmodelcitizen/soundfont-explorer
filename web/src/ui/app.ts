@@ -29,7 +29,7 @@ import { SongPicker } from './songpicker';
 import { adjacentTrackId, TrackList } from './tracklist';
 import { SettingsModal } from './settings';
 import { ShareDialog } from './share';
-import { FULLSCREEN_UNSUPPORTED, fullscreenSupported, toggleFullscreen } from './fullscreen';
+import { FULLSCREEN_REFUSED, FULLSCREEN_UNSUPPORTED, fullscreenSupported, toggleFullscreen } from './fullscreen';
 import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type Prefs } from '../state/prefs';
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
@@ -111,6 +111,7 @@ export class App {
       this.syncFontCycler();
     },
     trackTitle: () => this.song?.title ?? '',
+    onClose: () => this.focusList(),
   });
   private lastListenTick = 0;
   /** the UI loop is showing the 'tap to resume' notice in place of the engine status */
@@ -221,8 +222,9 @@ export class App {
       return;
     }
     void toggleFullscreen().then((ok) => {
+      // this browser has full screen and said no to this request: the iPhone advice would be a lie
       if (ok) this.settings.refresh('');
-      else this.settings.reportFullscreen(FULLSCREEN_UNSUPPORTED);
+      else this.settings.reportFullscreen(FULLSCREEN_REFUSED);
     });
   }
 
@@ -772,9 +774,9 @@ export class App {
     obs.observe(this.root, { childList: true });
   }
 
+  /** put focus on the list itself (tabindex -1), never on <body>: from there Tab is A/B-only */
   private focusList(): void {
-    (this.list.el as HTMLElement).focus?.();
-    (document.activeElement as HTMLElement | null)?.blur?.();
+    (this.list.el as HTMLElement).focus?.({ preventScroll: true });
   }
 
   private moveCursor(i: number): number {
