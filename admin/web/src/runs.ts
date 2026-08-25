@@ -28,6 +28,18 @@ function input(value: string, attrs: Record<string, string> = {}): HTMLInputElem
   return el('input', { value, ...attrs });
 }
 
+interface Capacity {
+  lines?: string[];
+  concurrent_shards: number | null;
+  waves: number | null;
+  planned_vcpus?: number;
+  quota_vcpus?: number | null;
+  ok: boolean;
+  degraded: boolean;
+  bad_pools?: string[];
+  quota_code?: string;
+}
+
 export class RunsView {
   root = el('div', { class: 'runs' });
   private songs: RenderSong[] = [];
@@ -38,6 +50,7 @@ export class RunsView {
   private timer: number | null = null;
   private pollGen = 0; // bumped by stop(): a tick already in flight must not re-arm
   private openLogs = new Set<string>();
+  private lastBody: Record<string, unknown> | null = null;
 
   constructor() {
     const resize = () => {
@@ -124,6 +137,37 @@ export class RunsView {
 
   // ---------------------------------------------------------------- submit form
 
+  /** What the account can actually run under the knobs as typed (#25/#42). Advisory: a
+   *  preflight that cannot answer must never stop someone estimating or submitting. */
+  private async showCapacity(host: HTMLElement): Promise<void> {
+    host.replaceChildren(el('span', { class: 'muted small' }, 'checking fleet capacity…'));
+    let cap: Capacity;
+    try {
+      cap = await post<Capacity>('/api/render/capacity', this.capacityBody());
+    } catch (e) {
+      host.replaceChildren(el('span', { class: 'muted small' },
+        `fleet capacity unknown: ${(e as Error).message}`));
+      return;
+    }
+    const bad = !cap.ok || cap.degraded || (cap.bad_pools?.length ?? 0) > 0;
+    const rows = [...(cap.lines ?? []), ...(cap.bad_pools ?? []).map((p) => `pool never launches: ${p}`)]
+      .map((line) => el('div', {}, line));
+    if (!cap.ok) {
+      rows.push(el('div', { class: 'warn' },
+        `raise the quota: aws service-quotas request-service-quota-increase --service-code ec2`
+        + ` --quota-code ${cap.quota_code} --desired-value ${cap.planned_vcpus ?? ''}`));
+    }
+    host.replaceChildren(el('div', { class: `capbox${bad ? ' warn' : ''}` }, ...rows));
+  }
+
+  private capacityBody(): Record<string, unknown> {
+    const b = this.lastBody ?? {};
+    return {
+      shards: b.shards, shard_vcpus: b.shard_vcpus,
+      shard_memory_mib: b.shard_memory_mib, instance_types: b.instance_types,
+    };
+  }
+
   private form(): HTMLElement {
     const byDir = new Map<string, RenderSong[]>();
     for (const s of this.songs) {
@@ -168,9 +212,11 @@ export class RunsView {
     const itypes = input('', { placeholder: 'c7a.48xlarge,… (terraform default)', size: '28' });
     const vcpus = input('', { placeholder: '90', size: '4' });
     const mem = input('', { placeholder: '170000', size: '7' });
-    const estOut = el('span', { class: 'count' });
+    const estOut = el('span', { class: 'count estimate-out' });
+    // the fleet-capacity answer sits with the estimate: both are "before you spend money"
+    const capOut = el('div', { class: 'capacity' });
 
-    const body = () => ({
+    const body = () => (this.lastBody = {
       songs: [...this.picked],
       shards: Number(shards.value) || 8,
       max_usd: Number(maxUsd.value) || 60,
@@ -190,6 +236,7 @@ export class RunsView {
       } catch (e) {
         note(this.status, (e as Error).message, true);
       }
+      await this.showCapacity(capOut);
     };
     const submit = el('button', { class: 'danger' }, 'Submit to fleet');
     submit.onclick = async () => {
@@ -214,7 +261,7 @@ export class RunsView {
         el('label', {}, 'engines', engines), el('label', {}, 'limit', limit),
         el('label', {}, 'instance types', itypes),
         el('label', {}, 'vCPU/shard', vcpus), el('label', {}, 'MiB/shard', mem),
-        estimate, submit, count, estOut));
+        estimate, submit, count, estOut), capOut);
   }
 
   // ---------------------------------------------------------------- run list

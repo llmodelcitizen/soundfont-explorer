@@ -27,6 +27,11 @@ from dataclasses import dataclass
 SPOT_VCPU_QUOTA_CODE = "L-34B43A08"
 
 
+# What the ECS agent and the OS need on top of the container's own request. Only matters when
+# deciding whether TWO shards fit on one instance, which is why a rough reserve is enough.
+AGENT_MEMORY_MIB = 2048
+
+
 @dataclass
 class Capacity:
     shards: int
@@ -34,6 +39,12 @@ class Capacity:
     ce_max_vcpus: int | None
     quota_vcpus: int | None
     consumed_vcpus: int
+    # Optional, and worth having: the Spot quota counts the vCPUs of whole INSTANCES, not the
+    # vCPUs a container asks for. A 30-vCPU shard on a 96-vCPU instance still spends 96 of the
+    # quota (Batch may pack three shards onto it); without the shapes we can only assume one
+    # shard's request is one shard's worth of quota, which understates big-instance waste.
+    shard_memory_mib: int | None = None
+    instance_shapes: tuple[tuple[str, int, int], ...] = ()      # (name, vcpus, memory_mib)
 
     @property
     def planned_vcpus(self) -> int:
@@ -46,13 +57,45 @@ class Capacity:
             return None
         return max(0, self.quota_vcpus - self.consumed_vcpus)
 
+    def shards_per_instance(self, vcpus: int, memory_mib: int) -> int:
+        """How many shards Batch can pack onto one instance of this shape."""
+        if self.vcpus_per_shard <= 0:
+            return 0
+        by_cpu = vcpus // self.vcpus_per_shard
+        if not self.shard_memory_mib:
+            return by_cpu
+        by_mem = max(0, memory_mib - AGENT_MEMORY_MIB) // self.shard_memory_mib
+        return min(by_cpu, by_mem)
+
+    @property
+    def best_shape(self) -> tuple[str, int, int] | None:
+        """The configured instance shape that lets the most shards run inside the limits."""
+        limits = [x for x in (self.headroom_vcpus, self.ce_max_vcpus) if x is not None]
+        if not self.instance_shapes or not limits:
+            return None
+        budget = min(limits)
+        best, best_n = None, -1
+        for name, vcpus, mem in self.instance_shapes:
+            per = self.shards_per_instance(vcpus, mem)
+            if per <= 0 or vcpus <= 0:
+                continue
+            n = min(self.shards, (budget // vcpus) * per)
+            if n > best_n:
+                best, best_n = (name, vcpus, mem), n
+        return best
+
     @property
     def concurrent_shards(self) -> int | None:
         """How many shards can be RUNNING at once. None when nothing limits us that we can see."""
         limits = [x for x in (self.headroom_vcpus, self.ce_max_vcpus) if x is not None]
         if not limits or self.vcpus_per_shard <= 0:
             return None
-        return min(limits) // self.vcpus_per_shard
+        budget = min(limits)
+        shape = self.best_shape
+        if shape is None:
+            return budget // self.vcpus_per_shard      # no shapes known: request-sized estimate
+        _, vcpus, mem = shape
+        return min(self.shards, (budget // vcpus) * self.shards_per_instance(vcpus, mem))
 
     @property
     def waves(self) -> int | None:
@@ -71,6 +114,12 @@ class Capacity:
             f"regional Spot quota {say(self.quota_vcpus)} vCPU, {self.consumed_vcpus} already in use"
             f" -> {say(self.headroom_vcpus)} free",
         ]
+        shape = self.best_shape
+        if shape is not None:
+            name, vcpus, mem = shape
+            per = self.shards_per_instance(vcpus, mem)
+            out.append(f"best fit {name} ({vcpus} vCPU): {per} shard(s) per instance, "
+                       f"so each running shard costs {vcpus // max(1, per)} vCPU of quota")
         n, w = self.concurrent_shards, self.waves
         if n is None:
             out.append("could not determine concurrency — submitting blind")
@@ -102,6 +151,15 @@ def vcpus_of(job_definition: dict) -> int:
         if r.get("type") == "VCPU":
             return int(float(r["value"]))
     return int(props.get("vcpus") or 0)
+
+
+def memory_of(job_definition: dict) -> int:
+    """The memory one shard asks for, in MiB, from a Batch job definition document."""
+    props = job_definition.get("containerProperties") or {}
+    for r in props.get("resourceRequirements") or []:
+        if r.get("type") == "MEMORY":
+            return int(float(r["value"]))
+    return int(props.get("memory") or 0)
 
 
 def consumed_spot_vcpus(reservations: list[dict], vcpu_by_type: dict[str, int]) -> int:
@@ -147,9 +205,16 @@ def _aws(*args: str) -> dict:
     return json.loads(r.stdout) if r.stdout.strip() else {}
 
 
-def gather(compute_environment: str, job_definition: str, shards: int, *, aws=_aws) -> Capacity:
+def gather(compute_environment: str, job_definition: str, shards: int, *, aws=_aws,
+           shard_vcpus: int | None = None, shard_memory_mib: int | None = None,
+           instance_types: list[str] | None = None) -> Capacity:
     """Read what we can; anything unreadable becomes None rather than an exception — a preflight
-    that cannot run must not be the reason a legitimate run is refused."""
+    that cannot run must not be the reason a legitimate run is refused.
+
+    The overrides answer the question the operator is actually asking: not "what would the
+    deployed defaults do" but "what will THESE knobs do", which is the pair of numbers the
+    admin UI puts next to the estimate before anything is submitted.
+    """
     def maybe(fn, default=None):
         try:
             return fn()
@@ -166,17 +231,29 @@ def gather(compute_environment: str, job_definition: str, shards: int, *, aws=_a
                            "--compute-environments", compute_environment)["computeEnvironments"][0], {})
     quota = maybe(lambda: int(float(aws("service-quotas", "get-service-quota", "--service-code", "ec2",
                                         "--quota-code", SPOT_VCPU_QUOTA_CODE)["Quota"]["Value"])))
-    types = maybe(lambda: aws("ec2", "describe-instance-types", "--filters",
-                              "Name=instance-type,Values=*")["InstanceTypes"], [])
-    vcpu_by_type = {t["InstanceType"]: int(t["VCpuInfo"]["DefaultVCpus"]) for t in (types or [])}
     reservations = maybe(lambda: aws("ec2", "describe-instances", "--filters",
                                      "Name=instance-state-name,Values=pending,running")["Reservations"], [])
+    # the shapes worth describing: what this run would launch, plus whatever is already running
+    # (needed to price the quota it is consuming). Describing every type in the region was a
+    # multi-megabyte response for two numbers.
+    want = list(instance_types or ((ce or {}).get("computeResources") or {}).get("instanceTypes") or [])
+    running = {i.get("InstanceType") for r in (reservations or []) for i in r.get("Instances", [])
+               if i.get("InstanceLifecycle") == "spot"}
+    names = sorted({n for n in [*want, *running] if n and "." in n})
+    types = maybe(lambda: aws("ec2", "describe-instance-types",
+                              "--instance-types", *names)["InstanceTypes"], []) if names else []
+    vcpu_by_type = {t["InstanceType"]: int(t["VCpuInfo"]["DefaultVCpus"]) for t in (types or [])}
+    shapes = tuple((t["InstanceType"], int(t["VCpuInfo"]["DefaultVCpus"]),
+                    int(t["MemoryInfo"]["SizeInMiB"]))
+                   for t in (types or []) if t["InstanceType"] in set(want))
     return Capacity(
         shards=shards,
-        vcpus_per_shard=vcpus_of(jd or {}),
+        vcpus_per_shard=int(shard_vcpus or vcpus_of(jd or {})),
         ce_max_vcpus=((ce or {}).get("computeResources") or {}).get("maxvCpus"),
         quota_vcpus=quota,
         consumed_vcpus=consumed_spot_vcpus(reservations or [], vcpu_by_type),
+        shard_memory_mib=int(shard_memory_mib or memory_of(jd or {}) or 0) or None,
+        instance_shapes=shapes,
     )
 
 

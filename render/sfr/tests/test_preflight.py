@@ -95,6 +95,60 @@ class CapacityTests(unittest.TestCase):
         self.assertEqual(preflight.vcpus_of({}), 0)
 
 
+class InstanceAwareTests(unittest.TestCase):
+    """The Spot quota counts whole INSTANCES, so a small shard on a big instance still spends
+    the big instance's vCPUs — that is what makes the default shape waste a 256 vCPU quota."""
+
+    BIG = ("c7a.24xlarge", 96, 196608)
+    HUGE = ("c7a.48xlarge", 192, 393216)
+    SMALL = ("c7a.8xlarge", 32, 65536)
+
+    def cap(self, **kw):
+        base = dict(shards=8, vcpus_per_shard=90, ce_max_vcpus=2304, quota_vcpus=256,
+                    consumed_vcpus=0, shard_memory_mib=170000, instance_shapes=(self.BIG, self.HUGE))
+        base.update(kw)
+        return preflight.Capacity(**base)
+
+    def test_the_default_shape_wastes_a_256_quota(self):
+        c = self.cap()
+        self.assertEqual(c.shards_per_instance(96, 196608), 1)       # 2 x 90 vCPU will not fit
+        self.assertEqual(c.concurrent_shards, 2)                     # 256 // 96
+        self.assertEqual(c.waves, 4)
+        self.assertIn("1 shard(s) per instance", " ".join(c.report()))
+
+    def test_smaller_instances_fit_every_shard_in_the_same_quota(self):
+        c = self.cap(vcpus_per_shard=30, shard_memory_mib=56000,
+                     instance_shapes=(self.SMALL,))
+        self.assertEqual(c.shards_per_instance(32, 65536), 1)
+        self.assertEqual(c.concurrent_shards, 8)                     # (256 // 32) * 1, capped
+        self.assertEqual(c.waves, 1)
+        self.assertFalse(c.degraded)
+
+    def test_packing_several_shards_onto_one_instance_is_counted(self):
+        """A 30-vCPU shard on a 96-vCPU box: three fit, so the quota buys 3 per 96 vCPU."""
+        c = self.cap(vcpus_per_shard=30, shard_memory_mib=56000, shards=12,
+                     instance_shapes=(self.BIG,))
+        self.assertEqual(c.shards_per_instance(96, 196608), 3)
+        self.assertEqual(c.concurrent_shards, 6)                     # (256 // 96) * 3
+        self.assertEqual(c.waves, 2)
+
+    def test_memory_can_bind_before_vcpus(self):
+        c = self.cap(vcpus_per_shard=10, shard_memory_mib=170000, instance_shapes=(self.BIG,))
+        self.assertEqual(c.shards_per_instance(96, 196608), 1)       # 9 by cpu, 1 by memory
+        self.assertEqual(c.concurrent_shards, 2)
+
+    def test_it_picks_the_shape_that_fits_the_most(self):
+        c = self.cap(vcpus_per_shard=30, shard_memory_mib=56000,
+                     instance_shapes=(self.BIG, self.SMALL))
+        self.assertEqual(c.best_shape[0], "c7a.8xlarge")             # 8 shards vs 6
+        self.assertEqual(c.concurrent_shards, 8)
+
+    def test_without_shapes_it_falls_back_to_the_request_sized_estimate(self):
+        c = self.cap(instance_shapes=())
+        self.assertIsNone(c.best_shape)
+        self.assertEqual(c.concurrent_shards, 2)                     # 256 // 90
+
+
 class PoolTests(unittest.TestCase):
     def test_names_the_type_az_pairs_that_can_never_launch(self):
         offerings = [
@@ -163,6 +217,46 @@ class GatherTests(unittest.TestCase):
             return {}
         c = preflight.gather("ce", "soundfont-explorer-render", 8, aws=aws)
         self.assertEqual(c.vcpus_per_shard, 90)
+
+    def test_the_requested_knobs_win_over_the_deployed_defaults(self):
+        """The UI asks "what will THESE values do", not "what would the defaults do"."""
+        aws = self.fake_aws(**{
+            "batch describe-job-definitions": {"jobDefinitions": [
+                {"revision": 3, "containerProperties": {"resourceRequirements": [
+                    {"type": "VCPU", "value": "90"}, {"type": "MEMORY", "value": "170000"}]}}]},
+            "batch describe-compute-environments": {"computeEnvironments": [
+                {"computeResources": {"maxvCpus": 2304, "instanceTypes": ["c7a.24xlarge"]}}]},
+            "service-quotas get-service-quota": {"Quota": {"Value": 256.0}},
+            "ec2 describe-instances": {"Reservations": []},
+            "ec2 describe-instance-types": {"InstanceTypes": [
+                {"InstanceType": "c7a.8xlarge", "VCpuInfo": {"DefaultVCpus": 32},
+                 "MemoryInfo": {"SizeInMiB": 65536}}]},
+        })
+        c = preflight.gather("ce", "jd", 8, aws=aws, shard_vcpus=30, shard_memory_mib=56000,
+                             instance_types=["c7a.8xlarge"])
+        self.assertEqual(c.vcpus_per_shard, 30)
+        self.assertEqual(c.shard_memory_mib, 56000)
+        self.assertEqual(c.instance_shapes, (("c7a.8xlarge", 32, 65536),))
+        self.assertEqual(c.concurrent_shards, 8)      # the whole point of the recommendation
+        self.assertEqual(c.waves, 1)
+
+    def test_the_deployed_defaults_are_used_when_nothing_is_overridden(self):
+        aws = self.fake_aws(**{
+            "batch describe-job-definitions": {"jobDefinitions": [
+                {"revision": 3, "containerProperties": {"resourceRequirements": [
+                    {"type": "VCPU", "value": "90"}, {"type": "MEMORY", "value": "170000"}]}}]},
+            "batch describe-compute-environments": {"computeEnvironments": [
+                {"computeResources": {"maxvCpus": 2304, "instanceTypes": ["c7a.24xlarge"]}}]},
+            "service-quotas get-service-quota": {"Quota": {"Value": 256.0}},
+            "ec2 describe-instances": {"Reservations": []},
+            "ec2 describe-instance-types": {"InstanceTypes": [
+                {"InstanceType": "c7a.24xlarge", "VCpuInfo": {"DefaultVCpus": 96},
+                 "MemoryInfo": {"SizeInMiB": 196608}}]},
+        })
+        c = preflight.gather("ce", "jd", 8, aws=aws)
+        self.assertEqual((c.vcpus_per_shard, c.shard_memory_mib), (90, 170000))
+        self.assertEqual(c.concurrent_shards, 2)
+        self.assertEqual(c.waves, 4)
 
     def test_an_unreadable_quota_is_not_fatal(self):
         aws = self.fake_aws(**{

@@ -141,6 +141,17 @@ def _tail_events(pages, limit: int) -> list[dict]:
     return list(keep)
 
 
+def _preflight():
+    """render/cloud/preflight.py, loaded the same lazy way as the planner: it ships in the
+    bundle but is not on sys.path until something asks for it."""
+    repo = get_config().repo
+    p = os.path.join(repo, "render", "cloud")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    import preflight  # noqa: PLC0415
+    return preflight
+
+
 def _planner():
     repo = get_config().repo
     p = os.path.join(repo, "render", "cloud")
@@ -248,6 +259,33 @@ class RunManager:
         return {"shards": plan, "jobs": planner.job_count(plan, per_song, limit),
                 "variants_per_song": per_song,
                 "cpu_h": round(cpu_h, 1), "usd": round(usd, 2)}
+
+    def capacity(self, shards: int, *, shard_vcpus: int | None = None,
+                 shard_memory_mib: int | None = None,
+                 instance_types: list[str] | None = None) -> dict:
+        """What the fleet can actually run under THESE knobs, before anything is submitted.
+
+        Batch accepts an array the account cannot run: maxvCpus and the regional Spot vCPU
+        quota are different limits, and Auto Scaling then retries MaxSpotInstanceCountExceeded
+        in silence while the array sits RUNNABLE (#25). The CLI has printed this since #25; the
+        Renders tab could not, so the UI let you submit a shape that was guaranteed to run in
+        four sequential waves (#42)."""
+        pf = _preflight()
+        cap = pf.gather(self.cfg.compute_env, self.cfg.job_definition, shards,
+                        shard_vcpus=shard_vcpus, shard_memory_mib=shard_memory_mib,
+                        instance_types=instance_types)
+        return {
+            "lines": cap.report(),
+            "concurrent_shards": cap.concurrent_shards,
+            "waves": cap.waves,
+            "planned_vcpus": cap.planned_vcpus,
+            "quota_vcpus": cap.quota_vcpus,
+            "headroom_vcpus": cap.headroom_vcpus,
+            "ok": cap.ok,
+            "degraded": cap.degraded,
+            "bad_pools": pf.unusable_pools_for({"compute_environment": self.cfg.compute_env}),
+            "quota_code": pf.SPOT_VCPU_QUOTA_CODE,
+        }
 
     def submit(self, songs: list[str], shards: int, max_usd: float,
                engines: list[str] | None = None, limit: int | None = None,

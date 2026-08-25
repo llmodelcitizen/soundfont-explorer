@@ -194,3 +194,81 @@ describe('RunsView actions', () => {
     await until(() => ff.count('GET', '/api/runs') === 2);
   });
 });
+
+describe('fleet capacity (#25/#42)', () => {
+  const withSongs = () => new FakeFetch()
+    .on('GET', '/api/render/songs', () => ({
+      render_enabled: true, missing_canon: 0,
+      songs: [{ id: 'a', title: 'A', duration_s: 100 }],
+    }))
+    .on('GET', '/api/runs', () => ({ runs: [] }))
+    .on('POST', '/api/render/plan', () => ({ jobs: 10, cpu_h: 1, usd: 2, shards: [{}] }));
+
+  const cap = (over: Record<string, unknown> = {}) => ({
+    lines: ['planned 720 vCPU (8 shards x 90)', 'only 2 of 8 shards can run at once -> 4 waves'],
+    concurrent_shards: 2, waves: 4, planned_vcpus: 720, quota_vcpus: 256,
+    ok: true, degraded: true, bad_pools: [], quota_code: 'L-34B43A08', ...over,
+  });
+
+  it('answers with the estimate, from the knobs as typed', async () => {
+    let sent: Record<string, unknown> | null = null;
+    const ff = withSongs().on('POST', '/api/render/capacity', (body) => {
+      sent = body as Record<string, unknown>;
+      return cap();
+    });
+    const v = mount(ff);
+    await v.load();
+    const field = (placeholder: string) =>
+      v.root.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`)!;
+    field('90').value = '30';
+    field('170000').value = '56000';
+    field('c7a.48xlarge,… (terraform default)').value = 'c7a.8xlarge,c7i.8xlarge';
+
+    button(v, 'Estimate').click();
+    await until(() => ff.count('POST', '/api/render/capacity') === 1);
+    await until(() => !!v.root.querySelector('.capbox'));
+
+    expect(sent!.shard_vcpus).toBe('30');
+    expect(sent!.shard_memory_mib).toBe('56000');
+    expect(sent!.instance_types).toEqual(['c7a.8xlarge', 'c7i.8xlarge']);
+    const box = v.root.querySelector('.capbox')!;
+    expect(box.textContent).toContain('only 2 of 8 shards can run at once');
+    expect(box.classList.contains('warn')).toBe(true); // degraded is worth seeing
+  });
+
+  it('shows the quota command when nothing can start at all', async () => {
+    const ff = withSongs().on('POST', '/api/render/capacity',
+      () => cap({ ok: false, degraded: false, concurrent_shards: 0, waves: 0 }));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Estimate').click();
+    await until(() => !!v.root.querySelector('.capbox'));
+    const box = v.root.querySelector('.capbox')!;
+    expect(box.textContent).toContain('request-service-quota-increase');
+    expect(box.textContent).toContain('L-34B43A08');
+  });
+
+  it('names pools that can never launch', async () => {
+    const ff = withSongs().on('POST', '/api/render/capacity',
+      () => cap({ bad_pools: ['c7a.24xlarge is not offered in us-east-1b'] }));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Estimate').click();
+    await until(() => !!v.root.querySelector('.capbox'));
+    expect(v.root.querySelector('.capbox')!.textContent)
+      .toContain('c7a.24xlarge is not offered in us-east-1b');
+  });
+
+  it('never blocks the estimate when the preflight itself fails', async () => {
+    const ff = withSongs().on('POST', '/api/render/capacity', () => {
+      throw new Fail(500, 'no service-quotas permission');
+    });
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Estimate').click();
+    await until(() => (v.root.querySelector('.capacity')?.textContent ?? '').includes('unknown'));
+    // the estimate itself still landed
+    expect(v.root.querySelector('.estimate-out')!.textContent).toContain('10 jobs');
+    expect(status(v).classList.contains('error')).toBe(false);
+  });
+});

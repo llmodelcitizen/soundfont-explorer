@@ -165,3 +165,19 @@ a.btnish:hover { border-color: var(--accent); }
   color: var(--danger); background: #3a2226; border: 1px solid var(--line);
   border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; text-align: left;
 }
+
+/* fleet capacity, shown with the estimate: advisory unless it says the run cannot start */
+.capacity { margin-top: 6px; }
+.capbox {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--fg-dim);
+}
+.capbox.warn {
+  border-color: var(--warn, #b8860b);
+  color: var(--fg);
+}
+.capbox .warn { color: var(--warn, #b8860b); word-break: break-all; }

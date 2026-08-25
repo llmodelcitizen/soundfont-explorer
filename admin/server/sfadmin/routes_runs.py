@@ -59,6 +59,28 @@ def plan(body: dict) -> dict:
         raise HTTPException(400, str(e)) from e
 
 
+def _knobs(body: dict) -> dict:
+    """The three knobs that change what the fleet can run, as the form sends them."""
+    return {
+        "shard_vcpus": int(body["shard_vcpus"]) if body.get("shard_vcpus") else None,
+        "shard_memory_mib": int(body["shard_memory_mib"]) if body.get("shard_memory_mib") else None,
+        "instance_types": body.get("instance_types") or None,
+    }
+
+
+@router.post("/api/render/capacity")
+def capacity(body: dict) -> dict:
+    """Can the account actually run this shape? Answered before submitting, not 40 minutes in."""
+    try:
+        return _mgr().capacity(int(body.get("shards", 8)), **_knobs(body))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        # a preflight that cannot run must not block the Estimate button
+        return {"lines": [f"preflight unavailable: {e}"], "concurrent_shards": None,
+                "waves": None, "ok": True, "degraded": False, "bad_pools": []}
+
+
 @router.post("/api/runs")
 def submit(body: dict) -> dict:
     m = _mgr()
