@@ -530,7 +530,6 @@ export class LibraryView {
     // used to leave one independent 3 s loop each, both writing to the status line and both
     // reloading the library at the end. The loop is deliberately not tied to the tab being
     // shown: the server run outlives a tab switch and its result still belongs here.
-    const gen = ++this.canonGen;
     try {
       this.note('canon: starting…');
       await post('/api/library/canon', ids ? { ids } : {});
@@ -538,6 +537,11 @@ export class LibraryView {
       this.note(`canon: ${(e as Error).message}`, true);
       return;
     }
+    // Claim the generation only once the POST has actually started a run. The server runs
+    // one canon at a time and answers 409 to a concurrent start, so claiming it first let a
+    // refused second click cancel the first run's poll — orphaning a run that keeps going
+    // for minutes, with the 409 frozen on the status line and no reload at the end.
+    const gen = ++this.canonGen;
     interface CanonResult {
       totals: Record<string, number>;
       ran?: Record<string, { status: string; reason: string | null }>;

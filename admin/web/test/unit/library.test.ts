@@ -160,6 +160,36 @@ describe('LibraryView canon poll', () => {
     expect(ff.count('GET', '/api/library/canon/status') - started).toBe(2);
   });
 
+  it('keeps the live poll when the server refuses a second start', async () => {
+    // The server allows one canon run at a time and answers 409 for a concurrent start,
+    // while a full run takes minutes — so pressing 'c' or clicking again mid-run is the
+    // ordinary case. The refused start must not take the running poll over: doing so
+    // orphaned the run (status frozen on the 409, result never read, library never
+    // reloaded) exactly the way the single-flight was written to prevent.
+    let running = false;
+    const ff = new FakeFetch().on('GET', '/api/library', doc)
+      .on('POST', '/api/library/canon', () => {
+        if (running) throw new Fail(409, 'a canon run is already in progress');
+        running = true;
+        return { ok: true };
+      })
+      .on('GET', '/api/library/canon/status', () => (running
+        ? { running: true }
+        : { running: false, result: { totals: { ok: 1 } } }));
+    const view = mount(ff);
+    await view.load();
+    button(view, 'Canon check').click();
+    await until(() => ff.count('GET', '/api/library/canon/status') === 1);
+    button(view, 'Canon check').click(); // refused: run #1 is still going
+    await until(() => /already in progress/.test(status(view).textContent ?? ''));
+
+    running = false; // run #1 finishes server-side
+    await vi.advanceTimersByTimeAsync(3000);
+    await until(() => ff.count('GET', '/api/library') === 2);
+    expect(status(view).textContent).toBe('canon (library totals): {"ok":1}');
+    expect(status(view).classList.contains('error')).toBe(false);
+  });
+
   it('stops on an expired session rather than retrying into the login redirect', async () => {
     const ff = new FakeFetch().on('GET', '/api/library', doc)
       .on('POST', '/api/library/canon', () => ({ ok: true }))
