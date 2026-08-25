@@ -324,10 +324,6 @@
 }
 /* Keys help: the outline around each shortcut is a proper gadget — same type size as the rest
    of the dialog, a box with room around it, and the key centred inside (#38). */
-[data-theme='amiga'] .keymap td {
-  padding-top: 3px;
-  padding-bottom: 3px;
-}
 [data-theme='amiga'] .keymap td:first-child {
   padding-right: 14px;
 }
@@ -337,8 +333,10 @@
   align-items: center;
   justify-content: center;
   min-width: 20ch;
-  min-height: 28px;
-  padding: 4px 10px;
+  /* 24px, not more: twenty gadgets plus their rows have to leave the close button and the last
+     shortcuts on screen — the dialog is only as tall as the shortest phone (#33) */
+  min-height: 24px;
+  padding: 2px 10px;
   text-align: center;
 }
 [data-theme='amiga'] .debug.dragging {
