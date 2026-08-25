@@ -251,6 +251,85 @@ class FailureClassificationTests(unittest.TestCase):
         self.assertEqual(shard.excluded_line(shard.failure_report(["s1"])[1]), "1 silent")
 
 
+class ManifestWorkerSizingTests(unittest.TestCase):
+    """The last song of a shard must not validate on a quarter of the box (#45).
+
+    Measured on the 2026-08-25 run: the post-render tail was 22-33% of shard wall time against
+    #25's own "under 10%" target, and manifest_s was 197-421s of it against 39-66s of upload.
+    The tail is CPU work; it was being done on WORKERS // PUBLISH_POOL cores.
+    """
+
+    def setUp(self):
+        self.saved = (shard._render_done, shard._inflight, shard.MANIFEST_WORKERS_ENV)
+        self.addCleanup(self.restore)
+        shard.MANIFEST_WORKERS_ENV = 0
+
+    def restore(self):
+        shard._render_done, shard._inflight, shard.MANIFEST_WORKERS_ENV = self.saved
+
+    def rendering(self, still_going: bool):
+        ev = threading.Event()
+        if not still_going:
+            ev.set()
+        shard._render_done = ev
+
+    def test_a_publish_is_a_guest_while_the_renderer_owns_the_box(self):
+        self.rendering(True)
+        shard._inflight = 1
+        self.assertEqual(shard.manifest_workers(), shard.MANIFEST_WORKERS)
+
+    def test_the_last_song_gets_the_whole_box(self):
+        self.rendering(False)
+        shard._inflight = 1
+        self.assertEqual(shard.manifest_workers(), shard.WORKERS)
+
+    def test_concurrent_publishes_split_it(self):
+        self.rendering(False)
+        shard._inflight = 4
+        self.assertEqual(shard.manifest_workers(), max(shard.MANIFEST_WORKERS, shard.WORKERS // 4))
+
+    def test_it_never_drops_below_the_share_it_had_before(self):
+        """More publishes in flight than cores would divide to nothing; #25's share is a floor."""
+        self.rendering(False)
+        shard._inflight = shard.WORKERS * 4
+        self.assertGreaterEqual(shard.manifest_workers(), shard.MANIFEST_WORKERS)
+        self.assertGreaterEqual(shard.manifest_workers(), 1)
+
+    def test_before_the_publisher_starts_nothing_is_assumed(self):
+        shard._render_done = None
+        self.assertEqual(shard.manifest_workers(), shard.MANIFEST_WORKERS)
+
+    def test_an_explicit_override_wins_outright(self):
+        shard.MANIFEST_WORKERS_ENV = 3
+        self.rendering(False)
+        shard._inflight = 1
+        self.assertEqual(shard.manifest_workers(), 3)
+
+    def test_the_publisher_counts_publishes_in_flight(self):
+        """manifest_workers() reads that count, so the bookkeeping has to be real."""
+        seen = []
+        done = threading.Event(); done.set()
+        with tempfile.TemporaryDirectory() as td:
+            saved, shard.WORK = shard.WORK, pathlib.Path(td)
+            try:
+                for song in ("a", "b"):
+                    p = shard.WORK / "renders" / song / "v1"
+                    p.mkdir(parents=True)
+                    (p / "meta.json").write_text("{}")
+                _pub, _exp = shard.publish_song, shard.expected
+                shard.expected = lambda song, sel: 1
+                shard.publish_song = lambda song, partial_ok=False: (seen.append(shard._inflight), True)[-1]
+                try:
+                    shard.publisher(["a", "b"], [], done, {"left": ["a", "b"], "failed": []})
+                finally:
+                    shard.publish_song, shard.expected = _pub, _exp
+            finally:
+                shard.WORK = saved
+        self.assertTrue(seen, "no publish ran")
+        self.assertTrue(all(n >= 1 for n in seen), seen)   # counted while inside the publish
+        self.assertEqual(shard._inflight, 0, "the counter leaked")
+
+
 class PhaseTests(unittest.TestCase):
     def test_the_summary_reports_the_tail_as_a_fraction_of_the_shard(self):
         p = shard.Phases()

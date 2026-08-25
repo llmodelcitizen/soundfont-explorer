@@ -87,8 +87,39 @@ MEM_UNITS = int(os.environ.get("SFR_MEM_UNITS", "0")) or _mem_units(WORKERS)
 # about one core, on a 96-core host: 12-15 minutes of near-idle per shard, paid again per
 # scheduling wave. All three knobs scale with the allocation and can be overridden per run.
 PUBLISH_POOL = int(os.environ.get("SFR_PUBLISH_POOL", "0")) or max(2, min(8, WORKERS // 8))
-MANIFEST_WORKERS = int(os.environ.get("SFR_MANIFEST_WORKERS", "0")) or max(1, WORKERS // PUBLISH_POOL)
+MANIFEST_WORKERS_ENV = int(os.environ.get("SFR_MANIFEST_WORKERS", "0"))
+# the share a publish takes WHILE the renderer still owns the box
+MANIFEST_WORKERS = MANIFEST_WORKERS_ENV or max(1, WORKERS // PUBLISH_POOL)
 UPLOAD_WORKERS = int(os.environ.get("SFR_UPLOAD_WORKERS", "0")) or 32
+
+# publisher() maintains these so a manifest can be sized against what is actually free.
+_render_done: threading.Event | None = None
+_inflight = 0
+_inflight_lock = threading.Lock()
+
+
+def manifest_workers() -> int:
+    """Cores for THIS song's manifest, decided when it starts instead of at import.
+
+    While `sfr render` is running it owns the box and a publish is a guest, so it takes the
+    modest share #25 gave it. Once the render queue has drained nothing else wants the cores —
+    but MANIFEST_WORKERS was a module constant, so the LAST song of every shard validated and
+    packed on WORKERS // PUBLISH_POOL cores with the rest of the machine idle. That is the
+    whole of #45: the post-render tail was 22-33% of shard wall time on the 2026-08-25 run
+    against #25's own "under 10%" target, and `manifest_s` was 197-421s of it while upload was
+    39-66s. The tail is CPU work being done on a quarter of the CPU.
+
+    The in-flight count is read once, when this manifest starts. A song that joins later can
+    oversubscribe slightly; that costs some scheduling and is strictly better than the
+    guaranteed under-use it replaces. An explicit SFR_MANIFEST_WORKERS still wins outright.
+    """
+    if MANIFEST_WORKERS_ENV:
+        return MANIFEST_WORKERS_ENV
+    if _render_done is None or not _render_done.is_set():
+        return MANIFEST_WORKERS
+    with _inflight_lock:
+        n = max(1, _inflight)
+    return max(MANIFEST_WORKERS, WORKERS // n)
 
 
 class Phases:
@@ -124,6 +155,10 @@ class Phases:
                 "upload_s_total": round(sum(upload), 1),
                 "songs_published": published, "songs_failed": failed,
                 "publish_pool": PUBLISH_POOL, "manifest_workers": MANIFEST_WORKERS,
+                # what a manifest ACTUALLY got, which is the #45 number: the constant above is
+                # only the share taken while the renderer still owns the box
+                "manifest_workers_used": max([v.get("manifest_workers", 0)
+                                              for v in self.songs.values()] or [0]),
                 "upload_workers": UPLOAD_WORKERS, "render_workers": WORKERS,
             }
 
@@ -226,12 +261,14 @@ def publish_song(song: str, partial_ok: bool = False) -> bool:
     unless partial_ok — a smoke run with an engine filter or --limit renders a deliberate
     subset and is allowed to publish it."""
     t = time.monotonic()
+    mw = manifest_workers()
     r = subprocess.run([sys.executable, "-m", "sfr", "--fonts", str(FONTS), "--songs", str(SONGS),
                         "--catalog", str(CATALOG), "--work", str(WORK), "--out", str(OUT),
                         "manifest", "--song", song, "--thorough",
                         # validation is one opusdec per segment and trivially parallel: give it the
-                        # cores this container was allocated instead of manifest.py's default (#25)
-                        "--workers", str(MANIFEST_WORKERS),
+                        # cores this container was allocated instead of manifest.py's default (#25),
+                        # and the whole box once rendering has drained (#45)
+                        "--workers", str(mw),
                         *(["--allow-partial"] if partial_ok else [])],
                        capture_output=True, text=True)
     sys.stdout.write(r.stdout[-4000:])
@@ -253,9 +290,9 @@ def publish_song(song: str, partial_ok: bool = False) -> bool:
     for cmd in sync_commands(OUT / "public", SITE_BUCKET, song=song, workers=UPLOAD_WORKERS):
         sh(cmd)
     upload_s = time.monotonic() - t_up
-    PHASES.record(song, manifest_s=manifest_s, upload_s=upload_s, variants=got)
+    PHASES.record(song, manifest_s=manifest_s, upload_s=upload_s, variants=got, manifest_workers=mw)
     log(f"published {song}: {got} variants in {manifest_s + upload_s:.0f}s "
-        f"(manifest {manifest_s:.0f}s, upload {upload_s:.0f}s)")
+        f"(manifest {manifest_s:.0f}s on {mw} workers, upload {upload_s:.0f}s)")
     return True
 
 
@@ -272,15 +309,23 @@ def publisher(songs: list[str], sel: list[str], done: threading.Event, state: di
     while rendering, but a song that is *ready* need not wait for the previous song's upload:
     manifest is CPU work and s5cmd is network work, so several overlap happily.
     """
+    global _render_done
     left, failed = state["left"], state["failed"]
     lock = threading.Lock()
+    _render_done = done          # read by manifest_workers(); see #45
 
     def attempt(song: str) -> None:
+        global _inflight
+        with _inflight_lock:
+            _inflight += 1
         try:
             ok = publish_song(song, partial_ok=bool(sel))
         except Exception:
             log(f"!! publishing {song} raised:\n{traceback.format_exc()}")
             ok = False
+        finally:
+            with _inflight_lock:
+                _inflight -= 1
         if not ok:
             with lock:
                 failed.append(song)
