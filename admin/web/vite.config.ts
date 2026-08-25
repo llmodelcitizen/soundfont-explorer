@@ -1,4 +1,8 @@
-import { defineConfig } from 'vitest/config';
+/// <reference types="vitest/config" />
+// defineConfig comes from 'vite', not 'vitest/config': `vite build` is what the deploy path
+// runs (admin/scripts/deploy.sh), and it must not need the test stack installed. The
+// reference above is types-only, so the `test` block below still typechecks.
+import { defineConfig } from 'vite';
 
 export default defineConfig({
   test: {

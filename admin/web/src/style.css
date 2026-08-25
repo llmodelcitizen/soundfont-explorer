@@ -45,6 +45,9 @@ header.topbar .statusline {
      window. main.ts puts the whole message in the span's title. */
   max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* the span is always in the DOM, so without this an empty status line still spends one
+   16px flex gap and shifts the top-right controls for a message that is not there */
+header.topbar .statusline:empty { display: none; }
 header.topbar .who { color: var(--dim); font-size: 13px; }
 header.topbar a { color: var(--dim); font-size: 13px; }
 main { padding: 16px; max-width: 1400px; margin: 0 auto; }
