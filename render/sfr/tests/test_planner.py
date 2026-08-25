@@ -1,4 +1,5 @@
 """render/cloud/planner.py: shard planning + estimate (shared by submit.py and the admin)."""
+import ast
 import json
 import os
 import pathlib
@@ -7,8 +8,24 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cloud"))
-import planner  # noqa: E402
+CLOUD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cloud")
+planner = None   # bound by setUpModule
+
+
+def setUpModule():
+    """planner.py lives in render/cloud, not render/sfr, so this module has to reach for
+    it. Scoped to the module rather than done at import time: a bare insert runs during
+    DISCOVERY of the whole render/sfr suite and is never undone, putting render/cloud ahead
+    of everything on sys.path for every other test in the run (#19)."""
+    global planner
+    sys.path.insert(0, CLOUD)
+    import planner as _planner
+    planner = _planner
+
+
+def tearDownModule():
+    if CLOUD in sys.path:
+        sys.path.remove(CLOUD)
 
 
 def variant(vid, engine, completeness="full_gm", **kw):
@@ -64,6 +81,27 @@ class VariantCountTests(unittest.TestCase):
         self.assertEqual(planner.variants_per_song(counts, None, limit=9999), 510)
         with self.assertRaises(ValueError):
             planner.variants_per_song(counts, ["adlmid"])
+
+
+class ImportHygieneTests(unittest.TestCase):
+    """planner.py is not in render/sfr, and reaching for it must not change sys.path for
+    the rest of the suite that runs beside this module (#19)."""
+
+    def test_sys_path_is_not_touched_at_module_level(self):
+        tree = ast.parse(pathlib.Path(__file__).read_text())
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                continue     # setUpModule/tearDownModule are where it belongs
+            bad = [c for c in ast.walk(node)
+                   if isinstance(c, ast.Call) and ast.unparse(c.func).startswith("sys.path")]
+            self.assertEqual(bad, [], "a module-level insert runs during discovery")
+
+    def test_teardown_puts_sys_path_back(self):
+        self.assertIn(CLOUD, sys.path)          # while this module's tests run
+        tearDownModule()
+        self.assertNotIn(CLOUD, sys.path)
+        setUpModule()                           # leave it as the other tests here expect
+        self.assertIn(CLOUD, sys.path)
 
 
 class PlanShardsTests(unittest.TestCase):
