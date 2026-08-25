@@ -132,6 +132,15 @@ def log(*a):
     print(f"[shard {INDEX}]", *a, flush=True)
 
 
+# s5cmd logs one line per object at its default `info` level. Staging a shard is ~3,240 of
+# them (the songs tree plus this shard's fonts) against four lines of the shard's own output:
+# 96.6% of the CloudWatch stream was per-object receipts on the 2026-08-25 run, and the Logs
+# view had to walk all of it on every 5 s poll. `error` keeps the failures — the only s5cmd
+# lines anyone reads — and drops the receipts. Every invocation goes through this list so a
+# new call site cannot quietly reintroduce the flood.
+S5CMD = ["s5cmd", "--log", "error"]
+
+
 def sh(argv, **kw):
     return subprocess.run(argv, check=True, **kw)
 
@@ -142,13 +151,13 @@ def stage_inputs(needed: list[str]) -> None:
     t = time.monotonic()
     for d, pre in ((SONGS, "songs"), (CATALOG, "catalog")):
         d.mkdir(parents=True, exist_ok=True)
-        sh(["s5cmd", "sync", f"s3://{FONTS_BUCKET}/{pre}/*", f"{d}/"])
+        sh([*S5CMD, "sync", f"s3://{FONTS_BUCKET}/{pre}/*", f"{d}/"])
     FONTS.mkdir(parents=True, exist_ok=True)
     if needed:   # only the fonts this shard needs
         spec = "\n".join(f"cp s3://{FONTS_BUCKET}/soundfonts/{n} {FONTS}/{n}" for n in needed)
-        sh(["s5cmd", "run"], input=spec.encode())
+        sh([*S5CMD, "run"], input=spec.encode())
     else:        # whole matrix: every variant, so every font
-        sh(["s5cmd", "sync", f"s3://{FONTS_BUCKET}/soundfonts/*", f"{FONTS}/"])
+        sh([*S5CMD, "sync", f"s3://{FONTS_BUCKET}/soundfonts/*", f"{FONTS}/"])
     # case-insensitive: five fonts in the corpus are named .SF2, and a `*.sf2` glob silently
     # undercounts them — the same mistake that kept them out of S3 in the first place
     sf2 = [p for p in FONTS.iterdir() if p.suffix.lower() == ".sf2"]
@@ -196,7 +205,7 @@ def sync_commands(public: pathlib.Path, bucket: str, song: str | None = None,
         d = public / rel
         if not d.exists():
             continue
-        cmd = ["s5cmd"]
+        cmd = list(S5CMD)
         if workers > 0:
             cmd += ["--numworkers", str(workers)]        # transfer concurrency is a knob, not a default
         cmd += ["sync", "--size-only", "--include", glob, "--content-type", ctype,
@@ -323,7 +332,7 @@ def unexpected_failures(songs: list[str]) -> list[tuple]:
 
 def main() -> int:
     WORK.mkdir(parents=True, exist_ok=True)
-    sh(["s5cmd", "cp", f"s3://{FONTS_BUCKET}/shards.json", "/scratch/shards.json"])
+    sh([*S5CMD, "cp", f"s3://{FONTS_BUCKET}/shards.json", "/scratch/shards.json"])
     shards = json.loads(pathlib.Path("/scratch/shards.json").read_text())
     songs = shards[INDEX]["songs"]
     log(f"{len(songs)} songs: {' '.join(songs)}  workers={WORKERS} mem_units={MEM_UNITS}")

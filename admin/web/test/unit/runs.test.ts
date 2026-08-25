@@ -118,12 +118,12 @@ describe('RunsView poll', () => {
   });
 
   it('reports a tick that throws outside renderRuns and keeps polling', async () => {
-    // renderRuns catches its own GET, but the layout calls around it (scroll anchoring,
-    // fitLogBox) can still throw; an uncaught await there used to reject the timer
-    // callback and silently end the poll chain for the rest of the session.
+    // renderRuns catches its own GET, but the scroll anchoring around it can still throw;
+    // an uncaught await there used to reject the timer callback and silently end the poll
+    // chain for the rest of the session.
     const ff = api()
       .on('GET', '/api/runs', () => ({ runs: [run()] }))
-      .on('GET', '/api/runs/r1/logs', () => ({ events: [{ t: 0, msg: 'hi' }] }));
+      .on('GET', '/api/runs/r1/logs', () => ({ events: [], shards: [], view: 'signal', available: true }));
     const v = mount(ff);
     await v.load();
     button(v, 'Logs').click(); // an open log box makes the next render scroll-anchor
@@ -156,11 +156,11 @@ describe('RunsView actions', () => {
   it('reports a refresh that throws after the finisher POST', async () => {
     // The trailing `await this.renderRuns(host)` sits outside the handler's try, and
     // renderRuns only catches its own GET — the layout work it ends with (scroll
-    // anchoring, fitLogBox) rejected unhandled out of the click handler, leaving
-    // "finisher done" on screen with the list never refreshed.
+    // anchoring) rejected unhandled out of the click handler, leaving "finisher done"
+    // on screen with the list never refreshed.
     const ff = api()
       .on('GET', '/api/runs', () => ({ runs: [run()] }))
-      .on('GET', '/api/runs/r1/logs', () => ({ events: [{ t: 0, msg: 'hi' }] }))
+      .on('GET', '/api/runs/r1/logs', () => ({ events: [], shards: [], view: 'signal', available: true }))
       // /finish returns the updated run record (the route does): the handler reads
       // finisher.songs_json_published off it before refreshing the list (#19)
       .on('POST', '/api/runs/r1/finish', () => run({
@@ -270,5 +270,169 @@ describe('fleet capacity (#25/#42)', () => {
     // the estimate itself still landed
     expect(v.root.querySelector('.estimate-out')!.textContent).toContain('10 jobs');
     expect(status(v).classList.contains('error')).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------ logs (#43)
+
+const shard = (over: Record<string, unknown> = {}) => ({
+  shard: 0,
+  stream: 'soundfont-explorer-render/default/aaa',
+  phase: 'rendering',
+  songs: ['misc-slayer-black-magic'],
+  done: 336,
+  total: 566,
+  failed: 0,
+  skipped: 0,
+  running: 32,
+  workers: 32,
+  eta_s: 233,
+  elapsed_s: 300,
+  staged_fonts: 500,
+  staged_gib: 46.4,
+  stage_s: 80,
+  render_rc: null,
+  render_s: null,
+  published: [],
+  problems: [],
+  phases: null,
+  updated_at: 1,
+  last: '[sfr] 336/566 done=336',
+  ...over,
+});
+
+const logdoc = (shards: unknown[], over: Record<string, unknown> = {}) => ({
+  events: [], shards, view: 'signal', available: true, ...over,
+});
+
+const panel = (v: RunsView) => v.root.querySelector<HTMLElement>('.runlog')!;
+
+describe('RunsView logs', () => {
+  it('shows per-shard progress rather than a wall of staging noise', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => logdoc([
+        shard(), shard({ shard: 1, done: 444, total: 1132, eta_s: 558, songs: ['a', 'b'] }),
+      ]));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    await until(() => !!v.root.querySelector('.srow'));
+    const rows = [...v.root.querySelectorAll('.srow')];
+    expect(rows).toHaveLength(2);
+    const first = rows[0]!;
+    expect(first.textContent).toContain('shard 0');
+    expect(first.textContent).toContain('336/566');
+    expect(first.textContent).toContain('32/32 busy');
+    expect(first.textContent).toContain('eta 3m 53s');
+    // the bar reflects the fraction, not just presence
+    expect(first.querySelector<HTMLElement>('.sfill')!.style.width).toBe('59.4%');
+  });
+
+  it('reports the fleet finishing with the SLOWEST shard, not the average', async () => {
+    // the run is over when the last shard lands; a mean would promise the fleet is done
+    // while half of it is still rendering
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => logdoc([
+        shard({ eta_s: 10, done: 500, total: 566 }),
+        shard({ shard: 1, eta_s: 600, done: 100, total: 1132 }),
+      ]));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    await until(() => !!v.root.querySelector('.loghead'));
+    const head = v.root.querySelector('.loghead')!.textContent!;
+    expect(head).toContain('slowest shard ~10m 00s');
+    expect(head).toContain('600/1698 variants (35%)');
+    expect(head).toContain('64 workers busy');
+  });
+
+  it('keeps the panel node across a poll so it cannot collapse mid-refresh', async () => {
+    // The old box was rebuilt by every 5 s renderRuns() and was empty until its own fetch
+    // returned — with a 26,000-event tail behind it, that was a visible collapse per poll.
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => logdoc([shard()]));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    await until(() => !!v.root.querySelector('.srow'));
+    const before = panel(v);
+    await vi.advanceTimersByTimeAsync(5000);
+    await until(() => ff.count('GET', '/api/runs/r1/logs') === 2);
+    expect(panel(v)).toBe(before);            // same node, never detached
+    expect(before.hidden).toBe(false);
+    expect(before.querySelectorAll('.srow')).toHaveLength(1);
+  });
+
+  it('stops fetching logs once the box is closed', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => logdoc([shard()]));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    await until(() => ff.count('GET', '/api/runs/r1/logs') === 1);
+    button(v, 'Hide logs').click();
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(ff.count('GET', '/api/runs/r1/logs')).toBe(1);
+  });
+
+  it('drops to one shard’s unfiltered stream on demand and back again', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => logdoc([shard()]))
+      .on('GET', '/api/runs/r1/logs?view=raw&stream=soundfont-explorer-render%2Fdefault%2Faaa',
+        () => logdoc([], { view: 'raw', events: [{ t: 1, msg: 'cp s3://b/x /scratch/x', stream: 'x' }] }));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    await until(() => !!v.root.querySelector('.srow'));
+    button(v, 'raw').click();
+    await until(() => !!v.root.querySelector('.rawtail'));
+    expect(v.root.querySelector('.rawtail')!.textContent).toContain('cp s3://b/x');
+    button(v, '← all shards').click();
+    await until(() => !!v.root.querySelector('.srow'));
+    expect(v.root.querySelector('.rawtail')).toBeNull();
+  });
+
+  it('surfaces a shard’s !! lines instead of burying them in the tail', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => logdoc([
+        shard({ problems: ['manifest failed for song-x rc=3: boom'], failed: 4 }),
+      ]));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    await until(() => !!v.root.querySelector('.sproblem'));
+    expect(v.root.querySelector('.sproblem')!.textContent).toContain('manifest failed for song-x');
+    expect(v.root.querySelector('.loghead')!.textContent).toContain('1 problem(s)');
+    expect(v.root.querySelector('.loghead')!.classList.contains('bad')).toBe(true);
+  });
+
+  it('says so when the fleet has not logged anything yet', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => logdoc([]));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    // `.logwait` is also the click's own "loading…" placeholder, so wait for the answer
+    await until(() => (v.root.querySelector('.logwait')?.textContent ?? '') !== 'loading…');
+    expect(v.root.querySelector('.logwait')!.textContent).toContain('no shard output yet');
+  });
+
+  it('reports a logs fetch that fails without wiping the run list', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => { throw new Fail(500, 'cloudwatch is sulking'); });
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    await until(() => !!v.root.querySelector('.logwait.bad'));
+    expect(v.root.querySelector('.logwait.bad')!.textContent).toContain('cloudwatch is sulking');
+    expect(v.root.querySelectorAll('.runrow')).toHaveLength(1);
   });
 });

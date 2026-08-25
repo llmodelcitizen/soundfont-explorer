@@ -82,7 +82,8 @@ class TestShardSync(unittest.TestCase):
             cmds = self.shard.sync_commands(pub, "site")
         self.assertEqual(len(cmds), len(publish.OBJECT_KINDS))
         for (pre, glob, ctype), c in zip(publish.OBJECT_KINDS, cmds):
-            self.assertEqual(c[:2], ["s5cmd", "sync"])
+            self.assertEqual(c[0], "s5cmd")
+            self.assertIn("sync", c)
             self.assertIn("--size-only", c)
             self.assertEqual(_flag(c, "--include"), glob)
             self.assertEqual(_flag(c, "--content-type"), ctype)

@@ -20,6 +20,7 @@ import collections
 import datetime
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -130,6 +131,129 @@ def _prior_verdict(rec: dict) -> str | None:
     return rec.get("verdict") or (None if fin.get("ran_at") else fin.get("error")) or None
 
 
+# ---------------------------------------------------------------- log tail
+
+# Every line shard.py emits is prefixed "[shard N]" (its own log()) or "[sfr]" (the renderer's
+# progress, forwarded unbuffered). s5cmd's per-object receipts are neither, and on the
+# 2026-08-25 run they were 96.6% of a stream: 3,236 `cp s3://...` lines against four real ones,
+# per shard, before a single variant was rendered. That is why the Logs box showed nothing
+# worth reading — a 100-event tail of a 26,000-event window is pure staging noise.
+#
+# Filtering in CloudWatch rather than after the fetch is also what makes the route fast enough
+# to poll: the same 30-minute window went from 25,993 events in 3.6 s to 113 in 1.15 s. The
+# route is sync, so every one of those seconds pinned an anyio worker per open box (#19).
+#
+# Traceback/ERROR catch output that never reaches log() — a Python crash on stderr, an s5cmd
+# failure — and cost nothing when nothing is broken.
+SIGNAL_PATTERN = '?"[sfr]" ?"[shard" ?"Traceback" ?"ERROR" ?"Error"'
+
+_PROGRESS = re.compile(
+    r"\[sfr\]\s+\d+/(?P<total>\d+)\s+done=(?P<done>\d+)\s+failed=(?P<failed>\d+)"
+    r"\s+skipped=(?P<skipped>\d+)\s+running=(?P<running>\d+)"
+    r"(?:\s+mem_free=(?P<mem_free>\d+))?"
+    r"\s+elapsed=(?P<elapsed>\d+)s\s+eta=(?P<eta>\d+)s")
+_PLAN = re.compile(r"\[sfr\]\s+(?P<jobs>\d+) jobs, (?P<workers>\d+) workers")
+_SHARD = re.compile(r"\[shard (?P<n>\d+)\]\s?(?P<rest>.*)", re.S)
+_SONGS = re.compile(r"^(?P<n>\d+) songs: (?P<songs>.*?)\s+workers=(?P<workers>\d+)")
+_STAGED = re.compile(r"^staged (?P<fonts>\d+) fonts \((?P<gib>[\d.]+) GiB\).*?(?P<secs>\d+)s")
+_PUBLISHED = re.compile(r"^published (?P<song>\S+): (?P<variants>\d+) variants")
+_RENDER_DONE = re.compile(r"^render finished rc=(?P<rc>-?\d+) in (?P<secs>\d+)s")
+_PHASES = re.compile(r"^phases (?P<blob>\{.*\})", re.S)
+
+
+def _int(m, key: str):
+    v = m.group(key)
+    return int(v) if v is not None else None
+
+
+def _blank_shard(stream: str) -> dict:
+    return {"shard": None, "stream": stream, "phase": "starting", "songs": [],
+            "done": None, "total": None, "failed": None, "skipped": None, "running": None,
+            "workers": None, "eta_s": None, "elapsed_s": None, "mem_free": None,
+            "staged_fonts": None, "staged_gib": None, "stage_s": None, "render_rc": None,
+            "render_s": None, "published": [], "problems": [], "phases": None,
+            "updated_at": None, "last": None}
+
+
+def shard_states(events: list[dict]) -> list[dict]:
+    """Fold a filtered tail into one row per shard — the thing the Logs view actually wants.
+
+    The raw lines cannot answer "how far along is shard 6" without reading them: progress is a
+    line every 10 s whose successors make it obsolete, and the `[sfr]` lines carry no shard
+    number at all (only the stream they arrived on identifies them). So the fold is keyed on
+    logStreamName and the shard index is learned from whichever `[shard N]` line shares it.
+    """
+    by_stream: dict[str, dict] = {}
+    for e in events:
+        stream = e.get("stream") or ""
+        st = by_stream.setdefault(stream, _blank_shard(stream))
+        msg, ts = e["msg"], e["t"]
+        if st["updated_at"] is None or ts >= st["updated_at"]:
+            st["updated_at"], st["last"] = ts, msg
+        m = _PROGRESS.search(msg)
+        if m:
+            st.update(total=_int(m, "total"), done=_int(m, "done"), failed=_int(m, "failed"),
+                      skipped=_int(m, "skipped"), running=_int(m, "running"),
+                      mem_free=_int(m, "mem_free"), elapsed_s=_int(m, "elapsed"),
+                      eta_s=_int(m, "eta"))
+            if st["phase"] in ("starting", "staging"):
+                st["phase"] = "rendering"
+            continue
+        m = _PLAN.search(msg)
+        if m:
+            st["total"], st["workers"] = _int(m, "jobs"), _int(m, "workers")
+            if st["phase"] in ("starting", "staging"):
+                st["phase"] = "rendering"
+            continue
+        m = _SHARD.match(msg)
+        if not m:
+            if "Traceback" in msg or "ERROR" in msg:
+                st["problems"].append(msg.strip()[:400])
+            continue
+        st["shard"], rest = int(m.group("n")), m.group("rest")
+        if rest.startswith("!!"):
+            st["problems"].append(rest.lstrip("! ").strip()[:400])
+            continue
+        sub = _SONGS.match(rest)
+        if sub:
+            st["songs"] = sub.group("songs").split()
+            st["workers"] = int(sub.group("workers"))
+            if st["phase"] == "starting":
+                st["phase"] = "staging"
+            continue
+        sub = _STAGED.match(rest)
+        if sub:
+            st.update(staged_fonts=int(sub.group("fonts")), staged_gib=float(sub.group("gib")),
+                      stage_s=int(sub.group("secs")))
+            if st["phase"] in ("starting", "staging"):
+                st["phase"] = "rendering"
+            continue
+        sub = _PUBLISHED.match(rest)
+        if sub:
+            st["published"].append({"song": sub.group("song"),
+                                    "variants": int(sub.group("variants"))})
+            continue
+        sub = _RENDER_DONE.match(rest)
+        if sub:
+            st["render_rc"], st["render_s"] = int(sub.group("rc")), int(sub.group("secs"))
+            st["phase"] = "publishing"
+            continue
+        sub = _PHASES.match(rest)
+        if sub:
+            try:
+                st["phases"] = json.loads(sub.group("blob"))
+            except ValueError:
+                pass
+            continue
+        if rest.startswith("shard complete"):
+            st["phase"] = "done"
+    out = list(by_stream.values())
+    # unknown shard indexes sort last but stay visible: a stream that has only ever emitted
+    # `[sfr]` progress is a real shard doing real work, just not one that has said which
+    out.sort(key=lambda s: (s["shard"] is None, s["shard"] if s["shard"] is not None else 0))
+    return out
+
+
 def _tail_events(pages, limit: int) -> list[dict]:
     """The LAST `limit` events of a filter_log_events page sequence. The API only walks
     forward and its `limit=` truncates from the head, so one capped call returned the
@@ -137,7 +261,8 @@ def _tail_events(pages, limit: int) -> list[dict]:
     keep: collections.deque = collections.deque(maxlen=limit)
     for page in pages:
         for e in page.get("events", []):
-            keep.append({"t": e["timestamp"], "msg": e["message"].rstrip()})
+            keep.append({"t": e["timestamp"], "msg": e["message"].rstrip(),
+                         "stream": e.get("logStreamName")})
     return list(keep)
 
 
@@ -646,15 +771,29 @@ class RunManager:
         self._sleep_fleet(rec)
         return rec
 
-    def logs(self, rid: str, limit: int = 100) -> list[dict]:
-        """The last `limit` log events of the run (shard logs share one CloudWatch group)."""
+    def logs(self, rid: str, limit: int = 200, view: str = "signal",
+             stream: str | None = None) -> dict:
+        """What the run is doing, as a per-shard fold plus the tail it was folded from.
+
+        `signal` (the default) filters in CloudWatch and folds the result into one row per
+        shard. `raw` is the unfiltered output of ONE shard, scoped by `stream`: unfiltered
+        AND unscoped is the 26,000-event walk this whole change exists to avoid, so asking
+        for it without naming a stream gets the signal view instead.
+        """
         import boto3
         rec = self.get(rid)
         if not self.cfg.log_group:
-            return []
+            return {"events": [], "shards": [], "view": view, "available": False}
+        q = _log_query(rec, self.cfg.log_group)
+        if view == "raw" and stream:
+            q["logStreamNames"] = [stream]
+        else:
+            view, q["filterPattern"] = "signal", SIGNAL_PATTERN
         pages = boto3.client("logs").get_paginator("filter_log_events").paginate(
-            **_log_query(rec, self.cfg.log_group), PaginationConfig={"PageSize": 10_000})
-        return _tail_events(pages, limit)
+            **q, PaginationConfig={"PageSize": 10_000})
+        events = _tail_events(pages, limit)
+        return {"events": events, "view": view, "available": True,
+                "shards": shard_states(events) if view == "signal" else []}
 
 
 _manager: RunManager | None = None

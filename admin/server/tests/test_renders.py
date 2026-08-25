@@ -376,6 +376,163 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(self.m.runs["r1"]["state"], "staged")
 
 
+def ev(t, msg, stream="s/0"):
+    return {"t": t, "msg": msg, "stream": stream}
+
+
+class ShardStateTests(unittest.TestCase):
+    """The Logs view is a per-shard status board, not a log tail: these are the real line
+    shapes from the 2026-08-25 run, verbatim."""
+
+    def fold(self, events):
+        return {s["shard"]: s for s in renders.shard_states(events)}
+
+    def test_a_shard_mid_render(self):
+        got = self.fold([
+            ev(1, "[shard 6] 2 songs: misc-slayer-black-magic misc-slayer-dittohead  "
+                  "workers=32 mem_units=186"),
+            ev(2, "[shard 6] staged 500 fonts (46.4 GiB), songs and catalog in 80s"),
+            ev(3, "[sfr] 1132 jobs, 32 workers, 186 memory units"),
+            ev(4, "[sfr] 633/1132 done=633 failed=0 skipped=0 running=32 mem_free=169 "
+                  "elapsed=380s eta=292s  misc-slayer-black-magic/sf2-33b991e762(23s)"),
+        ])[6]
+        self.assertEqual(got["phase"], "rendering")
+        self.assertEqual((got["done"], got["total"], got["failed"]), (633, 1132, 0))
+        self.assertEqual((got["running"], got["workers"]), (32, 32))
+        self.assertEqual((got["eta_s"], got["elapsed_s"]), (292, 380))
+        self.assertEqual((got["staged_fonts"], got["stage_s"]), (500, 80))
+        self.assertEqual(got["staged_gib"], 46.4)
+        self.assertEqual(got["songs"], ["misc-slayer-black-magic", "misc-slayer-dittohead"])
+
+    def test_the_latest_progress_line_wins(self):
+        got = self.fold([
+            ev(1, "[sfr] 27/566 done=27 failed=0 skipped=0 running=32 elapsed=10s eta=1458s"),
+            ev(2, "[sfr] 193/566 done=193 failed=2 skipped=0 running=32 elapsed=120s eta=584s"),
+        ])[None]
+        self.assertEqual((got["done"], got["failed"], got["eta_s"]), (193, 2, 584))
+
+    def test_sfr_lines_are_attributed_by_stream_not_by_content(self):
+        """`[sfr]` carries no shard number — without the stream, eight shards fold into one."""
+        got = self.fold([
+            ev(1, "[shard 0] 1 songs: a  workers=32 mem_units=186", "s/0"),
+            ev(2, "[sfr] 336/566 done=336 failed=0 skipped=0 running=32 elapsed=1s eta=233s", "s/0"),
+            ev(3, "[shard 7] 2 songs: b c  workers=32 mem_units=186", "s/7"),
+            ev(4, "[sfr] 444/1132 done=444 failed=0 skipped=0 running=32 elapsed=1s eta=558s", "s/7"),
+        ])
+        self.assertEqual(got[0]["done"], 336)
+        self.assertEqual(got[7]["done"], 444)
+        self.assertEqual(got[0]["total"], 566)
+        self.assertEqual(got[7]["total"], 1132)
+
+    def test_the_phases_walk_forward_to_done(self):
+        base = [ev(1, "[shard 3] 1 songs: a  workers=32 mem_units=186")]
+        self.assertEqual(self.fold(base)[3]["phase"], "staging")
+        base.append(ev(2, "[shard 3] staged 500 fonts (46.4 GiB), songs and catalog in 80s"))
+        self.assertEqual(self.fold(base)[3]["phase"], "rendering")
+        base.append(ev(3, "[shard 3] render finished rc=0 in 700s"))
+        self.assertEqual(self.fold(base)[3]["phase"], "publishing")
+        base.append(ev(4, "[shard 3] shard complete (render rc=0; only expected `silent` failures)"))
+        got = self.fold(base)[3]
+        self.assertEqual(got["phase"], "done")
+        self.assertEqual((got["render_rc"], got["render_s"]), (0, 700))
+
+    def test_published_songs_accumulate(self):
+        got = self.fold([
+            ev(1, "[shard 2] published song-one: 566 variants in 90s"),
+            ev(2, "[shard 2] published song-two: 540 variants in 80s"),
+        ])[2]
+        self.assertEqual([p["song"] for p in got["published"]], ["song-one", "song-two"])
+        self.assertEqual(got["published"][0]["variants"], 566)
+
+    def test_bang_lines_are_surfaced_as_problems(self):
+        """`!!` is how shard.py reports every failure it can still describe."""
+        got = self.fold([
+            ev(1, "[shard 4] !! manifest failed for song-x rc=3: boom"),
+            ev(2, "[shard 4] !! shard failed to publish: song-x"),
+        ])[4]
+        self.assertEqual(len(got["problems"]), 2)
+        self.assertTrue(got["problems"][0].startswith("manifest failed for song-x"))
+
+    def test_a_traceback_with_no_shard_prefix_is_still_a_problem(self):
+        got = self.fold([ev(1, "Traceback (most recent call last):")])[None]
+        self.assertEqual(len(got["problems"]), 1)
+
+    def test_the_phases_summary_is_parsed_as_json(self):
+        blob = '{"shard": 5, "wall_s": 1000.0, "tail_fraction": 0.26}'
+        got = self.fold([ev(1, f"[shard 5] phases {blob}")])[5]
+        self.assertEqual(got["phases"]["tail_fraction"], 0.26)
+        self.assertEqual(got["phases"]["shard"], 5)
+
+    def test_shards_come_back_in_index_order_with_unknowns_last(self):
+        states = renders.shard_states([
+            ev(1, "[shard 7] 1 songs: a  workers=32 mem_units=1", "s/7"),
+            ev(2, "[sfr] 1/2 done=1 failed=0 skipped=0 running=1 elapsed=1s eta=1s", "s/?"),
+            ev(3, "[shard 0] 1 songs: b  workers=32 mem_units=1", "s/0"),
+        ])
+        self.assertEqual([s["shard"] for s in states], [0, 7, None])
+
+    def test_an_empty_tail_folds_to_nothing(self):
+        self.assertEqual(renders.shard_states([]), [])
+
+
+class LogQueryShapeTests(unittest.TestCase):
+    """What logs() actually asks CloudWatch for. The filter is not cosmetic: unfiltered, the
+    live 30-minute window was 25,993 events in 3.6 s (96.6% of it s5cmd `cp` receipts) against
+    113 in 1.15 s filtered — on a sync route the SPA re-reads every 5 s per open box."""
+
+    def setUp(self):
+        self.m = FakeManager()
+        self.m.runs["r1"] = run_record("r1", "running")
+        self.captured = {}
+
+        def paginate(**kw):
+            self.captured.update(kw)
+            return [{"events": [
+                {"timestamp": 1, "message": "[shard 0] 1 songs: a  workers=32 mem_units=1",
+                 "logStreamName": "s/0"},
+                {"timestamp": 2, "message": "cp s3://b/x /scratch/x", "logStreamName": "s/0"},
+            ]}]
+        self.boto3 = unittest.mock.MagicMock()
+        self.boto3.client.return_value.get_paginator.return_value.paginate.side_effect = paginate
+
+    def logs(self, **kw):
+        with unittest.mock.patch.dict(sys.modules, {"boto3": self.boto3}):
+            return self.m.logs("r1", **kw)
+
+    def test_the_signal_view_filters_in_cloudwatch(self):
+        out = self.logs()
+        self.assertEqual(self.captured["filterPattern"], renders.SIGNAL_PATTERN)
+        self.assertNotIn("logStreamNames", self.captured)
+        self.assertEqual(out["view"], "signal")
+        self.assertEqual([s["shard"] for s in out["shards"]], [0])
+
+    def test_the_filter_admits_every_line_shard_py_can_emit(self):
+        """shard.py writes through log() ("[shard N] ...") or forwards sfr's "[sfr] ..."; the
+        rest of the pattern is for output that never reaches either (a crash on stderr)."""
+        for term in ('?"[sfr]"', '?"[shard"', '?"Traceback"'):
+            self.assertIn(term, renders.SIGNAL_PATTERN)
+
+    def test_a_raw_view_is_scoped_to_one_stream(self):
+        out = self.logs(view="raw", stream="s/0")
+        self.assertEqual(self.captured["logStreamNames"], ["s/0"])
+        self.assertNotIn("filterPattern", self.captured)
+        self.assertEqual(out["view"], "raw")
+        self.assertEqual(out["shards"], [])          # a single stream is not a fleet fold
+        self.assertEqual(len(out["events"]), 2)      # including the cp line: raw means raw
+
+    def test_raw_without_a_stream_refuses_to_walk_the_whole_group(self):
+        """Unfiltered AND unscoped is the 26,000-event walk this change exists to avoid."""
+        out = self.logs(view="raw")
+        self.assertEqual(out["view"], "signal")
+        self.assertEqual(self.captured["filterPattern"], renders.SIGNAL_PATTERN)
+
+    def test_no_log_group_configured_is_reported_not_guessed_at(self):
+        self.m.cfg.log_group = ""
+        out = self.logs()
+        self.assertFalse(out["available"])
+        self.assertEqual(out["events"], [])
+
+
 class LogTailTests(unittest.TestCase):
     """logs() returns the newest events of the run, scoped to the run's window (#19)."""
 
@@ -385,9 +542,16 @@ class LogTailTests(unittest.TestCase):
                  {}]
         tail = renders._tail_events(pages, 100)
         self.assertEqual(len(tail), 100)
-        self.assertEqual(tail[0], {"t": 130, "msg": "line 130"})
-        self.assertEqual(tail[-1], {"t": 229, "msg": "line 229"})
+        self.assertEqual(tail[0], {"t": 130, "msg": "line 130", "stream": None})
+        self.assertEqual(tail[-1], {"t": 229, "msg": "line 229", "stream": None})
         self.assertEqual(renders._tail_events([{"events": []}], 100), [])
+
+    def test_the_stream_rides_along_because_sfr_lines_carry_no_shard_number(self):
+        """`[sfr] 225/1132 done=...` says nothing about which shard produced it; only the
+        stream it arrived on does, so shard_states() cannot fold without it."""
+        pages = [{"events": [{"timestamp": 1, "message": "[sfr] x", "logStreamName": "s/0"},
+                             {"timestamp": 2, "message": "[sfr] y", "logStreamName": "s/1"}]}]
+        self.assertEqual([e["stream"] for e in renders._tail_events(pages, 10)], ["s/0", "s/1"])
 
     def test_query_window_follows_the_run(self):
         import datetime

@@ -75,7 +75,18 @@ class SyncCommandTests(unittest.TestCase):
         plain = shard.sync_commands(self.public, "site", song="song-one")
         tuned = shard.sync_commands(self.public, "site", song="song-one", workers=32)
         self.assertNotIn("--numworkers", plain[0])
-        self.assertEqual(tuned[0][:3], ["s5cmd", "--numworkers", "32"])
+        # a global flag, so it has to land before the subcommand
+        i = tuned[0].index("--numworkers")
+        self.assertEqual(tuned[0][i + 1], "32")
+        self.assertLess(i, tuned[0].index("sync"))
+
+    def test_uploads_do_not_log_a_line_per_object(self):
+        """s5cmd's default `info` level made 96.6% of a shard's CloudWatch stream per-object
+        receipts, which is what made the Logs view unreadable and slow to fetch."""
+        for cmd in shard.sync_commands(self.public, "site", song="song-one"):
+            i = cmd.index("--log")
+            self.assertEqual(cmd[i + 1], "error")
+            self.assertLess(i, cmd.index("sync"))
 
     def test_without_a_song_it_still_covers_the_whole_tree(self):
         dsts = [c[-1] for c in shard.sync_commands(self.public, "site")]

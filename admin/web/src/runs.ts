@@ -40,6 +40,47 @@ interface Capacity {
   quota_code?: string;
 }
 
+/** One shard, folded server-side from its CloudWatch stream (renders.shard_states). */
+interface ShardState {
+  shard: number | null;
+  stream: string | null;
+  phase: string;
+  songs: string[];
+  done: number | null;
+  total: number | null;
+  failed: number | null;
+  skipped: number | null;
+  running: number | null;
+  workers: number | null;
+  eta_s: number | null;
+  elapsed_s: number | null;
+  staged_fonts: number | null;
+  staged_gib: number | null;
+  stage_s: number | null;
+  render_rc: number | null;
+  render_s: number | null;
+  published: { song: string; variants: number }[];
+  problems: string[];
+  phases: Record<string, number> | null;
+  updated_at: number | null;
+  last: string | null;
+}
+
+interface LogDoc {
+  events: { t: number; msg: string; stream: string | null }[];
+  shards: ShardState[];
+  view: string;
+  available: boolean;
+}
+
+function dur(s: number | null): string {
+  if (s === null || !isFinite(s)) return '?';
+  if (s < 60) return `${Math.round(s)}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(Math.round(s % 60)).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
 export class RunsView {
   root = el('div', { class: 'runs' });
   private songs: RenderSong[] = [];
@@ -50,16 +91,14 @@ export class RunsView {
   private timer: number | null = null;
   private pollGen = 0; // bumped by stop(): a tick already in flight must not re-arm
   private openLogs = new Set<string>();
+  // The panel node per run is kept ACROSS renders. renderRuns() replaces the whole list every
+  // 5 s, and a log box rebuilt from scratch each time is empty until its own fetch returns —
+  // which is the "appears and collapses" the box did on every poll. Reusing the node means the
+  // panel keeps its content and its height while the next fetch is in flight.
+  private logPanels = new Map<string, HTMLElement>();
+  // which shard's unfiltered stream the run is showing, if any (null = the folded view)
+  private rawStream = new Map<string, string | null>();
   private lastBody: Record<string, unknown> | null = null;
-
-  constructor() {
-    const resize = () => {
-      this.root.querySelectorAll<HTMLElement>('.runlog:not([hidden])')
-        .forEach((box) => this.fitLogBox(box));
-    };
-    window.addEventListener('resize', resize);
-    window.visualViewport?.addEventListener('resize', resize);
-  }
 
   async load(): Promise<void> {
     // The shell shows this view with an un-awaited load() and leaves it with a synchronous
@@ -106,7 +145,7 @@ export class RunsView {
     }, 5000);
   }
 
-  /** renderRuns() with the layout work it ends with (scroll anchoring, fitLogBox) reported
+  /** renderRuns() with the layout work it ends with (scroll anchoring) reported
    *  on the status line instead of thrown. renderRuns catches its own GET but not that, and
    *  every caller is a timer callback or a click handler: a rejection there is unhandled —
    *  it would end the poll chain for the rest of the session, or leave a click's own
@@ -266,26 +305,102 @@ export class RunsView {
 
   // ---------------------------------------------------------------- run list
 
-  private fitLogBox(box: HTMLElement, bringIntoView = false): void {
-    const viewport = window.visualViewport;
-    const viewportHeight = viewport?.height ?? window.innerHeight;
-    const headerHeight = document.querySelector<HTMLElement>('header.topbar')
-      ?.getBoundingClientRect().height ?? 0;
-    box.style.height = `${Math.max(120, viewportHeight - headerHeight)}px`;
-    box.style.scrollMarginTop = `${headerHeight}px`;
-    if (bringIntoView) box.scrollIntoView({ block: 'start' });
-    box.scrollTop = box.scrollHeight;
+  private logPanel(rid: string): HTMLElement {
+    let panel = this.logPanels.get(rid);
+    if (!panel) {
+      panel = el('div', { class: 'runlog', 'data-run-id': rid, hidden: '' });
+      this.logPanels.set(rid, panel);
+    }
+    return panel;
   }
 
-  private async refreshLogs(box: HTMLElement, rid: string, bringIntoView = false): Promise<void> {
-    const text = box.querySelector<HTMLElement>('.runlog-text')!;
+  private async refreshLogs(rid: string): Promise<void> {
+    const panel = this.logPanels.get(rid);
+    if (!panel || panel.hidden || !panel.isConnected) return;
+    const raw = this.rawStream.get(rid) ?? null;
+    const qs = raw ? `?view=raw&stream=${encodeURIComponent(raw)}` : '';
+    let doc: LogDoc;
     try {
-      const ev = await get<{ events: { t: number; msg: string }[] }>(`/api/runs/${rid}/logs`);
-      text.textContent = ev.events.map((x) => x.msg).join('\n') || '(no log events yet)';
+      doc = await get<LogDoc>(`/api/runs/${rid}/logs${qs}`);
     } catch (e) {
-      text.textContent = `logs unavailable: ${(e as Error).message}`;
+      panel.replaceChildren(el('div', { class: 'logwait bad' },
+        `logs unavailable: ${(e as Error).message}`));
+      return;
     }
-    if (box.isConnected && !box.hidden) this.fitLogBox(box, bringIntoView);
+    if (panel.hidden || !panel.isConnected) return;   // toggled shut mid-flight
+    panel.replaceChildren(...this.logChildren(rid, doc));
+  }
+
+  /** The panel body: a per-shard status board, or one shard's unfiltered tail. */
+  private logChildren(rid: string, doc: LogDoc): HTMLElement[] {
+    if (!doc.available) {
+      return [el('div', { class: 'logwait' }, 'no CloudWatch log group is configured for this box')];
+    }
+    if (doc.view === 'raw') {
+      const back = el('button', { class: 'linky' }, '\u2190 all shards');
+      back.onclick = async () => { this.rawStream.set(rid, null); await this.refreshLogs(rid); };
+      const pre = el('pre', { class: 'rawtail' },
+        doc.events.map((e) => e.msg).join('\n') || '(nothing in this stream yet)');
+      // a raw tail is only useful read from the end
+      queueMicrotask(() => { pre.scrollTop = pre.scrollHeight; });
+      return [el('div', { class: 'loghead' }, back,
+        el('span', { class: 'dimtext' }, `${doc.events.length} lines, unfiltered`)), pre];
+    }
+    if (!doc.shards.length) {
+      return [el('div', { class: 'logwait' },
+        'no shard output yet \u2014 the fleet logs nothing until the containers start')];
+    }
+    return [this.fleetSummary(doc.shards),
+      el('div', { class: 'shardgrid' }, ...doc.shards.map((s) => this.shardRow(rid, s)))];
+  }
+
+  /** The one line that answers "how is the run going": slowest shard sets the finish. */
+  private fleetSummary(shards: ShardState[]): HTMLElement {
+    const done = shards.reduce((n, s) => n + (s.done ?? 0), 0);
+    const total = shards.reduce((n, s) => n + (s.total ?? 0), 0);
+    const failed = shards.reduce((n, s) => n + (s.failed ?? 0), 0);
+    const running = shards.reduce((n, s) => n + (s.running ?? 0), 0);
+    const live = shards.filter((s) => s.phase !== 'done');
+    // the run ends when the LAST shard does, so the fleet eta is the max, never the mean
+    const etas = live.map((s) => s.eta_s).filter((e): e is number => e !== null);
+    const bits = [`${shards.length} shards`];
+    if (total) bits.push(`${done}/${total} variants (${Math.round((done / total) * 100)}%)`);
+    if (running) bits.push(`${running} workers busy`);
+    if (failed) bits.push(`${failed} failed`);
+    if (etas.length && live.length) bits.push(`slowest shard ~${dur(Math.max(...etas))}`);
+    const problems = shards.reduce((n, s) => n + s.problems.length, 0);
+    return el('div', { class: `loghead${problems ? ' bad' : ''}` },
+      el('span', {}, bits.join(' \u00b7 ')),
+      problems ? el('span', { class: 'chip c-failed' }, `${problems} problem(s)`) : el('span', {}));
+  }
+
+  private shardRow(rid: string, s: ShardState): HTMLElement {
+    const pct = s.done !== null && s.total ? Math.min(100, (s.done / s.total) * 100) : 0;
+    const facts: string[] = [];
+    if (s.done !== null && s.total) facts.push(`${s.done}/${s.total}`);
+    if (s.running !== null) facts.push(`${s.running}/${s.workers ?? '?'} busy`);
+    if (s.failed) facts.push(`${s.failed} failed`);
+    if (s.phase === 'rendering' && s.eta_s !== null) facts.push(`eta ${dur(s.eta_s)}`);
+    if (s.phase === 'staging' || s.phase === 'starting') facts.push('staging fonts');
+    if (s.stage_s !== null && s.phase !== 'staging') facts.push(`staged in ${dur(s.stage_s)}`);
+    if (s.render_s !== null) facts.push(`rendered in ${dur(s.render_s)}`);
+    if (s.published.length) facts.push(`${s.published.length} published`);
+    const tail = el('div', { class: 'srow-detail' },
+      el('span', { class: 'dimtext' }, s.songs.join(', ') || (s.last ?? '')));
+    if (s.stream) {
+      const rawBtn = el('button', { class: 'linky' }, 'raw');
+      rawBtn.onclick = async () => { this.rawStream.set(rid, s.stream); await this.refreshLogs(rid); };
+      tail.append(rawBtn);
+    }
+    return el('div', { class: `srow ph-${s.phase}` },
+      el('div', { class: 'srow-head' },
+        el('strong', {}, s.shard === null ? 'shard ?' : `shard ${s.shard}`),
+        el('span', { class: `sphase ph-${s.phase}` }, s.phase),
+        el('span', { class: 'dimtext' }, facts.join(' \u00b7 '))),
+      el('div', { class: 'sbar' },
+        el('div', { class: `sfill ph-${s.phase}`, style: `width:${pct.toFixed(1)}%` })),
+      tail,
+      ...s.problems.map((t) => el('div', { class: 'sproblem' }, t)));
   }
 
   private async renderRuns(host: HTMLElement): Promise<void> {
@@ -353,26 +468,22 @@ export class RunsView {
         };
         actions.append(f);
       }
-      const logs = el('button', {}, 'Logs');
       const logIsOpen = this.openLogs.has(r.run_id);
-      const logBox = el('div', {
-        class: 'logbox runlog',
-        'data-run-id': r.run_id,
-        ...(logIsOpen ? {} : { hidden: '' }),
-      }, el('pre', { class: 'runlog-text' }, logIsOpen ? 'loading logs…' : ''));
-      if (logIsOpen) logs.textContent = 'Hide logs';
+      const logs = el('button', {}, logIsOpen ? 'Hide logs' : 'Logs');
+      const logBox = this.logPanel(r.run_id);   // the SAME node every render — see logPanels
+      logBox.hidden = !logIsOpen;
       logs.onclick = async () => {
-        logBox.hidden = !logBox.hidden;
-        if (logBox.hidden) {
+        if (this.openLogs.has(r.run_id)) {
           this.openLogs.delete(r.run_id);
+          logBox.hidden = true;
           logs.textContent = 'Logs';
-        } else {
-          this.openLogs.add(r.run_id);
-          logs.textContent = 'Hide logs';
-          logBox.querySelector<HTMLElement>('.runlog-text')!.textContent = 'loading logs…';
-          this.fitLogBox(logBox, true);
-          await this.refreshLogs(logBox, r.run_id);
+          return;
         }
+        this.openLogs.add(r.run_id);
+        logBox.hidden = false;
+        logs.textContent = 'Hide logs';
+        if (!logBox.firstChild) logBox.replaceChildren(el('div', { class: 'logwait' }, 'loading…'));
+        await this.refreshLogs(r.run_id);
       };
       actions.append(logs);
       return el('div', { class: `runrow st-${r.state}` },
@@ -390,7 +501,12 @@ export class RunsView {
         .find((box) => box.dataset.runId === anchorId);
       if (replacement) window.scrollBy(0, replacement.getBoundingClientRect().top - anchorTop);
     }
-    await Promise.all([...host.querySelectorAll<HTMLElement>('.runlog:not([hidden])')]
-      .map((box) => this.refreshLogs(box, box.dataset.runId!)));
+    // a run that has dropped off the list keeps neither a panel nor a poll
+    const listed = new Set(runs.map((r) => r.run_id));
+    for (const rid of [...this.logPanels.keys()]) {
+      if (!listed.has(rid)) { this.logPanels.delete(rid); this.openLogs.delete(rid); this.rawStream.delete(rid); }
+    }
+    await Promise.all([...this.openLogs].filter((rid) => listed.has(rid))
+      .map((rid) => this.refreshLogs(rid)));
   }
 }

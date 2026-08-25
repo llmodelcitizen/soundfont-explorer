@@ -116,9 +116,12 @@ def get_run(rid: str) -> dict:
 
 
 @router.get("/api/runs/{rid}/logs")
-def run_logs(rid: str) -> dict:
+def run_logs(rid: str, view: str = "signal", stream: str | None = None,
+             limit: int = 200) -> dict:
+    """`signal`: the filtered tail folded into per-shard progress. `raw`: one shard's
+    unfiltered output, named by `stream` (which the signal view supplies)."""
     try:
-        return {"events": _mgr().logs(rid)}
+        return _mgr().logs(rid, limit=max(1, min(limit, 2000)), view=view, stream=stream)
     except KeyError:
         raise HTTPException(404, f"no run {rid}") from None
 
