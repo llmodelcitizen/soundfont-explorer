@@ -431,9 +431,10 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
             elif e["id"] not in only:
                 merged.append(e)                        # not selected: untouched
             else:
-                dropped.append(e["id"])                 # selected but not produced
-            # a refused (or removed-from-corpus) selection must not keep its stale entry, or
-            # the render list goes on offering a song canon has just rejected
+                # selected but not produced (refused, or gone from the corpus): its stale
+                # entry must not survive, or the render list goes on offering a song canon
+                # has just rejected
+                dropped.append(e["id"])
         entries = merged + list(by_id.values())
         if dropped:
             # the admin's publish path refuses to drop a track that is live on the site, so

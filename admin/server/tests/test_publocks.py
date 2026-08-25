@@ -111,6 +111,16 @@ class RouteGuardTests(unittest.TestCase):
         self.assertEqual(outside, set())
         self.assertEqual(inside, {"sync_down", "rebuild_and_publish"})
 
+    def test_no_module_writes_songs_json_outside_the_mutex(self):
+        """The two above are today's writers; this one keeps a third from appearing without
+        one. A writer that takes no lock is exactly the shape of the bug (#19)."""
+        checked = 0
+        for name in sorted(f for f in os.listdir(SFADMIN) if f.endswith(".py")):
+            checked += 1
+            _, outside = _guarded_calls(self.source(name))
+            self.assertEqual(outside, set(), f"{name}: publishops writer outside the mutex")
+        self.assertGreater(checked, 5)
+
 
 if __name__ == "__main__":
     unittest.main()
