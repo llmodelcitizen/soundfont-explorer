@@ -59,7 +59,8 @@ export function parseUrl(search: string = typeof location !== 'undefined' ? loca
     const t = Number(p.get('t'));
     if (Number.isFinite(t) && t >= 0) st.t = t;
   }
-  if (p.get('f')) st.filters = decodeFilters(p.get('f')!);
+  // `f=` (present, empty) is a cleared selection; no `f` at all leaves the app's default filters
+  if (p.has('f')) st.filters = decodeFilters(p.get('f') ?? '');
   if (p.get('q')) st.q = p.get('q')!;
   if (p.get('theme')) st.theme = p.get('theme')!;
   if (p.get('loop')) st.loop = p.get('loop') === '1';
@@ -71,8 +72,7 @@ export function buildSearch(st: UrlState): string {
   if (st.song) p.set('song', st.song);
   if (st.variant) p.set('v', st.variant);
   if (st.t !== undefined && st.t > 0) p.set('t', String(Math.round(st.t)));
-  const f = st.filters ? encodeFilters(st.filters) : '';
-  if (f) p.set('f', f);
+  if (st.filters) p.set('f', encodeFilters(st.filters)); // an empty selection round-trips as `f=`
   if (st.q) p.set('q', st.q);
   if (st.theme && st.theme !== 'modern') p.set('theme', st.theme);
   if (st.loop) p.set('loop', '1');

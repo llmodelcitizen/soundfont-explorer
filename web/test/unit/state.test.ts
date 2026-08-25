@@ -116,3 +116,35 @@ describe('URL state', () => {
     expect(parseUrl('?t=abc').t).toBeUndefined();
   });
 });
+
+describe('FilterIndex facet arrays', () => {
+  // edm-all in the published catalog: chip 'opll' (chip_family) but facets.chip ['opll', 'scc']
+  const catalog = parseCatalog({
+    schema: 1,
+    engines: [],
+    facets: {},
+    variants: [
+      { id: 'edm-opll', label: 'OPLL', engine: 'edmidi', chip: 'opll', type: 'fm', facets: { chip: 'opll' }, aliases: [] },
+      { id: 'edm-scc', label: 'SCC', engine: 'edmidi', chip: 'scc', type: 'fm', facets: { chip: 'scc' }, aliases: [] },
+      { id: 'edm-all', label: 'OPLL + SCC', engine: 'edmidi', chip: 'opll', type: 'fm', facets: { chip: ['opll', 'scc'] }, aliases: [] },
+    ],
+  });
+  const idx = new FilterIndex(['edm-opll', 'edm-scc', 'edm-all'], catalog);
+
+  it('keeps every chip of a multi-chip variant (edm-all is listed under SCC as well as OPLL)', () => {
+    expect(idx.apply({ chip: new Set(['scc']) })).toEqual(['edm-scc', 'edm-all']);
+    expect(idx.apply({ chip: new Set(['opll']) })).toEqual(['edm-opll', 'edm-all']);
+    const counts = Object.fromEntries(idx.counts('chip', {}).map((c) => [c.value, c.count]));
+    expect(counts).toEqual({ opll: 2, scc: 2 });
+  });
+});
+
+describe('URL state: cleared filters', () => {
+  it('round-trips an empty selection as `f=` (distinct from no `f`, which means the default filters)', () => {
+    expect(buildSearch({ filters: {} })).toBe('?f=');
+    expect(parseUrl('?f=').filters).toEqual({});
+    expect(parseUrl('').filters).toBeUndefined();
+    expect(parseUrl(buildSearch({ song: 'x', filters: {} })).filters).toEqual({});
+    expect(parseUrl(buildSearch({ filters: { engine: new Set(['adlmidi']) } })).filters).toEqual({ engine: new Set(['adlmidi']) });
+  });
+});

@@ -27,9 +27,13 @@ export type FacetCounts = { value: string; count: number }[];
 function facetValues(v: Variant, key: FacetKey): string[] {
   const f = v.facets ?? {};
   let raw: unknown = f[key];
-  if (key === 'engine') raw = v.engine || raw;
-  if (key === 'chip') raw = v.chip || raw;
-  if (key === 'type') raw = v.type || raw;
+  // the top-level engine/chip/type strings mirror single facet values; a multi-chip variant
+  // (edm-all: chip 'opll', facets.chip ['opll', 'scc']) keeps the full list only in facets
+  if (!Array.isArray(raw)) {
+    if (key === 'engine') raw = v.engine || raw;
+    if (key === 'chip') raw = v.chip || raw;
+    if (key === 'type') raw = v.type || raw;
+  }
   if (key === 'quality') {
     const tags = tagNames(raw);
     return tags.length ? tags : ['ok'];
