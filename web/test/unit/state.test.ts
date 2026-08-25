@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { engineLabel, parseCatalog, tagNames } from '../../src/contracts/catalog';
+import { SF2_INFO_KEYS, engineLabel, parseCatalog, tagNames } from '../../src/contracts/catalog';
 import { parseSet } from '../../src/contracts/set';
 import { ContractError, parseSongs, songTitle } from '../../src/contracts/songs';
 import { FilterIndex } from '../../src/state/filterIndex';
@@ -82,6 +82,29 @@ describe('FilterIndex', () => {
     const i2 = new FilterIndex(['adl-b0', 'ghost'], catalog);
     expect(i2.apply({})).toEqual(['adl-b0', 'ghost']);
     expect(i2.apply({ engine: new Set(['adlmidi']) })).toEqual(['adl-b0']);
+  });
+});
+
+describe('the SF2 comment chunk is never surfaced', () => {
+  // ICMT is free prose scraped from third-party fonts and full of e-mail addresses, so
+  // catalog/variants.py deliberately does not publish it (issue #2). Nothing in the client may
+  // display or index it, even if a stale catalog.json still carries the field.
+  const catalog = parseCatalog({
+    schema: 1,
+    engines: [],
+    facets: {},
+    variants: [{ id: 'sf2-cccccccccc', label: 'Commented', engine: 'fluidsynth', chip: 'sf2', type: 'sampled', facets: {}, source: { file: 'C.sf2', sf2: { INAM: 'Commented', ICMT: 'mail me at someone@example.invalid' } }, aliases: [] }],
+  });
+  const idx = new FilterIndex(['sf2-cccccccccc'], catalog);
+
+  it('is not part of the search text', () => {
+    expect(idx.apply({}, 'commented')).toEqual(['sf2-cccccccccc']);
+    expect(idx.apply({}, 'example.invalid')).toEqual([]);
+    expect(idx.apply({}, 'mail me')).toEqual([]);
+  });
+
+  it('is not one of the INFO rows the now-playing panel renders', () => {
+    expect(SF2_INFO_KEYS as readonly string[]).not.toContain('ICMT');
   });
 });
 

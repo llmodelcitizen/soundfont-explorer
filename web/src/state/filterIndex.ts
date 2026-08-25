@@ -55,7 +55,7 @@ export class FilterIndex {
       const v = catalog.byId.get(id);
       if (!v) return id.toLowerCase();
       const info = v.source?.sf2;
-      return [v.id, v.label, v.slug, v.source?.file, info?.INAM, info?.IENG, info?.ICMT, v.bank?.family, v.bank?.name, ...(v.bank?.tags ?? []), ...v.aliases]
+      return [v.id, v.label, v.slug, v.source?.file, info?.INAM, info?.IENG, v.bank?.family, v.bank?.name, ...(v.bank?.tags ?? []), ...v.aliases]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();

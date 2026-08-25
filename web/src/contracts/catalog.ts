@@ -11,11 +11,16 @@ export interface EngineInfo {
 
 export type Facets = Record<string, string | string[] | boolean | number | null | undefined>;
 
-/** SF2 INFO chunk strings shown in the now-playing panel, in display order */
+/**
+ * SF2 INFO chunk strings shown in the now-playing panel, in display order. This is exactly what
+ * `catalog/variants.py` publishes under `source.sf2`: the comment chunk ICMT is scanned for
+ * lineage/licence/year but never published, because it is free prose full of third-party PII
+ * (issue #2). Nothing in the client may display or index it.
+ */
 export const SF2_INFO_KEYS = ['INAM', 'IENG', 'ICRD', 'IPRD', 'ICOP', 'ISFT'] as const;
 
 /** SoundFont INFO chunk plus the stats the catalog builder adds; null/absent for non-SF2 sources */
-export interface Sf2Info extends Partial<Record<(typeof SF2_INFO_KEYS)[number] | 'ICMT', string | null>> {
+export interface Sf2Info extends Partial<Record<(typeof SF2_INFO_KEYS)[number], string | null>> {
   ifil?: string | null;
   preset_count?: number | null;
   melodic_bank0?: number | null;
