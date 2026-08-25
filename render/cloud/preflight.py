@@ -156,8 +156,12 @@ def gather(compute_environment: str, job_definition: str, shards: int, *, aws=_a
         except Exception:
             return default
 
-    jd = maybe(lambda: aws("batch", "describe-job-definitions", "--job-definitions", job_definition)
-               ["jobDefinitions"][0], {})
+    # `--job-definitions` wants an ARN or name:revision and returns [] for a bare name, which read
+    # as "0 vCPU per shard" and disabled the whole preflight. submit.py submits by NAME, so Batch
+    # uses the highest ACTIVE revision — inspect exactly that one.
+    jd = maybe(lambda: max(aws("batch", "describe-job-definitions", "--job-definition-name",
+                               job_definition, "--status", "ACTIVE")["jobDefinitions"],
+                           key=lambda d: d.get("revision", 0)), {})
     ce = maybe(lambda: aws("batch", "describe-compute-environments",
                            "--compute-environments", compute_environment)["computeEnvironments"][0], {})
     quota = maybe(lambda: int(float(aws("service-quotas", "get-service-quota", "--service-code", "ec2",

@@ -130,8 +130,11 @@ class GatherTests(unittest.TestCase):
 
     def test_reads_all_four_numbers(self):
         aws = self.fake_aws(**{
+            # several ACTIVE revisions come back; Batch uses the highest when submitting by name
             "batch describe-job-definitions": {"jobDefinitions": [
-                {"containerProperties": {"resourceRequirements": [{"type": "VCPU", "value": "96"}]}}]},
+                {"revision": 2, "containerProperties": {"resourceRequirements": [{"type": "VCPU", "value": "48"}]}},
+                {"revision": 3, "containerProperties": {"resourceRequirements": [{"type": "VCPU", "value": "96"}]}},
+                {"revision": 1, "containerProperties": {"resourceRequirements": [{"type": "VCPU", "value": "16"}]}}]},
             "batch describe-compute-environments": {"computeEnvironments": [
                 {"computeResources": {"maxvCpus": 2304}}]},
             "service-quotas get-service-quota": {"Quota": {"Value": 256.0}},
@@ -143,6 +146,23 @@ class GatherTests(unittest.TestCase):
         c = preflight.gather("ce", "jd", 8, aws=aws)
         self.assertEqual((c.vcpus_per_shard, c.ce_max_vcpus, c.quota_vcpus, c.consumed_vcpus), (96, 2304, 256, 96))
         self.assertEqual(c.concurrent_shards, 1)      # (256 - 96) // 96
+
+    def test_a_bare_name_must_be_queried_the_way_batch_resolves_it(self):
+        """`--job-definitions <name>` returns [] for a bare name; that read as 0 vCPU per shard
+        and silently disabled the preflight against the real account."""
+        seen = []
+
+        def aws(*args):
+            seen.append(args)
+            if args[:2] == ("batch", "describe-job-definitions"):
+                assert "--job-definition-name" in args, args
+                assert "--status" in args and "ACTIVE" in args, args
+                return {"jobDefinitions": [
+                    {"revision": 3, "containerProperties": {"resourceRequirements": [
+                        {"type": "VCPU", "value": "90"}]}}]}
+            return {}
+        c = preflight.gather("ce", "soundfont-explorer-render", 8, aws=aws)
+        self.assertEqual(c.vcpus_per_shard, 90)
 
     def test_an_unreadable_quota_is_not_fatal(self):
         aws = self.fake_aws(**{
