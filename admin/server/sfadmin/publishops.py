@@ -282,9 +282,12 @@ def prune(dry_run: bool = True) -> dict:
             # songs.json names a set doc the bucket no longer has (a remove that died
             # half-way before #15, or a stray delete). Without the doc there is no way to
             # tell which of the song's audio is current, so keep all of it and say so —
-            # Remove on the Published tab is the deliberate way to clear the track.
+            # Remove on the Published tab is the deliberate way to clear the track. The
+            # s/ prefix is kept too: a superseded set doc may be the only surviving record
+            # of which renders are current, and deleting it forecloses the repair.
             missing_sets.append(set_key)
             keep_prefixes.append(f"a/{song['id']}/")
+            keep_prefixes.append(f"s/{song['id']}/")
             continue
         sid = doc["song"]
         for g in doc.get("groups", []):

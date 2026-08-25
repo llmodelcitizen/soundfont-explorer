@@ -307,6 +307,17 @@ class PublishOpsTests(unittest.TestCase):
                          ["a/alpha/g/g1/0.ogg", "a/alpha/l/r1/0.ogg", "a/alpha/l/stale/0.ogg"])
         self.assertEqual(self.site.keys("a/beta/"), ["a/beta/g/g1/0.ogg", "a/beta/l/r1/0.ogg"])
 
+    def test_prune_keeps_a_superseded_set_doc_when_the_current_one_is_missing(self):
+        """The track is "kept whole": with the current set doc gone, an older one at
+        s/<id>/<oldhash>.json is the only record of which of the kept audio is current, so
+        prune must not take it either (and set_docs must not drop to 0 in the overview)."""
+        del self.site.objects["s/alpha/h1.json"]
+        self.site.objects["s/alpha/h0.json"] = b"{}"
+        r = publishops.prune(dry_run=False)
+        self.assertEqual(r["missing_sets"], ["s/alpha/h1.json"])
+        self.assertEqual(r["doomed_objects"], 0)
+        self.assertEqual(self.site.keys("s/alpha/"), ["s/alpha/h0.json"])
+
     def test_prune_without_songs_json_refuses(self):
         del self.site.objects["songs.json"]
         with self.assertRaisesRegex(RuntimeError, "no songs.json"):
