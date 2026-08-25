@@ -80,6 +80,48 @@ class AssertPeakSafeTests(unittest.TestCase):
                 assert_peak_safe(-9.0, bad, S)
 
 
+class ToleranceIsAtLeastOneMeasurementStepTests(unittest.TestCase):
+    """The tolerance cannot be finer than the instrument (#44).
+
+    ffmpeg's ebur128 reports true peak to one decimal place, so a peak is known to +/- one
+    0.1 dB step. gain_db() aims a peak-limited variant at EXACTLY the ceiling, which parks it
+    on the boundary — and at the old 0.01 dB, a remeasurement that rounded one step up failed
+    the variant for a difference the measurement cannot resolve.
+    """
+
+    EBUR128_STEP_DB = 0.1
+
+    def test_the_tolerance_is_not_finer_than_ebur128_can_measure(self):
+        self.assertGreaterEqual(PEAK_TOLERANCE_DB, self.EBUR128_STEP_DB)
+
+    def test_a_master_aimed_at_the_ceiling_survives_a_one_step_remeasurement(self):
+        """The observed failure: input_tp -14.7 + gain 13.2 = -1.5 exactly, measured -1.4.
+
+        It has to be a PEAK-limited variant — one the ceiling, not the loudness target, decides
+        the gain for. Those are the only ones parked on the boundary, and the only ones at risk."""
+        g = gain_db(-35.0, -14.7, S)                                  # loudness wants +19, peak allows +13.2
+        self.assertAlmostEqual(g, 13.2)
+        self.assertAlmostEqual(peak_after_gain(-14.7, g), CEIL)       # aimed at the ceiling
+        assert_peak_safe(-14.7, g + self.EBUR128_STEP_DB, S)          # measured one step high
+
+    def test_two_steps_over_is_still_refused(self):
+        with self.assertRaises(JobError):
+            assert_peak_safe(CEIL, 2 * self.EBUR128_STEP_DB + 0.01, S)
+
+    def test_the_renders_27_was_written_to_catch_are_still_caught_by_miles(self):
+        """A 0.1 dB tolerance does nothing for a master 27-37 dB over the ceiling."""
+        for over in (5.0, 27.0, 37.0):
+            with self.assertRaises(JobError):
+                assert_peak_safe(CEIL, over, S)
+
+    def test_widening_the_tolerance_did_not_change_any_gain(self):
+        """Only which variants pass changes — never the audio of one that already did, which
+        is why this needs no PIPELINE_VERSION bump and no corpus re-render."""
+        for i, tp in ((-21.3, -9.0), (-16.0, -14.7), (-60.0, -50.0), (-16.0, 35.0)):
+            g = gain_db(i, tp, S)
+            self.assertEqual(g, min(min(S.lufs_target - i, CEIL - tp), S.gain_clamp_db))
+
+
 class LoudnormParseTests(unittest.TestCase):
     def test_an_unparseable_value_is_a_failure_not_minus_infinity(self):
         """-inf as a true peak disables the ceiling entirely; it must never be invented."""

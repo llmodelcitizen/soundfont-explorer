@@ -80,9 +80,26 @@ def parse_loudnorm(stderr: str) -> dict:
     return out
 
 
-# The mastered signal must sit under the ceiling; the tolerance covers the %.4f rounding of the
-# `volume=` filter argument and float noise, and nothing else.
-PEAK_TOLERANCE_DB = 0.01
+# The mastered signal must sit under the ceiling. The tolerance covers the %.4f rounding of the
+# `volume=` filter argument, float noise — and, dominating both, the resolution of the
+# instrument doing the measuring.
+#
+# ffmpeg's ebur128 reports true peak to ONE DECIMAL PLACE. Measured over 40 FM renders of
+# freedoom-e2m5: every input_tp, gain_db and output_tp came back an exact multiple of 0.1, with
+# no exceptions. So a peak is only ever known to +/- one 0.1 dB step.
+#
+# That matters here more than anywhere, because gain_db() aims a peak-limited variant at
+# EXACTLY the ceiling (gain = ceiling - input_tp). The master is deliberately parked on the
+# boundary, and the second ebur128 pass then reports it on a 0.1 dB grid: 18 of those 39
+# passing renders landed within 0.05 dB of the ceiling. At the old 0.01 dB the gate was ten
+# times finer than the measurement, so a variant whose remeasurement rounded one step up failed
+# for being 0.1 dB hot — a difference the instrument cannot distinguish from being on target.
+# That is what excluded ~1.8% of the 2026-08-25 fleet run, all of it adl-*/opn-* (#44).
+#
+# One measurement step is therefore the smallest tolerance that means anything. It costs
+# nothing that matters: -1.4 dBTP instead of -1.5 is still 1.4 dB clear of full scale, and the
+# renders #27 was written to catch were 27-37 dB over, not 0.1.
+PEAK_TOLERANCE_DB = 0.1
 
 
 def gain_db(input_i: float, input_tp: float, settings: RenderSettings) -> float:
