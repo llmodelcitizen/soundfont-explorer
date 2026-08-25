@@ -108,6 +108,8 @@ export class App {
     trackTitle: () => this.song?.title ?? '',
   });
   private lastListenTick = 0;
+  /** the UI loop is showing the 'tap to resume' notice in place of the engine status */
+  private suspendedNotice = false;
   private favorites = new Favorites();
   /** per-row state the list and the sorter ask for (favorite / listened seconds / listened ≥ threshold) */
   private readonly rowHooks: Pick<CellContext, 'isFavorite' | 'listenedSeconds' | 'listened'> = {
@@ -317,6 +319,9 @@ export class App {
   private buildUi(sel: Selection, query: string): void {
     if (this.uninstallKeys) this.uninstallKeys();
     clear(this.root);
+    // the new FilterBar starts closed: a `filters-open` left over from the previous song would
+    // keep Now Playing hidden on phones (and the scrim it pointed at is gone with the old root)
+    this.onFiltersOpen(false);
     this.canonicalIndex = new Map(this.set.order.map((id, i) => [id, i]));
     const clickRender = (i: number) => {
       const shouldPlay = !this.everPlayed || this.playOnRenderClick;
@@ -421,6 +426,7 @@ export class App {
     this.title.addEventListener('keydown', (event) => {
       if (this.theme !== 'modern' || (event.key !== 'Enter' && event.key !== ' ')) return;
       event.preventDefault();
+      event.stopPropagation(); // handled here: Space must not also reach the window keymap (play/pause)
       this.cycleModernFont();
     });
     this.header = h(
@@ -912,7 +918,11 @@ export class App {
     const loop = () => {
       const now = performance.now();
       this.transport.update(this.engine.position(), this.engine.playing);
-      if (this.ctx.state !== 'running' && this.engine.playing) this.transport.setStatus(`audio ${this.ctx.state} — tap to resume`, 'wontload');
+      const suspended = this.ctx.state !== 'running' && this.engine.playing;
+      if (suspended) this.transport.setStatus(`audio ${this.ctx.state} — tap to resume`, 'wontload');
+      // the context came back without an engine status change: repaint the engine's own status
+      else if (this.suspendedNotice) this.onStatus(this.engine.status);
+      this.suspendedNotice = suspended;
       this.accumulateListened(now);
       if (this.debug.visible && now - this.debugAt >= 1000 / App.DEBUG_HZ) {
         this.debugAt = now;
