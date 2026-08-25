@@ -1,15 +1,17 @@
 /**
  * @vitest-environment happy-dom
  *
- * The overlay dialogs, in a DOM: the parts of #30/#33/#34 that are behaviour rather than paint —
- * where focus goes, and what the window keymap is allowed to see through an open dialog. (Pure
- * geometry lives in scripts/geometry.mjs, which needs a live server and does not run in CI.)
+ * The three overlay dialogs, in a DOM: the parts of #30/#33/#34 that are behaviour rather than
+ * paint — where focus goes, what the window keymap is allowed to see through an open dialog, and
+ * what a copy actually copies. (Pure geometry lives in scripts/geometry.mjs.)
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { KeymapOverlay } from '../../src/ui/keymapOverlay';
+import { ShareDialog, copyText } from '../../src/ui/share';
 import { SettingsModal } from '../../src/ui/settings';
 import { installKeyboard, type KeyActions } from '../../src/input/keyboard';
 import { DEFAULT_PREFS } from '../../src/state/prefs';
+import type { ShareLinks } from '../../src/state/urlstate';
 
 function actions(): KeyActions {
   return {
@@ -95,6 +97,129 @@ describe('KeymapOverlay (#33)', () => {
     // closing something already closed must not steal focus from wherever it is
     overlay.toggle(false);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ShareDialog (#30)', () => {
+  const links = (t: number, theme = 'modern'): ShareLinks => ({
+    withTime: t > 0 ? `https://x.test/?theme=${theme}&t=${t}` : `https://x.test/?theme=${theme}`,
+    withoutTime: `https://x.test/?theme=${theme}`,
+  });
+
+  it('opens with the whole link selected', () => {
+    const dialog = new ShareDialog({ links: () => links(12) });
+    document.body.append(dialog.el);
+    dialog.toggle(true);
+    const field = dialog.el.querySelector('.share-url') as HTMLInputElement;
+    expect(field.value).toBe('https://x.test/?theme=modern&t=12');
+    expect(document.activeElement).toBe(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
+  });
+
+  it('copies the link for where the app is now, not where it was when the dialog opened', async () => {
+    let state = links(12);
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const dialog = new ShareDialog({ links: () => state });
+    document.body.append(dialog.el);
+    dialog.toggle(true);
+
+    state = links(99, 'amiga'); // the song/theme/position moved on behind the open dialog
+    const button = dialog.el.querySelector('.share-copy') as HTMLButtonElement;
+    button.focus(); // where a real click leaves the focus: on the button, not the field
+    button.click();
+    await vi.waitFor(() => expect(dialog.el.querySelector('.share-note')?.textContent).toBe('copied'));
+
+    expect(writeText).toHaveBeenCalledWith('https://x.test/?theme=amiga&t=99');
+    const field = dialog.el.querySelector('.share-url') as HTMLInputElement;
+    expect(field.value).toBe('https://x.test/?theme=amiga&t=99');
+    // the async-clipboard path must put the selection back: the dialog claims to be modal
+    expect(document.activeElement).toBe(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
+  });
+
+  it('keeps the window keymap out while it is open, and closes on Escape', () => {
+    const dialog = new ShareDialog({ links: () => links(12) });
+    document.body.append(dialog.el);
+    const a = actions();
+    const uninstall = installKeyboard(window as unknown as Window, a);
+    dialog.toggle(true);
+    const field = dialog.el.querySelector('.share-url') as HTMLInputElement;
+    // the copy button is where the focus lands once someone uses the dialog, and a BUTTON is not
+    // "typing": without the dialog swallowing them these keys reach the app behind it
+    const button = dialog.el.querySelector('.share-copy') as HTMLButtonElement;
+
+    for (const key of [' ', 't', ']', 'd']) press(button, key);
+    expect(a.toggle).not.toHaveBeenCalled();
+    expect(a.theme).not.toHaveBeenCalled();
+    expect(a.song).not.toHaveBeenCalled();
+    expect(a.debug).not.toHaveBeenCalled();
+
+    press(field, 'Escape');
+    expect(dialog.visible).toBe(false);
+    expect(a.escape).not.toHaveBeenCalled();
+    uninstall();
+  });
+
+  it('hands focus back however it is closed', () => {
+    const onClose = vi.fn();
+    const dialog = new ShareDialog({ links: () => links(12), onClose });
+    document.body.append(dialog.el);
+
+    dialog.toggle(true);
+    (dialog.el.querySelector('.close-share') as HTMLButtonElement).click();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    dialog.toggle(true);
+    press(dialog.el.querySelector('.share-url') as HTMLInputElement, 'Escape');
+    expect(onClose).toHaveBeenCalledTimes(2);
+
+    dialog.toggle(false); // already closed: nothing to hand back
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it('disables the timestamp option when both links are the same string', () => {
+    let state = links(0);
+    const dialog = new ShareDialog({ links: () => state });
+    document.body.append(dialog.el);
+    dialog.toggle(true);
+    const box = dialog.el.querySelector('.share-time') as HTMLInputElement;
+    expect(state.withTime).toBe(state.withoutTime);
+    expect(box.disabled).toBe(true);
+    expect(dialog.el.querySelector('.share-opt')?.classList.contains('off')).toBe(true);
+
+    dialog.toggle(false);
+    state = links(30);
+    dialog.toggle(true);
+    expect((dialog.el.querySelector('.share-time') as HTMLInputElement).disabled).toBe(false);
+    expect(dialog.el.querySelector('.share-opt')?.classList.contains('off')).toBe(false);
+  });
+
+  it('marks exactly the parameters the shown link carries', () => {
+    const dialog = new ShareDialog({ links: () => links(12) });
+    document.body.append(dialog.el);
+    dialog.toggle(true);
+    const on = () => Array.from(dialog.el.querySelectorAll('.share-params dt.on code')).map((c) => c.textContent);
+    expect(on()).toEqual(['theme=', 't=']);
+
+    const box = dialog.el.querySelector('.share-time') as HTMLInputElement;
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    expect((dialog.el.querySelector('.share-url') as HTMLInputElement).value).toBe('https://x.test/?theme=modern');
+    expect(on()).toEqual(['theme=']);
+  });
+
+  it('falls back to the selected field when the async clipboard is unavailable', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    const exec = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
+    const field = document.createElement('input');
+    field.value = 'https://x.test/?song=a';
+    document.body.append(field);
+
+    expect(await copyText(field, field.value)).toBe(true);
+    expect(exec).toHaveBeenCalledWith('copy');
+    expect(document.activeElement).toBe(field);
   });
 });
 

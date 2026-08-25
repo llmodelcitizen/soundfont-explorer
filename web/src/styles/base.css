@@ -984,8 +984,7 @@ kbd {
 @media (pointer: coarse) {
   /* iOS zooms into focused inputs smaller than 16 px */
   .settings .num,
-  .search,
-  .share-url {
+  .search {
     font-size: 16px;
   }
 }
@@ -1010,12 +1009,23 @@ kbd {
   border-radius: var(--radius);
   font: var(--mono);
 }
+@media (pointer: coarse) {
+  /* after the `font` shorthand above, which resets the size the iOS zoom guard just set: the
+     dialog opens with this field focused, so a sub-16px size would zoom the whole page in */
+  .share-url {
+    font-size: 16px;
+  }
+}
 .share-copy {
   flex: 0 0 auto;
   padding: 4px 16px;
 }
 .share-opt {
   display: block;
+}
+/* at the top of the track both links are the same string: the option is there but has nothing to do */
+.share-opt.off {
+  opacity: 0.6;
 }
 .share-note {
   display: block;
@@ -1039,6 +1049,13 @@ kbd {
 .share-params dd {
   margin: 0;
   color: var(--fg-dim);
+  /* the themes are free to make --fg-dim the same ink as --fg (Amiga's palette has four colours):
+     the rows this link does not carry recede by weight, so the highlight reads in every theme */
+  opacity: 0.6;
+}
+.share-params dt.on,
+.share-params dd.on {
+  opacity: 1;
 }
 .share-params dt.on {
   color: var(--accent);
@@ -1120,7 +1137,7 @@ kbd {
 @media (max-width: 720px) {
   .top {
     flex-wrap: wrap;
-    gap: 6px 8px;
+    gap: 6px;
   }
   .top .title {
     font-size: 1.25em;
@@ -1129,6 +1146,14 @@ kbd {
   }
   .top .spacer {
     display: none;
+  }
+  /* one control row, always: with share alongside settings/debug the icon gadgets have to give
+     their side padding back, or the volume slider wraps onto a line of its own at 390 px (#30) */
+  .top .btn.icon {
+    padding: 4px 5px;
+  }
+  .top .btn:not(.icon) {
+    padding: 4px 8px;
   }
   .songpicker {
     flex: 1 1 100%;

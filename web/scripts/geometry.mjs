@@ -357,7 +357,7 @@ async function measure(theme, viewport, label) {
       font: { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') },
     };
   });
-  // issue #33: the dialog opens for real (the button, not a class flip), so what is
+  // issues #33 / #30: both dialogs open for real (the button, not a class flip), so what is
   // asserted is what someone actually sees — the close button inside the box and on screen.
   result.dialogs = await page.evaluate(() => {
     const box = (element) => {
@@ -387,7 +387,22 @@ async function measure(theme, viewport, label) {
     };
     const keys = probe('.top [title="keys (?)"]', '.overlay-box.keys', '.close-keymap');
     click('.close-keymap');
-    return { keys: keys?.state ?? null };
+    const share = probe('.top .share-btn', '.overlay-box.share', '.close-share');
+    const field = document.querySelector('.share-url');
+    const shareButton = document.querySelector('.top .share-btn');
+    const gear = document.querySelector('.top [aria-label="settings"]');
+    const shareState = share
+      ? {
+          ...share.state,
+          // issue #30 spells out the placement and the "highlighted" link
+          leftOfTheGear: !!shareButton && !!gear && shareButton.nextElementSibling === gear,
+          fieldFocused: document.activeElement === field,
+          fieldSelected: !!field && field.selectionStart === 0 && field.selectionEnd === field.value.length && field.value.length > 0,
+          fieldFontSize: field ? getComputedStyle(field).fontSize : null,
+        }
+      : null;
+    click('.close-share');
+    return { keys: keys?.state ?? null, share: shareState };
   });
   await page.close();
   return result;
@@ -573,6 +588,16 @@ for (const [label, viewport] of Object.entries(viewports)) {
     assert(keys?.closeFocused, `${label}/${themed.theme}: the keys screen does not open with its close button focused: ${JSON.stringify(keys)}`);
     assert(keys && !keys.scrolls, `${label}/${themed.theme}: the keys box scrolls itself instead of scrolling its list: ${JSON.stringify(keys)}`);
     assert(keys?.fitsViewport, `${label}/${themed.theme}: the keys screen does not fit the viewport: ${JSON.stringify(keys)}`);
+  }
+  // issue #30: share sits immediately left of the gear, and its dialog opens with the whole link
+  // selected, at a size iOS will not zoom into, with the close button on screen.
+  for (const themed of [modern, win95, amiga]) {
+    const share = themed.dialogs?.share;
+    assert(share?.leftOfTheGear, `${label}/${themed.theme}: the share button is not immediately left of the settings gear: ${JSON.stringify(share)}`);
+    assert(share?.fieldFocused && share.fieldSelected, `${label}/${themed.theme}: the share dialog does not open with the link focused and selected: ${JSON.stringify(share)}`);
+    assert(share?.closeReachable && share.fitsViewport && !share.scrolls, `${label}/${themed.theme}: the share dialog does not fit its box: ${JSON.stringify(share)}`);
+    // the field takes focus the moment the dialog opens: below 16px iOS zooms the whole page in
+    if (label === 'phone') assert(share?.fieldFontSize === '16px', `${label}/${themed.theme}: the share link field is not 16px on a coarse pointer: ${JSON.stringify(share)}`);
   }
   // issue #38: amiga only — one roomy, uniform gadget per shortcut, the key centred inside it,
   // at the same type size as everywhere else, and none of it leaking into the other two themes.

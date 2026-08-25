@@ -210,6 +210,15 @@ describe('URL parameter order', () => {
     expect([...back.filters!.engine!]).toEqual(['adlmidi']);
   });
 
+  it('leaves out a start time that rounds to zero', () => {
+    // the *written* value decides: `t=0` is not a start time, it is a useless extra parameter
+    // that makes the share dialog's two links differ for no reason
+    expect(buildSearch({ song: 'x', t: 0.4 })).toBe('?song=x');
+    expect(buildSearch({ song: 'x', t: 0.5 })).toBe('?song=x&t=1');
+    expect(paramsIn(buildSearch({ song: 'x', t: 0.4 }))).toEqual(['song']);
+    expect(shareLinks({ song: 'x', t: 0.4 }, 'https://e.test/').withTime).toBe('https://e.test/?song=x');
+  });
+
   it('lists only the parameters a link actually carries', () => {
     expect(paramsIn(buildSearch({ song: 'x', t: 9 }))).toEqual(['song', 't']);
     expect(paramsIn('')).toEqual([]);

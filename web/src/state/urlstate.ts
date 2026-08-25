@@ -92,7 +92,8 @@ const WRITERS: Record<UrlParam, (st: UrlState) => string | null> = {
   q: (st) => st.q || null,
   theme: (st) => (st.theme && st.theme !== 'modern' ? st.theme : null),
   loop: (st) => (st.loop ? '1' : null),
-  t: (st) => (st.t !== undefined && st.t > 0 ? String(Math.round(st.t)) : null),
+  // the *written* value decides: a position of 0.4 s rounds to 0, and `t=0` is not a start time
+  t: (st) => (st.t !== undefined && Math.round(st.t) > 0 ? String(Math.round(st.t)) : null),
 };
 
 export function buildSearch(st: UrlState): string {

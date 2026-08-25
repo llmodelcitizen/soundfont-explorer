@@ -76,10 +76,10 @@ export class App {
   private trackScrollTop = 0;
   private rightPane!: HTMLElement;
   private debug = new DebugPanel();
-  // it closes with a button of its own: focus has to come back to the list, or the browser
+  // both close with a button of their own: focus has to come back to the list, or the browser
   // drops it on <body> when the button it is on becomes display:none
   private keymap = new KeymapOverlay({ onClose: () => this.focusList() });
-  private share = new ShareDialog({ links: () => shareLinks(this.urlState()) });
+  private share = new ShareDialog({ links: () => shareLinks(this.urlState()), onClose: () => this.focusList() });
   private prefs: Prefs = loadPrefs();
   private trackPositions = new TrackPositions();
   private ledger = new ListenedLedger();
