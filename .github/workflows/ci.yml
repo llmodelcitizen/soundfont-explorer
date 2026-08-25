@@ -35,6 +35,9 @@ jobs:
       - name: admin server tests
         if: hashFiles('admin/server/tests/**') != ''
         run: python3 -m unittest discover -s admin/server/tests -t admin/server -v
+      - name: circuit breaker lambda tests
+        if: hashFiles('infra/modules/circuit-breaker/lambda/tests/**') != ''
+        run: python3 -m unittest discover -s infra/modules/circuit-breaker/lambda/tests -t infra/modules/circuit-breaker/lambda -v
 
   web:
     name: web unit tests
