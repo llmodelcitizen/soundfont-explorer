@@ -92,8 +92,9 @@ class TestSemaphore(unittest.TestCase):
         self.assertEqual(sem.available, 4)
 
 
-def _fake_render(job: Job, paths: Paths, status="ok", lufs=-21.3, gain=5.3, spec=None):
-    """Lay down a plausible work/renders/<song>/<variant> using the fixture as every segment."""
+def _fake_render(job: Job, paths: Paths, status="ok", lufs=-21.3, gain=5.3, spec=None, master_kept=None):
+    """Lay down a plausible work/renders/<song>/<variant> using the fixture as every segment.
+    master_kept=None leaves the key out of meta.json (a meta older than the flag)."""
     data = FIX.read_bytes()
     job.master_path(paths).parent.mkdir(parents=True, exist_ok=True)
     job.master_path(paths).write_bytes(b"fLaC")
@@ -106,7 +107,8 @@ def _fake_render(job: Job, paths: Paths, status="ok", lufs=-21.3, gain=5.3, spec
     write_meta(job.meta_path(paths), {"status": status, "spec_hash": spec or job.spec_hash,
                                       "master_hash": job.master_hash, "render_hash": job.render_hash,
                                       "lufs": lufs, "tp": -1.5, "gain_db": gain, "song": job.song_id,
-                                      "variant": job.variant_id})
+                                      "variant": job.variant_id,
+                                      **({} if master_kept is None else {"master_kept": master_kept})})
 
 
 class TestManifest(unittest.TestCase):
@@ -179,6 +181,20 @@ class TestManifest(unittest.TestCase):
         after = sorted(str(p.relative_to(pub)) for p in pub.rglob("*") if p.is_file())
         self.assertEqual(before, after)
         self.assertEqual(report["songs"]["freedoom-e1m1"]["variants"], 3)
+
+    def test_validate_rejects_a_master_the_meta_disowns(self):
+        """master_kept=false next to a master.flac is what a re-render without --keep-masters
+        used to leave behind: the previous spec's audio, never a re-encode source (#13)."""
+        j = self.jobs()[0]
+        _fake_render(j, self.paths, master_kept=False)
+        self.assertEqual(validate_job(j, self.paths).reason, "stale-master")
+        j.master_path(self.paths).unlink()
+        self.assertTrue(validate_job(j, self.paths).ok)          # no master, none claimed
+        for kept in (True, None):                                # claimed (or older than the flag): must exist
+            _fake_render(j, self.paths, master_kept=kept)
+            self.assertTrue(validate_job(j, self.paths).ok)
+            j.master_path(self.paths).unlink()
+            self.assertEqual(validate_job(j, self.paths).reason, "no-master")
 
     def test_manifest_for_one_song_keeps_the_others(self):
         song2 = song("joplin", D=3)
