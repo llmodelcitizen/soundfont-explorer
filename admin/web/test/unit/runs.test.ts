@@ -272,6 +272,8 @@ describe('fleet capacity (#25/#42)', () => {
     expect(field('instance_types').value).toBe('c7a.16xlarge,c7i.16xlarge');
     expect(field('shard_vcpus').value).toBe('60');
     expect(field('shard_memory_mib').value).toBe('120000');
+    // 2x over-subscription: every worker was busy at 37-60% CPU with EBS and admission idle
+    expect(field('worker_factor').value).toBe('2');
   });
 
   it('sends the defaults without the operator retyping them', async () => {
@@ -286,6 +288,18 @@ describe('fleet capacity (#25/#42)', () => {
     expect(body.instance_types).toEqual(['c7a.16xlarge', 'c7i.16xlarge']);
     expect(body.shard_vcpus).toBe('60');
     expect(body.shard_memory_mib).toBe('120000');
+  });
+
+  it('sends the worker factor on submit so the run record keeps it', async () => {
+    // unproven at fleet scale, so it has to be visible and recorded, not a silent default
+    const ff = withSongs().on('POST', '/api/runs', () => run({ state: 'running' }));
+    const v = mount(ff);
+    await v.load();
+    v.root.querySelector<HTMLInputElement>('input[name="worker_factor"]')!.value = '3';
+    button(v, 'Estimate').click();
+    await until(() => ff.count('POST', '/api/render/plan') === 1);
+    const body = ff.calls.find((c) => c.path === '/api/render/plan')!.body as Record<string, unknown>;
+    expect(body.worker_factor).toBe('3');
   });
 
   it('a cleared shards field falls back to the default, not to a stale literal', async () => {

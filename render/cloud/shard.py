@@ -54,7 +54,23 @@ def _allocated_cpus() -> int:
     return os.cpu_count() or 8
 
 
-WORKERS = int(os.environ.get("SFR_WORKERS", "0")) or _allocated_cpus()
+# Over-subscription (SFR_WORKER_FACTOR). Both 2026-08-25 fleet runs had EVERY worker busy while
+# CPU sat at 37-60%, EBS at 2% of its provision and memory admission 7% used — nothing was
+# saturated. That gap is per-job process overhead (engine + ffmpeg + ~150 short-lived opusenc),
+# which the planner's cost model independently measures at 9.1 vCPU-s fixed, about half of a 90 s
+# song's whole job. Running more jobs than there are cores overlaps those idle gaps.
+#
+# A FACTOR, not an absolute count: the fleet moved from 32-vCPU to 64-vCPU shards in one day, and
+# an absolute number silently stops meaning "twice the cores" the moment the instance changes.
+# SFR_WORKERS still wins outright when set, for pinning an exact count in an experiment.
+#
+# UNPROVEN at fleet scale: a local A/B could not reproduce the conditions (that box saturates at
+# 62-91% CPU where the shard sat at 37-60%), so this is deliberately a knob whose value the run
+# record keeps, not a silent default. If it does not help, the cost is a slower run, not a broken
+# one — admission still bounds memory, and _mem_units reserves per WORKER, so the reserve scales
+# with the factor rather than being outgrown by it.
+WORKER_FACTOR = float(os.environ.get("SFR_WORKER_FACTOR") or 1)
+WORKERS = int(os.environ.get("SFR_WORKERS", "0")) or max(1, int(_allocated_cpus() * WORKER_FACTOR))
 def _allocated_memory() -> int:
     """Bytes this task may use. Like the CPU count, SC_PHYS_PAGES reports the HOST's memory, not
     the cgroup ceiling Batch imposes — reading it granted 327 GiB of admission inside a 342 GiB

@@ -425,7 +425,7 @@ class RunManager:
                engines: list[str] | None = None, limit: int | None = None,
                instance_types: list[str] | None = None,
                shard_vcpus: int | None = None, shard_memory_mib: int | None = None,
-               variants: int | None = None) -> dict:
+               variants: int | None = None, worker_factor: float | None = None) -> dict:
         if not self.cfg.render_enabled:
             raise RuntimeError("render fleet is not deployed (empty render config)")
         cur = self.active_phase()
@@ -450,7 +450,8 @@ class RunManager:
             "songs": songs, "shards": plan,
             "knobs": {"shards": shards, "max_usd": max_usd, "engines": engines, "limit": limit,
                       "instance_types": instance_types, "shard_vcpus": shard_vcpus,
-                      "shard_memory_mib": shard_memory_mib, "variants": est["variants_per_song"]},
+                      "shard_memory_mib": shard_memory_mib, "worker_factor": worker_factor,
+                      "variants": est["variants_per_song"]},
             "estimate": {k: est[k] for k in ("jobs", "cpu_h", "usd", "variants_per_song")},
             "batch_job_id": None, "submitted_at": now_iso(), "finished_at": None,
             "status_summary": {}, "published_sets": {},
@@ -491,6 +492,10 @@ class RunManager:
                 overrides.append({"type": "MEMORY", "value": str(shard_memory_mib)})
             if overrides:
                 kwargs["containerOverrides"] = {"resourceRequirements": overrides}
+            if worker_factor and worker_factor != 1:
+                # shard.py multiplies its cgroup/host core count by this; see SFR_WORKER_FACTOR
+                kwargs.setdefault("containerOverrides", {})["environment"] = [
+                    {"name": "SFR_WORKER_FACTOR", "value": str(worker_factor)}]
             rec["batch_job_id"] = batch.submit_job(**kwargs)["jobId"]
             rec["state"] = "running"
             # the reconciler may have declared this submit wedged while it was staging

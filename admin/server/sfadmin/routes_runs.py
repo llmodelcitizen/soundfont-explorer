@@ -94,6 +94,7 @@ def submit(body: dict) -> dict:
             instance_types=body.get("instance_types") or None,
             shard_vcpus=int(body["shard_vcpus"]) if body.get("shard_vcpus") else None,
             shard_memory_mib=int(body["shard_memory_mib"]) if body.get("shard_memory_mib") else None,
+            worker_factor=float(body["worker_factor"]) if body.get("worker_factor") else None,
             variants=_variants(body),
         )
     except ValueError as e:

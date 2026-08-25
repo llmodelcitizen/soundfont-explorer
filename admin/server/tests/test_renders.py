@@ -825,6 +825,39 @@ class PlanTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.m.plan(["a", "zzz"], 1)
 
+    def submit_kwargs(self, **kw):
+        """Submit against a fake Batch and return the kwargs submit_job actually received."""
+        self.m.runs.clear()          # one run at a time: each call starts from no live run
+        boto3 = unittest.mock.MagicMock()
+        boto3.client.return_value.submit_job.return_value = {"jobId": "job-1"}
+        self.m.cfg.job_queue, self.m.cfg.job_definition = "q", "jd"
+        with unittest.mock.patch.dict(sys.modules, {"boto3": boto3}), \
+                unittest.mock.patch.object(FakeManager, "_stage", lambda *_: None):
+            rec = self.m.submit(["a"], 1, 60.0, **kw)
+        return boto3.client.return_value.submit_job.call_args.kwargs, rec
+
+    def test_the_worker_factor_reaches_the_container_as_an_env_override(self):
+        """Over-subscription is decided per run, so it has to travel with the submit rather
+        than be baked into the image."""
+        kwargs, rec = self.submit_kwargs(worker_factor=2.0)
+        env = kwargs["containerOverrides"]["environment"]
+        self.assertEqual(env, [{"name": "SFR_WORKER_FACTOR", "value": "2.0"}])
+        self.assertEqual(rec["knobs"]["worker_factor"], 2.0)
+
+    def test_it_rides_alongside_the_cpu_and_memory_overrides(self):
+        """containerOverrides carries both; setting one must not drop the other."""
+        kwargs, _ = self.submit_kwargs(worker_factor=2.0, shard_vcpus=60, shard_memory_mib=120000)
+        co = kwargs["containerOverrides"]
+        self.assertEqual(co["environment"][0]["name"], "SFR_WORKER_FACTOR")
+        self.assertEqual(sorted(r["type"] for r in co["resourceRequirements"]), ["MEMORY", "VCPU"])
+
+    def test_a_factor_of_one_sends_nothing(self):
+        """One worker per core is the shard's own default; saying it again is noise."""
+        kwargs, _ = self.submit_kwargs(worker_factor=1)
+        self.assertNotIn("environment", kwargs.get("containerOverrides", {}))
+        kwargs, _ = self.submit_kwargs()
+        self.assertNotIn("environment", kwargs.get("containerOverrides", {}))
+
     def test_a_submit_the_reconciler_gave_up_on_takes_its_record_back(self):
         """The backstop has headroom now, but if a tick ever does fail a submit that then
         succeeds, the job is real and the record must go back to live: a leftover

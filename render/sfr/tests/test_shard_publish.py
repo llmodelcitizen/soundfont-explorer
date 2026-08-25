@@ -4,6 +4,7 @@ The behaviour this pins is the 2026-08-25 tail: one song at a time, each one re-
 whole accumulated a/ and s/ trees, on a host with 96 idle cores. It must also keep #12's
 guarantee that no song can go unpublished without landing in `failed`.
 """
+import importlib
 import json
 import os
 import pathlib
@@ -328,6 +329,56 @@ class ManifestWorkerSizingTests(unittest.TestCase):
         self.assertTrue(seen, "no publish ran")
         self.assertTrue(all(n >= 1 for n in seen), seen)   # counted while inside the publish
         self.assertEqual(shard._inflight, 0, "the counter leaked")
+
+
+class WorkerFactorTests(unittest.TestCase):
+    """SFR_WORKER_FACTOR over-subscribes a shard (#45's corrected diagnosis: both 2026-08-25
+    runs had every worker busy at 37-60% CPU with EBS and admission idle)."""
+
+    def reload_with(self, **env):
+        """shard.py reads its allocation at import, so the knob can only be tested by
+        re-importing under a different environment. Restored in the cleanup."""
+        saved = {k: os.environ.get(k) for k in ("SFR_WORKERS", "SFR_WORKER_FACTOR")}
+
+        def restore():
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            importlib.reload(shard)
+        self.addCleanup(restore)
+        for k in ("SFR_WORKERS", "SFR_WORKER_FACTOR"):
+            os.environ.pop(k, None)
+        for k, v in env.items():
+            os.environ[k] = str(v)
+        return importlib.reload(shard)
+
+    def test_the_factor_multiplies_the_allocation(self):
+        one = self.reload_with(SFR_WORKER_FACTOR=1).WORKERS
+        two = self.reload_with(SFR_WORKER_FACTOR=2).WORKERS
+        self.assertEqual(two, one * 2)
+
+    def test_no_factor_is_one_worker_per_core(self):
+        self.assertEqual(self.reload_with().WORKERS, self.reload_with(SFR_WORKER_FACTOR=1).WORKERS)
+
+    def test_an_explicit_count_still_wins_outright(self):
+        """For pinning an exact number in an experiment, whatever the instance."""
+        m = self.reload_with(SFR_WORKERS=7, SFR_WORKER_FACTOR=4)
+        self.assertEqual(m.WORKERS, 7)
+
+    def test_a_fractional_factor_is_allowed_and_never_rounds_to_zero(self):
+        self.assertGreaterEqual(self.reload_with(SFR_WORKER_FACTOR=0.01).WORKERS, 1)
+        self.assertGreaterEqual(self.reload_with(SFR_WORKER_FACTOR=1.5).WORKERS,
+                                self.reload_with(SFR_WORKER_FACTOR=1).WORKERS)
+
+    def test_the_memory_reserve_scales_with_the_workers_not_the_cores(self):
+        """Over-subscribing must not outgrow the per-worker overhead reserve — that is what
+        OOM-killed engines the first time admission and reality disagreed."""
+        m = self.reload_with(SFR_WORKER_FACTOR=2)
+        few, many = m._mem_units(32), m._mem_units(128)
+        self.assertLess(many, few)          # more workers reserved => less admission left
+        self.assertGreaterEqual(many, 64)   # ... but never below the floor
 
 
 class PhaseTests(unittest.TestCase):

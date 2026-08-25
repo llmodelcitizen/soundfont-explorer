@@ -48,6 +48,13 @@ const DEFAULT_SHARDS = '5';
 const DEFAULT_INSTANCE_TYPES = 'c7a.16xlarge,c7i.16xlarge';
 const DEFAULT_SHARD_VCPUS = '60';          // of 64 — the ECS agent needs the remainder
 const DEFAULT_SHARD_MEMORY_MIB = '120000'; // of 131072, same headroom ratio that worked at 8xlarge
+// Workers per shard as a MULTIPLE of its cores. Both 2026-08-25 runs had every worker busy while
+// CPU sat at 37-60%, EBS at 2% of provision and memory admission 7% used — nothing saturated, so
+// the gap is per-job process overhead and more concurrent jobs should fill it. 2x is the middle
+// of what that CPU headroom implies (1.7-2.7x). Set 1 to go back to one worker per core.
+// Deliberately a visible knob and recorded in the run's `knobs`: this is unproven at fleet scale
+// and the run record is how we will tell whether it paid.
+const DEFAULT_WORKER_FACTOR = '2';
 
 function input(value: string, attrs: Record<string, string> = {}): HTMLInputElement {
   return el('input', { value, ...attrs });
@@ -280,6 +287,7 @@ export class RunsView {
     const itypes = input(DEFAULT_INSTANCE_TYPES, { size: '28', name: 'instance_types' });
     const vcpus = input(DEFAULT_SHARD_VCPUS, { size: '4', name: 'shard_vcpus' });
     const mem = input(DEFAULT_SHARD_MEMORY_MIB, { size: '7', name: 'shard_memory_mib' });
+    const wfac = input(DEFAULT_WORKER_FACTOR, { size: '3', name: 'worker_factor' });
     const estOut = el('span', { class: 'count estimate-out' });
     // the fleet-capacity answer sits with the estimate: both are "before you spend money"
     const capOut = el('div', { class: 'capacity' });
@@ -293,6 +301,7 @@ export class RunsView {
       instance_types: itypes.value.trim() ? itypes.value.split(',').map((s) => s.trim()) : null,
       shard_vcpus: vcpus.value.trim() || null,
       shard_memory_mib: mem.value.trim() || null,
+      worker_factor: wfac.value.trim() || null,
     });
 
     const estimate = el('button', {}, 'Estimate');
@@ -329,6 +338,7 @@ export class RunsView {
         el('label', {}, 'engines', engines), el('label', {}, 'limit', limit),
         el('label', {}, 'instance types', itypes),
         el('label', {}, 'vCPU/shard', vcpus), el('label', {}, 'MiB/shard', mem),
+        el('label', {}, 'workers/core', wfac),
         estimate, submit, count, estOut), capOut);
   }
 
