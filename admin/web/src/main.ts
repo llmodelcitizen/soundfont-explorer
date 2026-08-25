@@ -80,6 +80,7 @@ function shell(me: Me): void {
   const status = el('span', { class: 'statusline' });
   const note = (msg: string, isError = false): void => {
     status.textContent = msg;
+    status.title = msg; // CSS ellipsises it in the topbar; hover shows the whole message
     status.classList.toggle('error', isError);
   };
   const update = el('button', {}, 'Update & restart');

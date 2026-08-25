@@ -73,6 +73,9 @@ describe('shell buttons', () => {
     await until(() => ff.count('POST', '/api/shutdown') === 1);
     await until(() => status().textContent !== '');
     expect(status().textContent).toBe('shutdown: not on EC2 (no instance metadata)');
+    // the topbar CSS caps the visible width of this 45-char message, so the full text has
+    // to stay reachable somewhere
+    expect(status().getAttribute('title')).toBe('shutdown: not on EC2 (no instance metadata)');
     expect(app.querySelector('header.topbar')).not.toBeNull();
   });
 });
