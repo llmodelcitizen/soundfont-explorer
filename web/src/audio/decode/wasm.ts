@@ -32,6 +32,8 @@ export class WasmDecoder implements Decoder {
   private workers: Slot[] = [];
   private q: DecodeQueue;
   private nextId = 1;
+  /** jobs parked until a slot frees up (see acquireSlot) */
+  private freeWaiters: (() => void)[] = [];
   private waiting = new Map<number, { resolve: (v: { channelData: Float32Array[]; sampleRate: number }) => void; reject: (e: unknown) => void }>();
 
   constructor(private readonly ctx: ContextLike, poolSize = 4, private readonly factory: WorkerFactory = defaultFactory) {
@@ -58,7 +60,15 @@ export class WasmDecoder implements Decoder {
     return slot;
   }
 
-  private replace(slot: Slot, why: string): void {
+  /**
+   * Terminate a worker and put a fresh one in its slot. `crashed` says whether the worker died
+   * without ever answering (onerror): only that counts toward the give-up bound. A decode
+   * timeout is not evidence that the worker script is broken — a throttled background tab or a
+   * slow device can blow 15 s on a healthy worker — and counting it would retire slots that
+   * nothing ever re-grows, turning a passing slowdown into a decoder that stays dead until the
+   * page is reloaded.
+   */
+  private replace(slot: Slot, why: string, crashed = true): void {
     const idx = this.workers.indexOf(slot);
     try {
       slot.w.terminate();
@@ -74,22 +84,49 @@ export class WasmDecoder implements Decoder {
     // not in the pool any more: already replaced (a timeout and the crash it caused both land
     // here) or disposed — spawning would grow the pool past its size, or revive a dead decoder
     if (idx < 0) return;
-    const failures = slot.failures + 1;
+    const failures = slot.failures + (crashed ? 1 : 0);
     if (failures > MAX_CONSECUTIVE_FAILURES) {
       // the replacements died without ever answering (worker script blocked, wasm will not
       // instantiate, ...): another one would only die too, so drop the slot instead of looping
       this.workers.splice(idx, 1);
+      // the pool is smaller now: stop admitting jobs no worker can run
+      this.q.setConcurrency(this.workers.length);
+      this.wakeFreeWaiters();
       return;
     }
     this.workers[idx] = this.spawn(failures);
+    this.wakeFreeWaiters(); // the fresh slot is idle
+  }
+
+  /** let every parked job re-examine the pool: a slot was freed, replaced or retired */
+  private wakeFreeWaiters(): void {
+    const waiters = this.freeWaiters;
+    this.freeWaiters = [];
+    for (const w of waiters) w();
+  }
+
+  /**
+   * Claim an idle slot, waiting for one if the pool is momentarily fully busy. The queue admits
+   * at most workers.length jobs, so waiting is only for the window in which a slot retires after
+   * a job was admitted. Never reject here just because every worker is busy: that rejection
+   * reaches SegmentStore.request(), which negative-caches the key for up to 30 s and would
+   * silence a segment that decodes perfectly well.
+   */
+  private async acquireSlot(): Promise<Slot> {
+    for (;;) {
+      if (!this.workers.length) throw new Error('no decode workers left (they kept crashing)');
+      const free = this.workers.find((s) => !s.busy);
+      if (free) {
+        free.busy = true; // claimed synchronously, so two admitted jobs cannot take one slot
+        return free;
+      }
+      await new Promise<void>((resolve) => this.freeWaiters.push(resolve));
+    }
   }
 
   decode(bytes: ArrayBuffer, priority: number): Promise<BufferLike> {
     return this.q.submit(priority, async () => {
-      if (!this.workers.length) throw new Error('no decode workers left (they kept crashing)');
-      const slot = this.workers.find((s) => !s.busy);
-      if (!slot) throw new Error('no free decode worker'); // only after the pool shrank: queue concurrency == pool size
-      slot.busy = true;
+      const slot = await this.acquireSlot();
       const id = this.nextId++;
       slot.current = id;
       const t0 = Date.now();
@@ -98,7 +135,7 @@ export class WasmDecoder implements Decoder {
         const res = await new Promise<{ channelData: Float32Array[]; sampleRate: number }>((resolve, reject) => {
           this.waiting.set(id, { resolve, reject });
           timer = setTimeout(() => {
-            if (this.waiting.has(id)) this.replace(slot, `decode timeout after ${DECODE_TIMEOUT_MS} ms`);
+            if (this.waiting.has(id)) this.replace(slot, `decode timeout after ${DECODE_TIMEOUT_MS} ms`, false);
           }, DECODE_TIMEOUT_MS);
           // copy: the compressed cache keeps the original
           slot.w.postMessage({ id, bytes: bytes.slice(0) }, []);
@@ -117,6 +154,7 @@ export class WasmDecoder implements Decoder {
         throw e;
       } finally {
         if (timer) clearTimeout(timer);
+        this.wakeFreeWaiters(); // the slot was released (by the reply handler or by the catch)
         this.stats.queued = this.q.queued;
         this.stats.active = this.q.running;
       }
@@ -126,5 +164,6 @@ export class WasmDecoder implements Decoder {
   dispose(): void {
     for (const s of this.workers) s.w.terminate();
     this.workers = [];
+    this.wakeFreeWaiters(); // parked jobs reject with 'no decode workers left' rather than hanging
   }
 }

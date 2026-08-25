@@ -77,6 +77,49 @@ describe('WasmDecoder worker pool', () => {
     expect(decoder.stats.decoded).toBe(1);
   });
 
+  it('a slow worker is replaced but never retired: timeouts do not count toward the give-up bound', async () => {
+    // a backgrounded tab or a very slow device can blow the 15 s decode budget on a healthy
+    // worker; retiring the slot for that would leave the decoder dead until a page reload
+    let answers = false;
+    const { spawned, decoder } = pool((w, id) => {
+      if (answers) queueMicrotask(() => w.answer(id));
+    }, 1);
+    for (let i = 0; i < MAX_CONSECUTIVE_FAILURES + 2; i++) {
+      const p = decoder.decode(new ArrayBuffer(8), 0);
+      p.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(15_001);
+      await expect(p).rejects.toThrow(/timeout/); // not 'no decode workers left'
+    }
+    expect(spawned.length).toBe(MAX_CONSECUTIVE_FAILURES + 3); // one replacement per timeout
+    answers = true; // the machine recovers: the pool is still there and decodes again
+    expect((await decoder.decode(new ArrayBuffer(8), 0)).length).toBe(48);
+  });
+
+  it('keeps decoding on the healthy workers after a slot is retired', async () => {
+    // slot 0's lineage never starts (crashes on spawn); slot 1 answers normally. Once slot 0 is
+    // given up the pool is smaller than the queue's original concurrency, and the surplus job
+    // used to reject with 'no free decode worker' — a rejection SegmentStore turns into a 1-30 s
+    // negative-cache entry for a segment that decodes perfectly well.
+    const spawned: FakeWorker[] = [];
+    const healthy = new Set<FakeWorker>();
+    const factory = () => {
+      const w = new FakeWorker((self, id) => {
+        if (healthy.has(self)) queueMicrotask(() => self.answer(id));
+      });
+      spawned.push(w);
+      if (spawned.length === 2) healthy.add(w); // second slot of the initial pool
+      else queueMicrotask(() => w.crash());
+      return w;
+    };
+    const decoder = new WasmDecoder(new FakeAudioContext(), 2, factory);
+    for (let round = 0; round < 10; round++) await flush(3);
+    expect(spawned.length).toBe(2 + MAX_CONSECUTIVE_FAILURES); // slot 0 retired, slot 1 untouched
+
+    const settled = await Promise.allSettled([decoder.decode(new ArrayBuffer(8), 0), decoder.decode(new ArrayBuffer(8), 1)]);
+    expect(settled.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+    expect(decoder.stats.decoded).toBe(2);
+  });
+
   it('a timeout followed by the crash it caused replaces the worker once, not twice', async () => {
     const { spawned, decoder } = pool(() => undefined, 1);
     const p = decoder.decode(new ArrayBuffer(8), 0);
