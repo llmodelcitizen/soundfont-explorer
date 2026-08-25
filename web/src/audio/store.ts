@@ -184,7 +184,14 @@ export class SegmentStore {
         if (w.fetchOnly) {
           const loc = this.locate(w.key)!;
           if (this.compressed.has(loc.cid)) continue;
-          this.bytesFor(loc, whole ? best : w.priority, { whole, tag }).catch(() => undefined);
+          // a bytes-only miss enters the negative cache like a request() miss does, otherwise
+          // nothing stops the prefetcher from re-issuing the fetch for a missing pack every tick
+          this.bytesFor(loc, whole ? best : w.priority, { whole, tag }).catch((e) => {
+            if (e instanceof AbortedError) return;
+            const ks = keyStr(w.key);
+            this.lastError = `${ks}: ${(e as Error)?.message ?? String(e)}`;
+            this.noteFailure(ks);
+          });
         } else {
           this.request(w.key, whole ? best : w.priority, { whole, tag }).catch(() => undefined);
         }
