@@ -41,6 +41,20 @@ resource "aws_sns_topic_subscription" "email" {
   endpoint  = var.alert_email
 }
 
+# Failed Lambda invocations (trip could not disable the distribution, metric query failed,
+# init error, ...) are mailed from here instead of being retried twice and dropped. A separate
+# topic on purpose: the alerts topic also feeds the Lambda, so routing its own failure records
+# back into it would loop if the function failed at init. Needs a one-time e-mail confirmation.
+resource "aws_sns_topic" "failures" {
+  name = "${local.name}-failures"
+}
+
+resource "aws_sns_topic_subscription" "failures_email" {
+  topic_arn = aws_sns_topic.failures.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
 # ---------------------------------------------------------------- daily alarm (CloudFront metrics live in us-east-1)
 
 resource "aws_cloudwatch_metric_alarm" "daily_egress" {
@@ -95,7 +109,7 @@ data "aws_iam_policy_document" "lambda" {
   }
   statement {
     actions   = ["sns:Publish"]
-    resources = [aws_sns_topic.alerts.arn]
+    resources = [aws_sns_topic.alerts.arn, aws_sns_topic.failures.arn]
   }
   statement {
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
@@ -131,6 +145,17 @@ resource "aws_lambda_function" "breaker" {
     }
   }
   depends_on = [aws_cloudwatch_log_group.lambda, aws_iam_role_policy.lambda]
+}
+
+# On-failure destination: both triggers invoke the function asynchronously, where an error is
+# retried twice and then dropped. The failure record (request + error) is mailed instead.
+resource "aws_lambda_function_event_invoke_config" "breaker" {
+  function_name = aws_lambda_function.breaker.function_name
+  destination_config {
+    on_failure {
+      destination = aws_sns_topic.failures.arn
+    }
+  }
 }
 
 # alarm → SNS → lambda
