@@ -18,11 +18,25 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 
 from .config import get_config
 
 IMMUTABLE = "public,max-age=31536000,immutable"
 SHORT = "public,max-age=60,stale-while-revalidate=600"
+
+# Everything here works through the snapshot's out/public and then the bucket, and takes
+# minutes (an aws s3 sync plus an sfr manifest over the corpus). FastAPI serves these sync
+# routes on a threadpool and the render finisher syncs from its own watcher thread, so a
+# second caller could otherwise re-mirror out/public in the middle of a remove and restore
+# the very set doc it just dropped (#15). Re-entrant: remove/prune hold it across their own
+# calls to sync_down()/rebuild_and_publish().
+OPS_LOCK = threading.RLock()
+
+
+class NoSongsJson(RuntimeError):
+    """The site bucket has no songs.json at all (a fresh site) — distinct from an S3 error
+    reading it, which callers must not mistake for 'nothing is live'."""
 
 
 def _now() -> str:
@@ -64,7 +78,7 @@ def _get_json(key: str) -> dict | None:
 def live_songs_json() -> dict:
     doc = _get_json("songs.json")
     if doc is None:
-        raise RuntimeError("no songs.json in the site bucket")
+        raise NoSongsJson("no songs.json in the site bucket")
     return doc
 
 
@@ -73,6 +87,11 @@ def sync_down() -> None:
     cfg = get_config()
     out_public = os.path.join(cfg.repo, "out", "public")
     os.makedirs(out_public, exist_ok=True)
+    with OPS_LOCK:
+        _sync_down_locked(cfg, out_public)
+
+
+def _sync_down_locked(cfg, out_public: str) -> None:
     for pre in ("s", "c"):
         subprocess.run(["aws", "s3", "sync", f"s3://{cfg.site_bucket}/{pre}/",
                         os.path.join(out_public, pre) + "/", "--delete", "--only-show-errors"],
@@ -121,31 +140,50 @@ def _expected_absent() -> set[str]:
         return set()
 
 
-def rebuild_and_publish(expect_dropped: frozenset[str] = frozenset()) -> dict:
+def rebuild_and_publish(require_dropped: frozenset[str] = frozenset()) -> dict:
     """sfr manifest --songs-json-only from the synced sets, then publish songs.json +
-    catalog docs and invalidate. The caller must sync_down() first."""
+    catalog docs and invalidate. The caller must sync_down() first.
+
+    `require_dropped` are ids the caller is deliberately removing: they may vanish from the
+    rebuilt songs.json (the drop guard ignores them) and they MUST — an id that is still
+    listed means the removal did not take, and publishing that songs.json would clear the
+    caller to delete objects it still points at (#15)."""
     cfg = get_config()
     out_public = os.path.join(cfg.repo, "out", "public")
-    try:
-        live_ids = {s["id"] for s in live_songs_json().get("songs", [])}
-    except Exception:
-        live_ids = set()
-    report = _run_manifest()
-    # A rebuild can only list songs the snapshot's corpus knows. If the live songs.json has
-    # ids this one would lose — beyond an explicit remove (expect_dropped) or a hidden
-    # library entry — that is a corpus gap on the box (the 2026-08-24 private-starwars
-    # incident: songs/private was missing from the bundle), not an editorial choice:
-    # publishing would silently drop live tracks and prime prune to delete their audio.
-    with open(os.path.join(out_public, "songs.json")) as fh:
-        new_ids = {s["id"] for s in json.load(fh)["songs"]}
-    dropped = sorted(live_ids - new_ids - set(expect_dropped) - _expected_absent())
-    if dropped:
-        raise RuntimeError(
-            f"refusing to publish: rebuild would drop live tracks {dropped[:8]}"
-            + ("…" if len(dropped) > 8 else "")
-            + " — remove them deliberately (Published tab), hide them in the Library, "
-              "or fix the box's corpus first")
-    _publish_songs_json()
+    with OPS_LOCK:
+        try:
+            live_ids = {s["id"] for s in live_songs_json().get("songs", [])}
+        except NoSongsJson:
+            live_ids = set()   # a site that has never published: nothing can be dropped
+        # Only "there is no songs.json" is benign. A transient S3 error must NOT read as an
+        # empty live set: that silently disables the drop guard below, which is the only
+        # thing between a corpus gap and a remove deleting a live track's audio.
+        report = _run_manifest()
+        # A rebuild can only list songs the snapshot's corpus knows. If the live songs.json has
+        # ids this one would lose — beyond an explicit remove (require_dropped) or a hidden
+        # library entry — that is a corpus gap on the box (the 2026-08-24 private-starwars
+        # incident: songs/private was missing from the bundle), not an editorial choice:
+        # publishing would silently drop live tracks and prime prune to delete their audio.
+        with open(os.path.join(out_public, "songs.json")) as fh:
+            new_ids = {s["id"] for s in json.load(fh)["songs"]}
+        dropped = sorted(live_ids - new_ids - set(require_dropped) - _expected_absent())
+        if dropped:
+            raise RuntimeError(
+                f"refusing to publish: rebuild would drop live tracks {dropped[:8]}"
+                + ("…" if len(dropped) > 8 else "")
+                + " — remove them deliberately (Published tab), hide them in the Library, "
+                  "or fix the box's corpus first")
+        # The other direction, which the guard above cannot see (an expected drop that did
+        # not happen is not a drop): a set doc restored under out/public/s by a concurrent
+        # sync_down() — the render finisher, a second Remove, a /rebuild — puts the id right
+        # back into the manifest, and publishing it while the caller goes on to delete the
+        # objects is exactly the 404s of #15. Refuse instead; the operator can retry.
+        still = sorted(set(require_dropped) & new_ids)
+        if still:
+            raise RuntimeError(
+                f"refusing to publish: the rebuilt songs.json still lists {still} — its set "
+                "docs came back (a concurrent sync or rebuild?); nothing was published")
+        _publish_songs_json()
     return report
 
 
@@ -206,15 +244,27 @@ def remove_track(sid: str) -> dict:
     the Published tab (every rebuild keeps refusing, prune trips on the missing set doc).
     sync_down mirrors the bucket, where the track's set docs still exist at this point, so
     they are dropped from the local mirror by hand before the manifest runs; the bucket is
-    only touched once the new songs.json is live.
+    only touched once the new songs.json is live. Because that removal now rides on a local
+    edit, rebuild_and_publish(require_dropped=…) re-checks the rebuilt songs.json and refuses
+    if <id> is back — the whole thing runs under OPS_LOCK so a concurrent sync cannot get in.
     """
     set_dir = _local_set_dir(sid)
-    keys = [o["Key"] for o in _list(f"a/{sid}/")] + [o["Key"] for o in _list(f"s/{sid}/")]
-    sync_down()
-    if os.path.isdir(set_dir):
-        shutil.rmtree(set_dir)   # must not fail quietly: a surviving set doc keeps <id> listed
-    report = rebuild_and_publish(expect_dropped=frozenset({sid}))
-    n = _delete_keys(keys)
+    with OPS_LOCK:
+        sync_down()
+        if os.path.isdir(set_dir):
+            shutil.rmtree(set_dir)   # must not fail quietly: a surviving set doc keeps <id> listed
+        report = rebuild_and_publish(require_dropped=frozenset({sid}))
+        # Listed only now: the sync + manifest + publish above take minutes, and the delete
+        # should cover anything written under the track's prefixes in that window too.
+        keys = [o["Key"] for o in _list(f"a/{sid}/")] + [o["Key"] for o in _list(f"s/{sid}/")]
+        try:
+            n = _delete_keys(keys)
+        except Exception as e:
+            # songs.json is already live without <id>: the track IS gone from the site and
+            # only orphaned objects remain, so don't report this as "remove failed".
+            raise RuntimeError(
+                f"{sid} is no longer published (songs.json is live without it), but deleting "
+                f"its {len(keys)} objects failed: {e} — run Prune to clear them") from e
     return {"id": sid, "deleted_objects": n, "songs_json": report.get("songs_json")}
 
 

@@ -1,11 +1,13 @@
 """remove_track()/prune() against a fake site bucket (issue #15). Stdlib only — boto3 and the
 aws CLI are absent in CI, so publishops' S3/shell primitives are stubbed while the ordering,
 the drop guard and the keep/delete decisions run for real."""
+import io
 import json
 import os
 import shutil
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -175,6 +177,105 @@ class PublishOpsTests(unittest.TestCase):
                 publishops.remove_track(bad)
         self.assertEqual(self.site.events, [])
 
+    def test_remove_refuses_when_a_concurrent_sync_restores_the_set_doc(self):
+        """Publishing last made the removal ride on a LOCAL edit (the rmtree of
+        out/public/s/<id>), and the bucket still holds the set doc at that point. Another
+        sync_down() landing before the manifest — the render finisher (renders.py finish()
+        runs after the run record is already terminal, so Remove is unblocked), a second
+        Remove, a /rebuild — mirrors it straight back, the manifest lists <id> again and the
+        drop guard cannot see it (an expected drop that did not happen is not a drop). The
+        old ordering was immune because it deleted from the bucket first; this must refuse."""
+        real = self.site._run_manifest
+        before = dict(self.site.objects)
+
+        def interleaved():
+            self.site.sync_down()      # the other caller's mirror lands mid-remove
+            return real()
+
+        with mock.patch.object(publishops, "_run_manifest", interleaved):
+            with self.assertRaisesRegex(RuntimeError, r"still lists \['alpha'\]"):
+                publishops.remove_track("alpha")
+        self.assertEqual(self.site.objects, before)
+        self.assertEqual(self.site.live_ids(), ["alpha", "beta"])
+        self.assertNotIn("publish", self.site.events)
+        self.assertNotIn("delete", self.site.events)
+
+    def test_remove_holds_the_ops_lock_across_the_whole_operation(self):
+        """Nothing else may sync/rebuild/publish while a remove is between its sync_down()
+        and its delete — that window is what the test above exploits."""
+        real = self.site._run_manifest
+        got: list[bool] = []
+
+        def grab():
+            ok = publishops.OPS_LOCK.acquire(timeout=0.05)
+            got.append(ok)
+            if ok:
+                publishops.OPS_LOCK.release()
+
+        def probe():
+            t = threading.Thread(target=grab)     # another request's threadpool worker
+            t.start()
+            t.join()
+            return real()
+
+        with mock.patch.object(publishops, "_run_manifest", probe):
+            publishops.remove_track("alpha")
+        self.assertEqual(got, [False])
+        self.assertTrue(publishops.OPS_LOCK.acquire(timeout=0.05))   # released afterwards
+        publishops.OPS_LOCK.release()
+
+    def test_remove_deletes_objects_written_during_the_rebuild(self):
+        """The sync + manifest + publish take minutes; anything that lands under the track's
+        prefixes in that window has to go too, so the delete set is listed after the publish."""
+        real = self.site._run_manifest
+
+        def late_write():
+            r = real()
+            self.site.objects["a/alpha/l/late/0.ogg"] = b"x"
+            return r
+
+        with mock.patch.object(publishops, "_run_manifest", late_write):
+            r = publishops.remove_track("alpha")
+        self.assertEqual(r["deleted_objects"], 4)
+        self.assertEqual(self.site.keys("a/alpha/") + self.site.keys("s/alpha/"), [])
+
+    def test_remove_says_the_publish_took_when_only_the_delete_fails(self):
+        """songs.json is already live without the track: "remove failed" would send the
+        operator looking for a track that is gone — only its objects are left, for prune."""
+        def boom(keys):
+            raise RuntimeError("AccessDenied")
+
+        with mock.patch.object(publishops, "_delete_keys", boom):
+            with self.assertRaisesRegex(RuntimeError, "no longer published.*Prune"):
+                publishops.remove_track("alpha")
+        self.assertEqual(self.site.live_ids(), ["beta"])
+
+    # -- rebuild_and_publish
+
+    def test_rebuild_refuses_when_the_live_songs_json_cannot_be_read(self):
+        """A transient S3 error on the songs.json GET must not read as "nothing is live":
+        that empties live_ids, disables the drop guard, and lets a corpus gap through to a
+        publish and (from remove_track) a delete."""
+        self.site.corpus.discard("beta")          # the gap the guard exists for
+        before = dict(self.site.objects)
+
+        def boom(key):
+            raise RuntimeError("503 SlowDown")
+
+        with mock.patch.object(publishops, "_get_json", boom):
+            with self.assertRaisesRegex(RuntimeError, "SlowDown"):
+                publishops.remove_track("alpha")
+        self.assertEqual(self.site.objects, before)
+        self.assertNotIn("publish", self.site.events)
+        self.assertNotIn("delete", self.site.events)
+
+    def test_rebuild_publishes_when_the_site_has_no_songs_json_yet(self):
+        """The one benign case the guard skips: a site that has never published."""
+        del self.site.objects["songs.json"]
+        publishops.sync_down()
+        publishops.rebuild_and_publish()
+        self.assertEqual(self.site.live_ids(), ["alpha", "beta"])
+
     # -- prune
 
     def test_prune_keeps_what_the_live_sets_name(self):
@@ -211,6 +312,52 @@ class PublishOpsTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "no songs.json"):
             publishops.prune(dry_run=False)
         self.assertNotIn("delete", self.site.events)
+
+
+class StubS3:
+    """Just enough of a boto3 S3 client to pin _get_json's exception handling: the real
+    tests stub _get_json wholesale, so nothing else would catch `cfg.s3.exceptions.NoSuchKey`
+    drifting (boto3 is absent in CI, so this is the closest a unit test gets)."""
+
+    class exceptions:
+        class NoSuchKey(Exception):
+            pass
+
+    def __init__(self, objects: dict[str, bytes], error: Exception | None = None):
+        self.objects = objects
+        self.error = error
+
+    def get_object(self, Bucket, Key):   # noqa: N803  (boto3's kwarg names)
+        if self.error is not None:
+            raise self.error
+        if Key not in self.objects:
+            raise self.exceptions.NoSuchKey("The specified key does not exist.")
+        return {"Body": io.BytesIO(self.objects[Key])}
+
+
+class GetJsonTests(unittest.TestCase):
+    def _cfg(self, s3):
+        cfg = FakeCfg("/nonexistent")
+        cfg.s3 = s3
+        return mock.patch.object(publishops, "get_config", lambda: cfg)
+
+    def test_get_json_reads_the_object(self):
+        with self._cfg(StubS3({"songs.json": b'{"songs": []}'})):
+            self.assertEqual(publishops._get_json("songs.json"), {"songs": []})
+            self.assertEqual(publishops.live_songs_json(), {"songs": []})
+
+    def test_get_json_returns_none_for_a_missing_key(self):
+        with self._cfg(StubS3({})):
+            self.assertIsNone(publishops._get_json("s/alpha/h1.json"))
+            with self.assertRaises(publishops.NoSongsJson):
+                publishops.live_songs_json()
+
+    def test_get_json_propagates_other_errors(self):
+        """A throttle/503 is not "no such object": swallowing it would make prune keep
+        nothing and the drop guard see an empty live set."""
+        with self._cfg(StubS3({}, error=RuntimeError("503 SlowDown"))):
+            with self.assertRaisesRegex(RuntimeError, "SlowDown"):
+                publishops._get_json("songs.json")
 
 
 if __name__ == "__main__":

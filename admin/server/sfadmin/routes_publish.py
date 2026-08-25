@@ -55,7 +55,8 @@ def rebuild() -> dict:
     _guard()
     _no_active_run()
     try:
-        publishops.sync_down()
-        return publishops.rebuild_and_publish()
+        with publishops.OPS_LOCK:   # one sync+publish at a time (see publishops.OPS_LOCK)
+            publishops.sync_down()
+            return publishops.rebuild_and_publish()
     except Exception as e:
         raise HTTPException(500, f"rebuild failed: {e}") from e
