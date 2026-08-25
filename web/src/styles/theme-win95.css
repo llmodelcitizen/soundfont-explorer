@@ -754,3 +754,10 @@
 [data-theme='win95'] .credits h2 {
   font-size: 22px;
 }
+
+/* the settings scroll box is its own formatting context, so this gap is no longer the collapse of
+   the last section's margin with the footer's — win95 is out of #40's scope and keeps the 14px it
+   had before the box existed (scripts/geometry.mjs pins it). */
+[data-theme='win95'] .settings .settings-foot {
+  margin-top: 14px;
+}

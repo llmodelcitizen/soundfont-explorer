@@ -187,6 +187,12 @@ export class SettingsModal {
         h(
           'section',
           { class: 'setting' },
+          h('div', { class: 'setting-title' }, 'Display'),
+          h('div', { class: 'btnrow colfoot' }, fullscreen, fullscreenHint),
+        ),
+        h(
+          'section',
+          { class: 'setting' },
           h('div', { class: 'setting-title' }, compact ? 'List columns (phone layout)' : 'List columns'),
           h(
             'div',
@@ -208,12 +214,6 @@ export class SettingsModal {
           ),
           h('div', { class: 'btnrow colfoot' }, defaultsBtn, h('span', { class: 'muted small' }, '# and name are always shown. Click a header to sort; again to reverse; a third time for catalog order — # restores it in one click.')),
           h('div', { class: 'btnrow colfoot fontfoot' }, resetFont, h('span', { class: 'muted small' }, 'Click or tap the title bar to cycle font selection (modern theme only)')),
-        ),
-        h(
-          'section',
-          { class: 'setting' },
-          h('div', { class: 'setting-title' }, 'Display'),
-          h('div', { class: 'btnrow colfoot' }, fullscreen, fullscreenHint),
         ),
       ),
       // both names are load-bearing: .footrow carries #40's theme spacing, .settings-foot the

@@ -1012,6 +1012,12 @@ select:focus-visible {
 }
 .keymap-foot,
 .share-foot,
+/* the scroll box is its own formatting context, so the last section's bottom margin no longer
+   collapses into the footer's margin-top — without this they add up and the closing buttons sit
+   one section-gap too low (#40's centring, measured by scripts/geometry.mjs) */
+.settings .settings-scroll > .setting:last-child {
+  margin-bottom: 0;
+}
 .settings-foot {
   display: flex;
   flex: 0 0 auto;

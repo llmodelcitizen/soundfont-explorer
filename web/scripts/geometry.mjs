@@ -399,6 +399,13 @@ async function measure(theme, viewport, label) {
     // lines on a phone, and what the issue asks to centre is the room below the last section.
     const closing = Array.from(document.querySelectorAll('.settings .footrow .btn')).map((button) => button.getBoundingClientRect());
     const fontfootBox = document.querySelector('.settings .fontfoot')?.getBoundingClientRect();
+    // "the room below the last section" only exists while everything fits: once the box scrolls —
+    // or its last row is already clipped by the scroll edge — there is nothing to centre against.
+    // scrollHeight rounds to integers, so the clipped case needs the bounding rects too.
+    const settingsScroll = document.querySelector('.settings .settings-scroll');
+    const scrollBox = settingsScroll?.getBoundingClientRect();
+    const scrolls = !!settingsScroll && (settingsScroll.scrollHeight > settingsScroll.clientHeight + 0.5
+      || (!!fontfootBox && !!scrollBox && fontfootBox.bottom > scrollBox.bottom - 0.5));
     const footrow = closing.length && fontfootBox && box
       ? {
         above: Math.min(...closing.map((b) => b.top)) - fontfootBox.bottom,
@@ -408,6 +415,7 @@ async function measure(theme, viewport, label) {
     reset?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     return {
       guidance,
+      scrolls,
       equalButtons: !!defaultsBox && !!resetBox && Math.abs(defaultsBox.width - resetBox.width) <= 0.5 && Math.abs(defaultsBox.height - resetBox.height) <= 0.5,
       resetBelow: !!defaultsBox && !!resetBox && resetBox.top >= defaultsBox.bottom,
       fitsViewport: !!box && box.top >= 0 && box.bottom <= innerHeight,
@@ -919,7 +927,12 @@ async function steppingKeepsPlayingAndKeepsTheKeyboard() {
   try {
     await page.waitForFunction((id) => document.querySelector('.songpicker').value !== id, first, { timeout: 25000 });
   } catch (error) {
-    failures.push(`desktop/stepping: the track never stepped to the next one: ${String(error)}`);
+    // stepping needs a track to actually reach its end, so it needs audio: under --audio=none
+    // (the CI fixture site) nothing ever plays and there is nothing to measure. Same treatment
+    // as the listened-LED and tier-pill checks above.
+    const how = noAudio ? 'skipping' : 'FAILING';
+    process.stderr.write(`desktop/stepping: the track never stepped to the next one — ${how} (${String(error).split('\n')[0]})\n`);
+    if (!noAudio) failures.push(`desktop/stepping: the track never stepped to the next one: ${String(error)}`);
     await page.close();
     await stepper.close();
     return;
@@ -1051,8 +1064,14 @@ for (const [label, viewport] of Object.entries(viewports)) {
     // win95 keeps the base layout, so a leak of either declaration shows up as changed numbers).
     const footrow = snapshot.settingsFontReset.footrow;
     const expectedFootrow = snapshot.theme === 'win95' ? { above: 14, below: 23 } : { above: 29, below: 29 };
+    // a settings box tall enough to scroll has no room below its last section to centre anything
+    // in: the reset-font row is then wherever the user scrolled it to, not at the bottom (#40)
+    if (snapshot.settingsFontReset.scrolls) {
+      process.stderr.write(`${label}/${snapshot.theme}: settings scroll at this size — skipping the closing-button centring\n`);
+    } else {
     assert(footrow && close(footrow.above, expectedFootrow.above, 0.5) && close(footrow.below, expectedFootrow.below, 0.5), `${label}/${snapshot.theme}: closing buttons sit ${JSON.stringify(footrow)}, expected ${JSON.stringify(expectedFootrow)}`);
     if (snapshot.theme !== 'win95') assert(footrow && close(footrow.above, footrow.below, 1), `${label}/${snapshot.theme}: closing buttons are not centred below the reset-font button: ${JSON.stringify(footrow)}`);
+    }
     // #41: the ● ends up on the centre of its parentheses — the lift applied has to match the ink
     // measurement, in every theme, so a fallback face with different metrics fails this instead of
     // passing on a restated stylesheet value. Amiga is the only theme that needs (and has) a lift.

@@ -476,7 +476,7 @@ describe('SettingsModal full screen (#34)', () => {
     const sections = Array.from(scroll.querySelectorAll('section.setting'));
     expect(sections.length).toBe(4);
     expect(sections.map((s) => s.querySelector('.setting-title')?.textContent ?? 'listened'))
-      .toEqual(['listened', 'Tracks', 'List columns', 'Display']);
+      .toEqual(['listened', 'Tracks', 'Display', 'List columns']);
     expect(scroll.contains(close)).toBe(false); // the way out cannot scroll off a short viewport
 
     const items = focusables(box);
