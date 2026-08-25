@@ -5,7 +5,7 @@
  */
 import type { CatalogDoc } from '../contracts/catalog';
 import type { SetDoc } from '../contracts/set';
-import { cellText, chipLabel, columnDef, columnTitle, displayLabel, visibleColumns, type CellContext, type ColKey, type ColumnDef } from './columns';
+import { cellText, chipLabel, columnDef, columnTitle, displayLabel, rowMinWidth, visibleColumns, type CellContext, type ColKey, type ColumnDef } from './columns';
 import { clear, h } from './dom';
 
 export interface ListCallbacks {
@@ -65,14 +65,10 @@ export class VariantList {
   setColumns(keys: ColKey[]): void {
     this.cols = visibleColumns(keys);
     this.el.style.setProperty('--cols', this.cols.map((c) => c.width).join(' '));
-    // every column keeps its width; when they do not fit, the list scrolls sideways instead of squeezing the name away
-    const em = parseFloat(getComputedStyle(this.el).fontSize) || 14;
-    const colsPx = this.cols.reduce((n, c) => {
-      const min = /^minmax\(([\d.]+)em/.exec(c.width)?.[1]; // 'minmax(14em, 1fr)' counts its minimum
-      return n + parseFloat(min ?? c.width) * em;
-    }, 0);
-    const minPx = colsPx + 8 * (this.cols.length - 1) + 26; // column gaps + row padding
-    this.el.style.setProperty('--row-min', `${Math.round(minPx)}px`);
+    // every column keeps its width; when they do not fit, the list scrolls sideways instead of
+    // squeezing the name away (an em-based calc: setColumns() runs before the list is in the
+    // document, where getComputedStyle() has no font size to measure)
+    this.el.style.setProperty('--row-min', rowMinWidth(this.cols));
     this.renderHead();
     this.setItems(this.ids);
   }

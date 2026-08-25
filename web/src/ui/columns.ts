@@ -50,6 +50,20 @@ export function visibleColumns(keys: readonly string[]): ColumnDef[] {
   return COLUMNS.filter((c) => c.always || want.has(c.key));
 }
 
+/**
+ * Minimum row width for a column set, as a CSS length: the em part is resolved by the browser
+ * where `--row-min` is used (the rows, which share the list's font size), so nothing has to be
+ * measured on a detached element and the value follows a theme's font size on its own.
+ */
+export function rowMinWidth(cols: readonly ColumnDef[]): string {
+  const em = cols.reduce((n, c) => {
+    const min = /^minmax\(([\d.]+)em/.exec(c.width)?.[1]; // 'minmax(14em, 1fr)' counts its minimum
+    return n + parseFloat(min ?? c.width);
+  }, 0);
+  const px = 8 * (cols.length - 1) + 26; // column gaps + row padding
+  return `calc(${Math.round(em * 100) / 100}em + ${px}px)`;
+}
+
 const CHIP_SUFFIX = /\s*[[(](OPL2|OPL3|ESFM|CQM|OPN2|OPNA|OPLL|SCC|SF2)[\])]\s*$/i;
 
 /** name without a chip tag the chip column already shows */

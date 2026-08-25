@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseCatalog } from '../../src/contracts/catalog';
 import { DEFAULT_PREFS } from '../../src/state/prefs';
-import { COLUMNS, cellText, columnDef, displayLabel, sortIds, visibleColumns, type CellContext, type ColKey } from '../../src/ui/columns';
+import { COLUMNS, cellText, columnDef, displayLabel, rowMinWidth, sortIds, visibleColumns, type CellContext, type ColKey } from '../../src/ui/columns';
 import { makeSet } from './fakes';
 
 const catalog = parseCatalog({
@@ -50,5 +50,14 @@ describe('columns', () => {
     expect(sortIds(['a', 'b', 'c'], 'fav', 1, canonical, ctx)).toEqual(['c', 'a', 'b']);
     expect(sortIds(['a', 'b', 'c'], 'dot', 1, canonical, ctx)).toEqual(['b', 'a', 'c']);
     expect(sortIds(['a', 'b', 'c'], 'label', -1, canonical, ctx)).toEqual(['c', 'b', 'a']);
+  });
+});
+
+describe('row min width', () => {
+  it('is an em-based calc over the visible columns (no measurement of a detached list)', () => {
+    // idx 3.2 + chip 4.6 + label minmax(14em) + fav 1.4 + dot 1.4 = 24.6em; gaps 8px × 4 + 26px padding
+    expect(rowMinWidth(visibleColumns(['chip', 'fav', 'dot']))).toBe('calc(24.6em + 58px)');
+    // always-on columns only: idx + label
+    expect(rowMinWidth(visibleColumns([]))).toBe('calc(17.2em + 34px)');
   });
 });
