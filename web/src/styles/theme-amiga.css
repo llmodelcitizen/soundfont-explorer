@@ -350,7 +350,9 @@
    sits 3.5 px above the baseline at 14 px where Topaz's tall parentheses centre on 8.5 px, which
    is why the dot reads as level with the bottom of the brackets. Lift it by the difference.
    The 5 px is measured against the face this stack's own `monospace` resolves to (DejaVu Sans
-   Mono); a platform whose ● comes from another face may want a pixel more or less. */
+   Mono); a platform whose ● comes from another face may want a pixel more or less, which is why
+   scripts/geometry.mjs measures the ink of the faces the page really resolved rather than reading
+   this number back: on such a platform the check fails and asks for the value it wants here. */
 [data-theme='amiga'] .settings .listened-glyph {
   position: relative;
   top: -5px;

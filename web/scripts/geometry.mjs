@@ -1,5 +1,17 @@
 #!/usr/bin/env node
-/** Compare modern, Windows 95, and Amiga geometry at desktop and phone sizes. */
+/**
+ * Compare modern, Windows 95, and Amiga geometry — and the behaviour that only a real browser
+ * shows — at desktop and phone sizes.
+ *
+ * This is a MANUAL check, not part of CI: it needs a published catalog with real audio (`out/public`
+ * on http://127.0.0.1:8000) and a dev server, neither of which a PR runner has. Run it by hand:
+ *
+ *   python3 -m http.server 8000 --directory out/public   # in one shell
+ *   cd web && npm run dev                                # in another
+ *   cd web && npm run test:geometry [-- --url=http://localhost:5173/]
+ *
+ * Anything that can be pinned without a browser belongs in `web/test/unit` instead, where CI runs it.
+ */
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
@@ -324,8 +336,31 @@ async function measure(theme, viewport, label) {
     const defaultsBox = defaults?.getBoundingClientRect();
     const resetBox = reset?.getBoundingClientRect();
     const trackOptions = Array.from(document.querySelectorAll('.settings .trackopts input[type="checkbox"]'));
+    // #41: how far the ● would sit below the centre of the parentheses if nothing lifted it, and
+    // how far it is actually lifted. Measured from the ink of the faces the page really resolved
+    // (● comes from a fallback in every theme), so this checks the alignment, not the stylesheet.
     const glyph = document.querySelector('.settings .listened-glyph');
+    const glyphLabel = glyph?.closest('label');
+    const shorthand = (element) => {
+      const s = getComputedStyle(element);
+      return `${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+    };
+    const pen = document.createElement('canvas').getContext('2d');
+    const inkCentre = (text, font) => {
+      pen.font = font;
+      const m = pen.measureText(text);
+      return (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+    };
     const glyphStyle = glyph ? getComputedStyle(glyph) : null;
+    const listenedGlyph = glyph && glyphLabel && glyphStyle
+      ? {
+        position: glyphStyle.position,
+        top: glyphStyle.top,
+        // a lift is a negative `top`; 'auto' (no rule) is no lift at all
+        lift: glyphStyle.top === 'auto' ? 0 : -parseFloat(glyphStyle.top),
+        deficit: inkCentre('()', shorthand(glyphLabel)) - inkCentre('●', shorthand(glyph)),
+      }
+      : null;
     // "close" / "clear all site data" centred between the reset-font row and the window edge.
     // Measured from the row the button sits in, not the button: its guidance text wraps to two
     // lines on a phone, and what the issue asks to centre is the room below the last section.
@@ -347,7 +382,7 @@ async function measure(theme, viewport, label) {
       // #28: both track options are in Settings at every window size, whatever the Tracks caption does
       trackOptions: trackOptions.map((input) => input.closest('label')?.textContent?.trim() ?? ''),
       trackOptionsVisible: trackOptions.every((input) => input.getBoundingClientRect().width > 0),
-      listenedGlyph: glyphStyle ? { position: glyphStyle.position, top: glyphStyle.top } : null,
+      listenedGlyph,
       font: { id: root.dataset.modernFont ?? null, stored: localStorage.getItem('sfp.modern-font.v1') },
     };
   });
@@ -461,27 +496,36 @@ async function trackCaptionFollowsThePane() {
   await page.goto(target.href, { waitUntil: 'networkidle' });
   await page.waitForSelector('.rows .row', { timeout: 20000 });
   await page.evaluate(() => document.fonts.ready);
-  /** `needed` is the caption's content width with both toggles shown, whatever the class says */
+  /** the two content widths (full and short labels) whatever classes the caption currently carries */
   const state = async () => {
     await page.waitForTimeout(80); // one ResizeObserver delivery
     return page.evaluate(() => {
       const head = document.querySelector('.tracks .np-head');
       const right = document.querySelector('.main > .right');
       const app = document.querySelector('#app');
-      const cramped = head.classList.contains('cramped');
-      head.classList.remove('cramped');
+      const had = { short: head.classList.contains('short'), cramped: head.classList.contains('cramped') };
+      head.classList.remove('short', 'cramped');
       const needed = head.scrollWidth;
-      if (cramped) head.classList.add('cramped');
+      head.classList.add('short');
+      const neededShort = head.scrollWidth;
+      head.classList.remove('short');
+      if (had.short) head.classList.add('short');
+      if (had.cramped) head.classList.add('cramped');
       const toggles = Array.from(document.querySelectorAll('.tracks .track-toggles input'));
+      const shown = (selector) => Array.from(document.querySelectorAll(`.tracks .track-toggles ${selector}`)).some((span) => span.getBoundingClientRect().width > 0);
       return {
         theme: document.documentElement.dataset.theme,
         client: head.clientWidth,
         needed,
-        cramped,
+        neededShort,
+        short: had.short,
+        cramped: had.cramped,
         pastPane: head.getBoundingClientRect().right - right.getBoundingClientRect().right,
         appOverflow: app.scrollWidth - app.clientWidth,
         toggles: toggles.length,
         togglesVisible: toggles.length === 2 && toggles.every((box) => box.getBoundingClientRect().width > 0),
+        fullLabels: shown('.lbl-full'),
+        shortLabels: shown('.lbl-short'),
         tracksVisible: getComputedStyle(document.querySelector('.tracks')).display !== 'none',
       };
     });
@@ -493,7 +537,12 @@ async function trackCaptionFollowsThePane() {
     }, width);
     return state();
   };
-  const consistent = (s) => s.cramped === (s.needed > s.client);
+  /** the caption must be wearing the first of the three steps that actually fits its pane */
+  const consistent = (s) => {
+    if (s.needed <= s.client) return !s.short && !s.cramped;
+    if (s.neededShort <= s.client) return s.short && !s.cramped;
+    return s.cramped;
+  };
   const opened = await state();
   assert(opened.pastPane <= 0.5 && opened.appOverflow <= 0.5, `desktop/modern: the Tracks caption runs ${opened.pastPane}px past its pane: ${JSON.stringify(opened)}`);
   assert(consistent(opened), `desktop/modern: the Tracks caption is stale at the default split: ${JSON.stringify(opened)}`);
@@ -501,9 +550,10 @@ async function trackCaptionFollowsThePane() {
   // a caption wider than any sensible pane: both toggles go, and nothing spills out of the pane
   const narrow = await setPane(300);
   assert(narrow.cramped && !narrow.togglesVisible && narrow.pastPane <= 0.5, `desktop/modern: a 300px Tracks pane does not drop the caption toggles: ${JSON.stringify(narrow)}`);
-  // room to spare: both come back
+  // room to spare: both come back, spelled out in full
   const wide = await setPane(900);
   assert(!wide.cramped && wide.togglesVisible && wide.toggles === 2, `desktop/modern: a 900px Tracks pane does not show the caption toggles: ${JSON.stringify(wide)}`);
+  assert(wide.fullLabels && !wide.shortLabels, `desktop/modern: a 900px Tracks pane does not spell the options out: ${JSON.stringify(wide)}`);
 
   // park the pane just wide enough for the Modern caption, then change only the text
   const content = await setPane(200);
@@ -517,16 +567,44 @@ async function trackCaptionFollowsThePane() {
   await page.evaluate(() => document.fonts.ready);
   const swapped = await state();
   assert(swapped.theme === 'amiga' && swapped.needed > swapped.client, `desktop/amiga: the Topaz caption unexpectedly fits the Modern fit width — this check no longer proves anything: ${JSON.stringify(swapped)}`);
-  assert(swapped.cramped && swapped.pastPane <= 0.5, `desktop/amiga: switching theme did not re-take the caption decision (toggles left showing, ${swapped.pastPane}px past the pane): ${JSON.stringify(swapped)}`);
+  assert(consistent(swapped) && !swapped.fullLabels && swapped.pastPane <= 0.5, `desktop/amiga: switching theme did not re-take the caption decision (full wording left showing, ${swapped.pastPane}px past the pane): ${JSON.stringify(swapped)}`);
   await page.evaluate(() => {
     const picker = document.querySelector('.themepick');
     picker.value = 'modern';
     picker.dispatchEvent(new Event('change', { bubbles: true }));
   });
   const restored = await state();
-  assert(!restored.cramped && restored.togglesVisible, `desktop/modern: switching back left the caption toggles hidden where they fit: ${JSON.stringify(restored)}`);
+  assert(!restored.cramped && restored.togglesVisible && restored.fullLabels, `desktop/modern: switching back left the caption in its narrow wording where the full one fits: ${JSON.stringify(restored)}`);
   await setPane(null);
   await page.close();
+
+  // The reference desktop viewport at the default split: the short wording is what keeps both
+  // options on screen there (the full one needs ~490px of caption in Modern, ~585 in Topaz, and
+  // the pane gives about 410), so an all-or-nothing rule would hide them for most desktop users.
+  for (const theme of ['modern', 'win95', 'amiga']) {
+    const desk = await browser.newPage({ viewport: viewports.desktop });
+    desk.on('pageerror', (error) => errors.push(`desktop/${theme}: ${String(error)}`));
+    const deskTarget = new URL(url);
+    deskTarget.searchParams.set('theme', theme);
+    await desk.goto(deskTarget.href, { waitUntil: 'networkidle' });
+    await desk.waitForSelector('.rows .row', { timeout: 20000 });
+    await desk.evaluate(() => document.fonts.ready);
+    await desk.waitForTimeout(120);
+    const split = await desk.evaluate(() => {
+      const head = document.querySelector('.tracks .np-head');
+      const right = document.querySelector('.main > .right');
+      return {
+        cramped: head.classList.contains('cramped'),
+        short: head.classList.contains('short'),
+        togglesVisible: Array.from(document.querySelectorAll('.tracks .track-toggles input')).every((box) => box.getBoundingClientRect().width > 0),
+        pastPane: head.getBoundingClientRect().right - right.getBoundingClientRect().right,
+        appOverflow: document.querySelector('#app').scrollWidth - document.querySelector('#app').clientWidth,
+      };
+    });
+    assert(split.togglesVisible && !split.cramped, `desktop/${theme}: the Tracks caption hides both options at the default split: ${JSON.stringify(split)}`);
+    assert(split.pastPane <= 0.5 && split.appOverflow <= 0.5, `desktop/${theme}: the Tracks caption runs ${split.pastPane}px past its pane: ${JSON.stringify(split)}`);
+    await desk.close();
+  }
 
   // the case #28 names: iOS mobile-landscape is above the 720px breakpoint, so Tracks is on show
   for (const theme of ['modern', 'win95', 'amiga']) {
@@ -576,15 +654,17 @@ async function trackCaptionSurvivesALateWebfont() {
   await page.waitForSelector('.rows .row', { timeout: 20000 });
   const caption = () => page.evaluate(() => {
     const head = document.querySelector('.tracks .np-head');
-    const cramped = head.classList.contains('cramped');
-    head.classList.remove('cramped');
+    const had = { short: head.classList.contains('short'), cramped: head.classList.contains('cramped') };
+    head.classList.remove('short', 'cramped');
     const needed = head.scrollWidth;
-    if (cramped) head.classList.add('cramped');
+    if (had.short) head.classList.add('short');
+    if (had.cramped) head.classList.add('cramped');
     return {
-      cramped,
+      ...had,
       needed,
       client: head.clientWidth,
       topaz: getComputedStyle(head).fontFamily,
+      fullLabels: Array.from(document.querySelectorAll('.tracks .track-toggles .lbl-full')).some((span) => span.getBoundingClientRect().width > 0),
       togglesVisible: Array.from(document.querySelectorAll('.tracks .track-toggles input')).every((box) => box.getBoundingClientRect().width > 0),
     };
   });
@@ -592,18 +672,19 @@ async function trackCaptionSurvivesALateWebfont() {
     await page.evaluate((w) => document.querySelector('.main').style.setProperty('--right-w', `${w}px`), width);
     await page.waitForTimeout(80);
   };
-  // a pane 20px narrower than the fallback face needs, which Topaz will comfortably fit into
+  // a pane 20px narrower than the fallback face needs to spell both options out, which Topaz —
+  // some 90px narrower at the same size — will comfortably fit into
   await setPane(200);
   const fallback = await caption();
   await setPane(fallback.needed + 4);
   const early = await caption();
-  assert(early.cramped, `desktop/amiga: the fallback-face caption was not measured as cramped: ${JSON.stringify({ fallback, early })}`);
+  assert(early.short || early.cramped, `desktop/amiga: the fallback-face caption was not measured as too wide for its pane: ${JSON.stringify({ fallback, early })}`);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(150);
   const late = await caption();
   // scrollWidth clamps to the box once the content fits, so "fits" reads as needed === client
   assert(late.needed <= late.client && early.needed > early.client, `desktop/amiga: Topaz did not narrow the caption below the pane — this check no longer proves anything: ${JSON.stringify({ early, late })}`);
-  assert(!late.cramped && late.togglesVisible, `desktop/amiga: the caption kept a decision taken in the fallback face after Topaz arrived: ${JSON.stringify({ early, late })}`);
+  assert(!late.cramped && !late.short && late.fullLabels && late.togglesVisible, `desktop/amiga: the caption kept a decision taken in the fallback face after Topaz arrived: ${JSON.stringify({ early, late })}`);
   await page.close();
 }
 
@@ -696,10 +777,127 @@ async function unpreservingClearsTheSavedPositionOnly() {
   assert(after.found && after.checked === false, `desktop/preserve: the Settings checkbox did not go off: ${JSON.stringify(after)}`);
   assert(after.t === null, `desktop/preserve: the URL still carries a position a reload would restore: ${JSON.stringify(after)}`);
   assert(close(after.seek, before.seek, 1), `desktop/preserve: unchecking the option moved the audible playhead from ${before.seek} to ${after.seek}`);
+  // the symmetric case: switching it back on has to make a reload resume where the listener is,
+  // which means writing the position the URL stopped carrying while the option was off
+  await page.evaluate(() => {
+    Array.from(document.querySelectorAll('.settings .trackopts input[type="checkbox"]'))
+      .find((input) => (input.closest('label')?.textContent ?? '').includes('Preserve track position'))
+      ?.click();
+  });
+  await page.waitForTimeout(400);
+  const again = await page.evaluate(() => ({ t: new URLSearchParams(location.search).get('t'), seek: Number(document.querySelector('.transport .seek').value) }));
+  assert(again.t !== null && close(Number(again.t), again.seek, 2), `desktop/preserve: re-checking the option left the URL without the position the transport shows: ${JSON.stringify(again)}`);
   await page.close();
+
+  // a shared or bookmarked `t=` is a saved position too: with the option off it must not restore
+  const off = await browser.newPage({ viewport: viewports.desktop });
+  off.on('pageerror', (error) => errors.push(`desktop/preserve-off: ${String(error)}`));
+  await off.addInitScript(() => localStorage.setItem('sfp.prefs.v1', JSON.stringify({ preserveTrackPosition: false })));
+  await off.goto(target.href, { waitUntil: 'networkidle' });
+  await off.waitForSelector('.rows .row', { timeout: 20000 });
+  await off.waitForTimeout(400);
+  const booted = await off.evaluate(() => ({
+    seek: Number(document.querySelector('.transport .seek').value),
+    t: new URLSearchParams(location.search).get('t'),
+    checked: Array.from(document.querySelectorAll('.tracks .track-toggles input[type="checkbox"]')).map((input) => input.checked),
+  }));
+  assert(close(booted.seek, 0, 1) && booted.t === null, `desktop/preserve-off: a bookmarked t=30 resumed although positions are not preserved: ${JSON.stringify(booted)}`);
+  await off.close();
 }
 
 await unpreservingClearsTheSavedPositionOnly();
+
+/**
+ * #28 end to end: a track that runs out steps to the next one and keeps playing — and does it
+ * without taking the keyboard away. The step rebuilds every control, so focus falls to <body>
+ * unless it is put back, and from <body> the keymap reads a soundfont name typed into the search
+ * box as a string of shortcuts (t theme, f favorites, l loop…). With the option off the same
+ * track simply ends, leaving no `t=` behind for a reload to resume two seconds from the end.
+ */
+async function steppingKeepsPlayingAndKeepsTheKeyboard() {
+  // the step has to happen on its own, on a clock we do not drive: let audio start without a gesture
+  const stepper = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  const nearTheEnd = (page, seconds) => page.evaluate((left) => {
+    const seek = document.querySelector('.transport .seek');
+    seek.value = String(Math.max(0, Number(seek.max) - left));
+    seek.dispatchEvent(new Event('input', { bubbles: true }));
+    seek.dispatchEvent(new Event('change', { bubbles: true }));
+  }, seconds);
+
+  const page = await stepper.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`desktop/stepping: ${String(error)}`));
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const first = await page.$eval('.songpicker', (select) => select.value);
+  await page.click('.transport .btn.play');
+  await nearTheEnd(page, 3);
+  // a user typing a soundfont name straight through the end of the track
+  await page.click('.filterbar .search');
+  await page.keyboard.type('flu');
+  try {
+    await page.waitForFunction((id) => document.querySelector('.songpicker').value !== id, first, { timeout: 25000 });
+  } catch (error) {
+    failures.push(`desktop/stepping: the track never stepped to the next one: ${String(error)}`);
+    await page.close();
+    await stepper.close();
+    return;
+  }
+  await page.keyboard.type('te');
+  const stepped = await page.evaluate(() => ({
+    song: document.querySelector('.songpicker').value,
+    query: document.querySelector('.filterbar .search').value,
+    activeIsSearch: document.activeElement === document.querySelector('.filterbar .search'),
+    theme: document.documentElement.dataset.theme,
+    loop: document.querySelector('.transport .btn.toggle[title="loop (L)"]').getAttribute('aria-pressed'),
+    position: Number(document.querySelector('.transport .seek').value),
+  }));
+  await page.waitForTimeout(700);
+  const advanced = await page.evaluate(() => Number(document.querySelector('.transport .seek').value));
+  assert(stepped.song !== first, `desktop/stepping: the automatic step did not change track: ${JSON.stringify(stepped)}`);
+  assert(advanced > stepped.position, `desktop/stepping: the track stepped to did not start playing (${stepped.position} → ${advanced})`);
+  assert(stepped.activeIsSearch && stepped.query === 'flute', `desktop/stepping: the automatic rebuild took the keyboard away from the search box: ${JSON.stringify(stepped)}`);
+  assert(stepped.theme === 'modern' && stepped.loop === 'false', `desktop/stepping: typed letters reached the global keymap during the step: ${JSON.stringify(stepped)}`);
+  await page.close();
+
+  // the same track with the option off: playback ends there, and nothing is left to resume from
+  const quiet = await stepper.newPage({ viewport: viewports.desktop });
+  quiet.on('pageerror', (error) => errors.push(`desktop/stepping-off: ${String(error)}`));
+  await quiet.goto(target.href, { waitUntil: 'networkidle' });
+  await quiet.waitForSelector('.rows .row', { timeout: 20000 });
+  const unchecked = await quiet.evaluate(() => {
+    document.querySelector('.top [aria-label="settings"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const box = Array.from(document.querySelectorAll('.settings .trackopts input[type="checkbox"]'))
+      .find((input) => (input.closest('label')?.textContent ?? '').includes('Automatically step'));
+    box?.click();
+    document.querySelector('.settings .btn.close-settings')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return { found: !!box, checked: box?.checked ?? null };
+  });
+  const staying = await quiet.$eval('.songpicker', (select) => select.value);
+  await quiet.click('.transport .btn.play');
+  await nearTheEnd(quiet, 2);
+  try {
+    await quiet.waitForFunction(() => document.querySelector('.transport .status')?.textContent?.trim() === 'end', undefined, { timeout: 25000 });
+  } catch (error) {
+    failures.push(`desktop/stepping-off: the track never reached its end: ${String(error)}`);
+    await quiet.close();
+    await stepper.close();
+    return;
+  }
+  await quiet.waitForTimeout(400);
+  const ended = await quiet.evaluate(() => ({
+    song: document.querySelector('.songpicker').value,
+    t: new URLSearchParams(location.search).get('t'),
+  }));
+  assert(unchecked.found && unchecked.checked === false, `desktop/stepping-off: the Settings checkbox did not go off: ${JSON.stringify(unchecked)}`);
+  assert(ended.song === staying, `desktop/stepping-off: the track stepped on with automatic stepping switched off: ${JSON.stringify(ended)}`);
+  assert(ended.t === null, `desktop/stepping-off: a track that ran to its end left a position for a reload to resume from: ${JSON.stringify(ended)}`);
+  await quiet.close();
+  await stepper.close();
+}
+
+await steppingKeepsPlayingAndKeepsTheKeyboard();
 
 
 for (const [label, viewport] of Object.entries(viewports)) {
@@ -731,9 +929,12 @@ for (const [label, viewport] of Object.entries(viewports)) {
     const expectedFootrow = snapshot.theme === 'win95' ? { above: 14, below: 23 } : { above: 29, below: 29 };
     assert(footrow && close(footrow.above, expectedFootrow.above, 0.5) && close(footrow.below, expectedFootrow.below, 0.5), `${label}/${snapshot.theme}: closing buttons sit ${JSON.stringify(footrow)}, expected ${JSON.stringify(expectedFootrow)}`);
     if (snapshot.theme !== 'win95') assert(footrow && close(footrow.above, footrow.below, 1), `${label}/${snapshot.theme}: closing buttons are not centred below the reset-font button: ${JSON.stringify(footrow)}`);
-    // #41: the ● is lifted onto the centre of its parentheses in amiga only
+    // #41: the ● ends up on the centre of its parentheses — the lift applied has to match the ink
+    // measurement, in every theme, so a fallback face with different metrics fails this instead of
+    // passing on a restated stylesheet value. Amiga is the only theme that needs (and has) a lift.
     const glyph = snapshot.settingsFontReset.listenedGlyph;
-    if (snapshot.theme === 'amiga') assert(glyph?.position === 'relative' && glyph.top === '-5px', `${label}/amiga: the listened dot is not lifted onto the parentheses' centre: ${JSON.stringify(glyph)}`);
+    assert(glyph && close(glyph.lift, glyph.deficit, 1), `${label}/${snapshot.theme}: the listened dot is lifted ${glyph?.lift}px where its ink asks for ${glyph?.deficit}px: ${JSON.stringify(glyph)}`);
+    if (snapshot.theme === 'amiga') assert(glyph?.position === 'relative' && glyph.lift >= 2, `${label}/amiga: the listened dot is not lifted onto the parentheses' centre: ${JSON.stringify(glyph)}`);
     else assert(glyph && glyph.top === 'auto', `${label}/${snapshot.theme}: the amiga listened-dot lift leaked into this theme: ${JSON.stringify(glyph)}`);
     // #28: Settings carries both track options at every window size, whatever the Tracks caption does
     assert(snapshot.settingsFontReset.trackOptions.length === 2 && snapshot.settingsFontReset.trackOptionsVisible, `${label}/${snapshot.theme}: Settings does not show both track options: ${JSON.stringify(snapshot.settingsFontReset.trackOptions)}`);
