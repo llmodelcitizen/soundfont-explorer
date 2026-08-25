@@ -28,6 +28,10 @@ def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# ---------------------------------------------------------------- S3 + shell primitives
+# Thin module-level wrappers: the stdlib-only unit tests (no boto3, no aws CLI in CI) stub
+# these and drive the real ordering + drop-guard logic built on top of them.
+
 def _list(prefix: str) -> list[dict]:
     cfg = get_config()
     out: list[dict] = []
@@ -37,13 +41,20 @@ def _list(prefix: str) -> list[dict]:
     return out
 
 
+def _delete_keys(keys: list[str]) -> int:
+    cfg = get_config()
+    for i in range(0, len(keys), 1000):
+        cfg.s3.delete_objects(Bucket=cfg.site_bucket,
+                              Delete={"Objects": [{"Key": k} for k in keys[i:i + 1000]],
+                                      "Quiet": True})
+    return len(keys)
+
+
 def live_songs_json() -> dict:
     cfg = get_config()
     r = cfg.s3.get_object(Bucket=cfg.site_bucket, Key="songs.json")
     return json.load(r["Body"])
 
-
-# ---------------------------------------------------------------- rebuild + publish
 
 def sync_down() -> None:
     """Mirror the bucket's /s and /c into the snapshot's out/public (bucket is truth)."""
@@ -55,6 +66,38 @@ def sync_down() -> None:
                         os.path.join(out_public, pre) + "/", "--delete", "--only-show-errors"],
                        check=True)
 
+
+def _run_manifest() -> dict:
+    """`sfr manifest --songs-json-only` in the snapshot: rewrites out/public/songs.json from
+    the set docs under out/public/s (a song without one is not listed); returns the report."""
+    cfg = get_config()
+    p = subprocess.run([sys.executable, "-m", "sfr", "manifest", "--songs-json-only",
+                        "--default-song", "freedoom-e1m1", "--default-variant", "adl-b58"],
+                       cwd=os.path.join(cfg.repo, "render"), capture_output=True, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"manifest --songs-json-only failed: {p.stderr[-1500:]}")
+    return json.loads(p.stdout)
+
+
+def _publish_songs_json() -> None:
+    """Upload out/public/c/*.json + songs.json to the site bucket and invalidate /songs.json."""
+    cfg = get_config()
+    out_public = os.path.join(cfg.repo, "out", "public")
+    subprocess.run(["aws", "s3", "sync", os.path.join(out_public, "c") + "/",
+                    f"s3://{cfg.site_bucket}/c/", "--only-show-errors",
+                    "--exclude", "*", "--include", "*.json",
+                    "--content-type", "application/json",
+                    "--cache-control", IMMUTABLE, "--size-only"], check=True)
+    subprocess.run(["aws", "s3", "cp", os.path.join(out_public, "songs.json"),
+                    f"s3://{cfg.site_bucket}/songs.json", "--only-show-errors",
+                    "--content-type", "application/json", "--cache-control", SHORT], check=True)
+    if cfg.distribution:
+        subprocess.run(["aws", "cloudfront", "create-invalidation", "--distribution-id",
+                        cfg.distribution, "--paths", "/songs.json"],
+                       check=True, capture_output=True)
+
+
+# ---------------------------------------------------------------- rebuild + publish
 
 def _expected_absent() -> set[str]:
     """Ids whose absence from a rebuilt songs.json is an editorial choice: library entries
@@ -75,11 +118,7 @@ def rebuild_and_publish(expect_dropped: frozenset[str] = frozenset()) -> dict:
         live_ids = {s["id"] for s in live_songs_json().get("songs", [])}
     except Exception:
         live_ids = set()
-    p = subprocess.run([sys.executable, "-m", "sfr", "manifest", "--songs-json-only",
-                        "--default-song", "freedoom-e1m1", "--default-variant", "adl-b58"],
-                       cwd=os.path.join(cfg.repo, "render"), capture_output=True, text=True)
-    if p.returncode != 0:
-        raise RuntimeError(f"manifest --songs-json-only failed: {p.stderr[-1500:]}")
+    report = _run_manifest()
     # A rebuild can only list songs the snapshot's corpus knows. If the live songs.json has
     # ids this one would lose — beyond an explicit remove (expect_dropped) or a hidden
     # library entry — that is a corpus gap on the box (the 2026-08-24 private-starwars
@@ -94,19 +133,8 @@ def rebuild_and_publish(expect_dropped: frozenset[str] = frozenset()) -> dict:
             + ("…" if len(dropped) > 8 else "")
             + " — remove them deliberately (Published tab), hide them in the Library, "
               "or fix the box's corpus first")
-    subprocess.run(["aws", "s3", "sync", os.path.join(out_public, "c") + "/",
-                    f"s3://{cfg.site_bucket}/c/", "--only-show-errors",
-                    "--exclude", "*", "--include", "*.json",
-                    "--content-type", "application/json",
-                    "--cache-control", IMMUTABLE, "--size-only"], check=True)
-    subprocess.run(["aws", "s3", "cp", os.path.join(out_public, "songs.json"),
-                    f"s3://{cfg.site_bucket}/songs.json", "--only-show-errors",
-                    "--content-type", "application/json", "--cache-control", SHORT], check=True)
-    if cfg.distribution:
-        subprocess.run(["aws", "cloudfront", "create-invalidation", "--distribution-id",
-                        cfg.distribution, "--paths", "/songs.json"],
-                       check=True, capture_output=True)
-    return json.loads(p.stdout)
+    _publish_songs_json()
+    return report
 
 
 # ---------------------------------------------------------------- overview
@@ -148,15 +176,6 @@ def overview() -> dict:
 
 
 # ---------------------------------------------------------------- remove + prune
-
-def _delete_keys(keys: list[str]) -> int:
-    cfg = get_config()
-    for i in range(0, len(keys), 1000):
-        cfg.s3.delete_objects(Bucket=cfg.site_bucket,
-                              Delete={"Objects": [{"Key": k} for k in keys[i:i + 1000]],
-                                      "Quiet": True})
-    return len(keys)
-
 
 def remove_track(sid: str) -> dict:
     """Delete /a/<id> and /s/<id> entirely, then rebuild + publish songs.json without it."""
