@@ -324,12 +324,24 @@ async function measure(theme, viewport, label) {
     const defaultsBox = defaults?.getBoundingClientRect();
     const resetBox = reset?.getBoundingClientRect();
     const trackOptions = Array.from(document.querySelectorAll('.settings .trackopts input[type="checkbox"]'));
+    // "close" / "clear all site data" centred between the reset-font row and the window edge.
+    // Measured from the row the button sits in, not the button: its guidance text wraps to two
+    // lines on a phone, and what the issue asks to centre is the room below the last section.
+    const closing = Array.from(document.querySelectorAll('.settings .footrow .btn')).map((button) => button.getBoundingClientRect());
+    const fontfootBox = document.querySelector('.settings .fontfoot')?.getBoundingClientRect();
+    const footrow = closing.length && fontfootBox && box
+      ? {
+        above: Math.min(...closing.map((b) => b.top)) - fontfootBox.bottom,
+        below: box.bottom - Math.max(...closing.map((b) => b.bottom)),
+      }
+      : null;
     reset?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     return {
       guidance,
       equalButtons: !!defaultsBox && !!resetBox && Math.abs(defaultsBox.width - resetBox.width) <= 0.5 && Math.abs(defaultsBox.height - resetBox.height) <= 0.5,
       resetBelow: !!defaultsBox && !!resetBox && resetBox.top >= defaultsBox.bottom,
       fitsViewport: !!box && box.top >= 0 && box.bottom <= innerHeight,
+      footrow,
       // #28: both track options are in Settings at every window size, whatever the Tracks caption does
       trackOptions: trackOptions.map((input) => input.closest('label')?.textContent?.trim() ?? ''),
       trackOptionsVisible: trackOptions.every((input) => input.getBoundingClientRect().width > 0),
@@ -710,6 +722,12 @@ for (const [label, viewport] of Object.entries(viewports)) {
     if (snapshot.headerCenters.length > 1) assert(Math.max(...snapshot.headerCenters) - Math.min(...snapshot.headerCenters) <= 1, `${label}/${snapshot.theme}: header controls are not vertically centered`);
     assert(snapshot.settingsFontReset.guidance === 'Click or tap the title bar to cycle font selection (modern theme only)', `${label}/${snapshot.theme}: font guidance is missing: ${JSON.stringify(snapshot.settingsFontReset)}`);
     assert(snapshot.settingsFontReset.equalButtons && snapshot.settingsFontReset.resetBelow && snapshot.settingsFontReset.fitsViewport, `${label}/${snapshot.theme}: font reset row geometry is wrong: ${JSON.stringify(snapshot.settingsFontReset)}`);
+    // The closing buttons sit centred in the room below the last section (#40, modern+amiga only:
+    // win95 keeps the base layout, so a leak of either declaration shows up as changed numbers).
+    const footrow = snapshot.settingsFontReset.footrow;
+    const expectedFootrow = snapshot.theme === 'win95' ? { above: 14, below: 23 } : { above: 29, below: 29 };
+    assert(footrow && close(footrow.above, expectedFootrow.above, 0.5) && close(footrow.below, expectedFootrow.below, 0.5), `${label}/${snapshot.theme}: closing buttons sit ${JSON.stringify(footrow)}, expected ${JSON.stringify(expectedFootrow)}`);
+    if (snapshot.theme !== 'win95') assert(footrow && close(footrow.above, footrow.below, 1), `${label}/${snapshot.theme}: closing buttons are not centred below the reset-font button: ${JSON.stringify(footrow)}`);
     // #28: Settings carries both track options at every window size, whatever the Tracks caption does
     assert(snapshot.settingsFontReset.trackOptions.length === 2 && snapshot.settingsFontReset.trackOptionsVisible, `${label}/${snapshot.theme}: Settings does not show both track options: ${JSON.stringify(snapshot.settingsFontReset.trackOptions)}`);
   }
