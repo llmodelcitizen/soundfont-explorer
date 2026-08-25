@@ -212,9 +212,21 @@ data "aws_iam_policy_document" "job" {
     actions   = ["s3:GetObject", "s3:ListBucket"]
     resources = [aws_s3_bucket.fonts.arn, "${aws_s3_bucket.fonts.arn}/*"]
   }
+  # publish surface: shards write only the content-addressed audio / catalog / set objects.
+  # songs.json (submit.py) and the client (index.html, assets/ — the code every visitor
+  # runs) are written from the operator's machine, never by a container that just parsed
+  # untrusted SF2/MIDI input (#8).
   statement {
-    actions   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
-    resources = ["arn:aws:s3:::${var.site_bucket}", "arn:aws:s3:::${var.site_bucket}/*"]
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.site_bucket}"]
+  }
+  statement {
+    actions = ["s3:GetObject", "s3:PutObject"]
+    resources = [
+      "arn:aws:s3:::${var.site_bucket}/a/*",
+      "arn:aws:s3:::${var.site_bucket}/c/*",
+      "arn:aws:s3:::${var.site_bucket}/s/*",
+    ]
   }
 }
 
@@ -249,6 +261,14 @@ resource "aws_launch_template" "fleet" {
       delete_on_termination = true
       encrypted             = true
     }
+  }
+  # the containers run untrusted SF2/MIDI parsers: IMDSv2 only, and a hop limit of 1 keeps
+  # the instance role's credentials out of reach of anything behind the docker bridge (the
+  # job role arrives through the ECS credential endpoint, which does not use IMDS) (#10)
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
   }
   # every instance carries the tag the watchdog and the budget filter on
   tag_specifications {
