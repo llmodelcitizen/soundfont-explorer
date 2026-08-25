@@ -66,8 +66,8 @@ export class VariantList {
     this.cols = visibleColumns(keys);
     this.el.style.setProperty('--cols', this.cols.map((c) => c.width).join(' '));
     // every column keeps its width; when they do not fit, the list scrolls sideways instead of
-    // squeezing the name away (an em-based calc: setColumns() runs before the list is in the
-    // document, where getComputedStyle() has no font size to measure)
+    // squeezing the name away (computed from the column definitions: setColumns() runs before
+    // the list is in the document, where getComputedStyle() has no font size to measure)
     this.el.style.setProperty('--row-min', rowMinWidth(this.cols));
     this.renderHead();
     this.setItems(this.ids);

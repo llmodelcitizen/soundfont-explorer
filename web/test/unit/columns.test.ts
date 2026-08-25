@@ -54,10 +54,17 @@ describe('columns', () => {
 });
 
 describe('row min width', () => {
-  it('is an em-based calc over the visible columns (no measurement of a detached list)', () => {
-    // idx 3.2 + chip 4.6 + label minmax(14em) + fav 1.4 + dot 1.4 = 24.6em; gaps 8px × 4 + 26px padding
-    expect(rowMinWidth(visibleColumns(['chip', 'fav', 'dot']))).toBe('calc(24.6em + 58px)');
+  it('is computed from the column definitions, not measured on a detached list', () => {
+    // idx 3.2 + chip 4.6 + label minmax(14em) + fav 1.4 + dot 1.4 = 24.6em at the 14px design em;
+    // gaps 8px × 4 + 26px padding
+    expect(rowMinWidth(visibleColumns(['chip', 'fav', 'dot']))).toBe('402px');
     // always-on columns only: idx + label
-    expect(rowMinWidth(visibleColumns([]))).toBe('calc(17.2em + 34px)');
+    expect(rowMinWidth(visibleColumns([]))).toBe('275px');
+  });
+
+  it('does not depend on the theme font size (geometry.mjs pins every theme to the modern one)', () => {
+    // a value in em would resolve against the row's own font size: 11px under Windows 95, where
+    // the same viewport would then not scroll sideways while the modern theme does
+    expect(rowMinWidth(visibleColumns(['chip', 'fav', 'dot']))).not.toMatch(/em/);
   });
 });
