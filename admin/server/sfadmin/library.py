@@ -22,8 +22,8 @@ import threading
 
 from .clock import now_iso
 from .config import get_config
+from .entries import MIDI_EXTS, canon_state
 
-MIDI_EXTS = {".mid", ".midi", ".rmi"}
 _SAFE_SEG = re.compile(r"^[^/\0]+$")
 
 
@@ -37,12 +37,21 @@ def _canon_modules():
     return canon, smf
 
 
-def clean_rel_path(path: str) -> str:
-    """Normalize a client-supplied library-relative path; reject traversal and junk."""
+def _segments(path: str, what: str, *, require: bool = False) -> list[str]:
+    """The shared half of clean_rel_path/clean_dir: normalize separators, drop the empty and
+    '.' segments, and reject traversal and anything unsafe. `require` additionally rejects a
+    path that normalizes to nothing (a file path needs at least one segment; '' is a legal
+    directory — the library root)."""
     path = path.strip().strip("/").replace("\\", "/")
     segs = [s for s in path.split("/") if s not in ("", ".")]
-    if not segs or any(s == ".." or not _SAFE_SEG.match(s) for s in segs):
-        raise ValueError(f"bad path {path!r}")
+    if (require and not segs) or any(s == ".." or not _SAFE_SEG.match(s) for s in segs):
+        raise ValueError(f"bad {what} {path!r}")
+    return segs
+
+
+def clean_rel_path(path: str) -> str:
+    """Normalize a client-supplied library-relative path; reject traversal and junk."""
+    segs = _segments(path, "path", require=True)
     if os.path.splitext(segs[-1])[1].lower() not in MIDI_EXTS:
         raise ValueError("path must end in .mid/.midi/.rmi")
     return "/".join(segs)
@@ -50,11 +59,7 @@ def clean_rel_path(path: str) -> str:
 
 def clean_dir(path: str) -> str:
     """Normalize a client-supplied directory path ('' = the library root)."""
-    path = path.strip().strip("/").replace("\\", "/")
-    segs = [s for s in path.split("/") if s not in ("", ".")]
-    if any(s == ".." or not _SAFE_SEG.match(s) for s in segs):
-        raise ValueError(f"bad directory {path!r}")
-    return "/".join(segs)
+    return "/".join(_segments(path, "directory"))
 
 
 class ConflictError(RuntimeError):
@@ -175,8 +180,7 @@ class Library:
                 "composer": None, "sequencer": None, "source_url": None,
                 "hidden": False, "inject": None, "trim": None, "notes": None,
                 "added_at": ts, "modified_at": ts,
-                "canon": {"status": status, "reason": reason, "canonical_sha256": None,
-                          "duration_s": None, "checked_at": None},
+                "canon": canon_state(status, reason),
             }
             self.cfg.s3.put_object(Bucket=self.cfg.bucket, Key="library/FILES/" + rel_path,
                                    Body=blob, ContentType="audio/midi")
@@ -234,8 +238,7 @@ class Library:
             before = {k: entry[k] for k in fields}
             entry.update(fields)
             if any(entry[k] != before.get(k) for k in self.REBUILD_KEYS if k in fields):
-                entry["canon"] = {"status": "pending", "reason": None, "canonical_sha256": None,
-                                  "duration_s": None, "checked_at": None}
+                entry["canon"] = canon_state("pending")
             entry["modified_at"] = self.doc["updated_at"] = now_iso()
             try:
                 self._save()
@@ -429,16 +432,14 @@ class Library:
                 if entry is None:
                     continue
                 if sid in refused:
-                    entry["canon"] = {"status": "refused", "reason": refused[sid],
-                                      "canonical_sha256": None, "duration_s": None, "checked_at": ts}
+                    entry["canon"] = canon_state("refused", refused[sid], checked_at=ts)
                 elif sid in built:
                     b = built[sid]
-                    entry["canon"] = {"status": "ok", "reason": None,
-                                      "canonical_sha256": b["sha256"],
-                                      "duration_s": b["duration_s"], "checked_at": ts}
+                    entry["canon"] = canon_state("ok", canonical_sha256=b["sha256"],
+                                                 duration_s=b["duration_s"], checked_at=ts)
                 elif entry["canon"]["status"] != "unparsed" and not entry["hidden"]:
-                    entry["canon"] = {"status": "refused", "reason": "not produced by canon.py",
-                                      "canonical_sha256": None, "duration_s": None, "checked_at": ts}
+                    entry["canon"] = canon_state("refused", "not produced by canon.py",
+                                                 checked_at=ts)
             self.doc["updated_at"] = ts
             self._save()
         counts = {"ok": 0, "refused": 0, "unparsed": 0, "pending": 0}

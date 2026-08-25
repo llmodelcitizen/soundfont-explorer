@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.join(ROOT, "admin", "server"))
 import canon  # noqa: E402
 import smf as S  # noqa: E402
 from sfadmin.clock import now_iso  # noqa: E402
+from sfadmin.entries import canon_state  # noqa: E402
 
 FILES = os.path.join(ROOT, "songs", "import", "FILES")
 STAGE = os.path.join(ROOT, "work", "library-stage")
@@ -138,8 +139,7 @@ def build_library() -> tuple:
             "notes": None,
             "added_at": ts,
             "modified_at": ts,
-            "canon": {"status": status, "reason": reason,
-                      "canonical_sha256": None, "duration_s": None, "checked_at": None},
+            "canon": canon_state(status, reason),
         }
         dup_sha.setdefault(sha, []).append(sid)
     doc = {"schema": SCHEMA, "updated_at": ts, "entries": entries}
