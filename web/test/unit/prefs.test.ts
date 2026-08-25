@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, loadPrefs } from '../../src/state/prefs';
+import { DEFAULT_PREFS, Favorites, ListenedLedger, TrackPositions, loadPrefs, sanitizeLedger } from '../../src/state/prefs';
 
 describe('prefs + listened ledger', () => {
   it('defaults without localStorage', () => {
@@ -54,5 +54,57 @@ describe('favorites', () => {
     expect(f.toggle('a')).toBe(false);
     expect(f.has('a')).toBe(false);
     expect([...f.all()]).toEqual(['b']);
+  });
+});
+
+describe('listened ledger: stored shape', () => {
+  /** run fn with a localStorage stub holding `items` (node has no localStorage at all) */
+  function withStorage(items: Record<string, string>, fn: () => void): void {
+    const store = new Map(Object.entries(items));
+    const g = globalThis as { localStorage?: unknown };
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) };
+    try {
+      fn();
+    } finally {
+      delete g.localStorage;
+    }
+  }
+
+  it('drops entries that are not {song: {variant: seconds}} instead of throwing from add()', () => {
+    const bad = { s1: 5, s2: { a: 'x', b: -1, c: 3, d: Number.NaN }, s3: null, s4: [1, 2], s5: 'str' };
+    withStorage({ 'sfp.listened.v1': JSON.stringify(bad) }, () => {
+      const l = new ListenedLedger(() => 0);
+      expect(() => l.add('s1', 'a', 1)).not.toThrow(); // s1 was a number: `s1.a = 1` threw before
+      expect(l.seconds('s1', 'a')).toBe(1);
+      expect(l.seconds('s2', 'c')).toBe(3);
+      expect(l.seconds('s2', 'a')).toBe(0);
+      expect(l.seconds('s2', 'b')).toBe(0);
+      expect([...l.listened('s2', 1)]).toEqual(['c']);
+    });
+    for (const raw of ['[]', '"str"', '5', 'null', '{bad json']) {
+      withStorage({ 'sfp.listened.v1': raw }, () => {
+        const l = new ListenedLedger(() => 0);
+        expect(l.add('s', 'v', 2)).toBe(2);
+      });
+    }
+    expect(sanitizeLedger({ s: { v: 1.5 } })).toEqual({ s: { v: 1.5 } });
+    expect(sanitizeLedger(undefined)).toEqual({});
+  });
+
+  it('keeps a song literally called __proto__ as an own key instead of setting a prototype', () => {
+    // JSON.parse makes '__proto__' an own property; assigning it onto a plain object would not
+    const raw: unknown = JSON.parse('{"__proto__": {"a": 4}, "s1": {"b": 2}}');
+    const clean = sanitizeLedger(raw);
+    expect(Object.prototype.hasOwnProperty.call(clean, '__proto__')).toBe(true);
+    expect(Object.getPrototypeOf({})).toBe(Object.prototype); // nothing global was touched
+    // (an object *literal* cannot express this: `{ __proto__: x }` sets the prototype)
+    const round = JSON.parse(JSON.stringify(clean)) as Record<string, unknown>;
+    expect(Object.entries(round)).toEqual([['__proto__', { a: 4 }], ['s1', { b: 2 }]]);
+    withStorage({ 'sfp.listened.v1': JSON.stringify(JSON.parse('{"__proto__": {"a": 4}}')) }, () => {
+      const l = new ListenedLedger(() => 0);
+      expect(l.seconds('__proto__', 'a')).toBe(4); // survives the round trip, not silently dropped
+      expect(l.add('__proto__', 'a', 1)).toBe(5);
+      expect([...l.listened('__proto__', 1)]).toEqual(['a']);
+    });
   });
 });

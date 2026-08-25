@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { engineLabel, parseCatalog, tagNames } from '../../src/contracts/catalog';
+import { SF2_INFO_KEYS, engineLabel, parseCatalog, tagNames } from '../../src/contracts/catalog';
 import { parseSet } from '../../src/contracts/set';
 import { ContractError, parseSongs, songTitle } from '../../src/contracts/songs';
 import { FilterIndex } from '../../src/state/filterIndex';
@@ -85,6 +85,29 @@ describe('FilterIndex', () => {
   });
 });
 
+describe('the SF2 comment chunk is never surfaced', () => {
+  // ICMT is free prose scraped from third-party fonts and full of e-mail addresses, so
+  // catalog/variants.py deliberately does not publish it (issue #2). Nothing in the client may
+  // display or index it, even if a stale catalog.json still carries the field.
+  const catalog = parseCatalog({
+    schema: 1,
+    engines: [],
+    facets: {},
+    variants: [{ id: 'sf2-cccccccccc', label: 'Commented', engine: 'fluidsynth', chip: 'sf2', type: 'sampled', facets: {}, source: { file: 'C.sf2', sf2: { INAM: 'Commented', ICMT: 'mail me at someone@example.invalid' } }, aliases: [] }],
+  });
+  const idx = new FilterIndex(['sf2-cccccccccc'], catalog);
+
+  it('is not part of the search text', () => {
+    expect(idx.apply({}, 'commented')).toEqual(['sf2-cccccccccc']);
+    expect(idx.apply({}, 'example.invalid')).toEqual([]);
+    expect(idx.apply({}, 'mail me')).toEqual([]);
+  });
+
+  it('is not one of the INFO rows the now-playing panel renders', () => {
+    expect(SF2_INFO_KEYS as readonly string[]).not.toContain('ICMT');
+  });
+});
+
 describe('URL state', () => {
   it('round-trips filters and query params', () => {
     const sel = { engine: new Set(['adlmidi', 'opnmidi']), size: new Set(['<2MB', '2-16MB']) };
@@ -114,5 +137,50 @@ describe('URL state', () => {
     expect(st.loop).toBe(false);
     expect(st.song).toBe('<script>'); // harmless: only compared against known ids
     expect(parseUrl('?t=abc').t).toBeUndefined();
+  });
+});
+
+describe('FilterIndex facet arrays', () => {
+  // The published catalog record for edm-all, verbatim: it carries `chip_family`, NOT a
+  // top-level `chip`, so parseCatalog's fallback makes Variant.chip the joined 'opll,scc' and
+  // only facets.chip holds the real list. (Before the fix that string was the whole chip facet
+  // for edm-all: it appeared under neither OPLL nor SCC, and 'opll,scc' showed up as its own
+  // option in the counts.)
+  const catalog = parseCatalog({
+    schema: 1,
+    engines: [],
+    facets: {},
+    variants: [
+      { id: 'edm-opll', label: 'OPLL', engine: 'edmidi', chip: 'opll', type: 'fm', facets: { chip: 'opll' }, aliases: [] },
+      { id: 'edm-scc', label: 'SCC', engine: 'edmidi', chip: 'scc', type: 'fm', facets: { chip: 'scc' }, aliases: [] },
+      { id: 'edm-all', label: 'OPLL + SCC', engine: 'edmidi', chip_family: 'opll', type: 'fm', facets: { chip: ['opll', 'scc'] }, aliases: [] },
+      // empty facet lists occur in the published catalog (facets.quality is [] on every SF2
+      // variant): they mean "nothing recorded here", not "no chip"
+      { id: 'edm-empty', label: 'Empty list', engine: 'edmidi', chip: 'scc', type: 'fm', facets: { chip: [] }, aliases: [] },
+      { id: 'edm-none', label: 'No chip at all', engine: 'edmidi', type: 'fm', facets: { chip: [] }, aliases: [] },
+    ],
+  });
+  const idx = new FilterIndex(['edm-opll', 'edm-scc', 'edm-all', 'edm-empty', 'edm-none'], catalog);
+
+  it('keeps every chip of a multi-chip variant (edm-all is listed under SCC as well as OPLL)', () => {
+    expect(catalog.byId.get('edm-all')!.chip).toBe('opll,scc'); // what the published document parses to
+    expect(idx.apply({ chip: new Set(['scc']) })).toEqual(['edm-scc', 'edm-all', 'edm-empty']);
+    expect(idx.apply({ chip: new Set(['opll']) })).toEqual(['edm-opll', 'edm-all']);
+    const counts = Object.fromEntries(idx.counts('chip', {}).map((c) => [c.value, c.count]));
+    expect(counts).toEqual({ opll: 2, scc: 3, unknown: 1 }); // no phantom 'opll,scc' option
+  });
+
+  it('falls back to the top-level value for an empty facet list, and buckets the rest as unknown', () => {
+    expect(idx.apply({ chip: new Set(['unknown']) })).toEqual(['edm-none']); // never invisible
+  });
+});
+
+describe('URL state: cleared filters', () => {
+  it('round-trips an empty selection as `f=` (distinct from no `f`, which means the default filters)', () => {
+    expect(buildSearch({ filters: {} })).toBe('?f=');
+    expect(parseUrl('?f=').filters).toEqual({});
+    expect(parseUrl('').filters).toBeUndefined();
+    expect(parseUrl(buildSearch({ song: 'x', filters: {} })).filters).toEqual({});
+    expect(parseUrl(buildSearch({ filters: { engine: new Set(['adlmidi']) } })).filters).toEqual({ engine: new Set(['adlmidi']) });
   });
 });

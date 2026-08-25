@@ -747,12 +747,6 @@ select:focus-visible {
   border-radius: var(--radius);
   font-size: 0.85em;
 }
-.icmt {
-  white-space: pre-wrap;
-  font-size: 0.85em;
-  color: var(--fg-dim);
-}
-
 /* transport */
 .transport {
   display: flex;

@@ -37,10 +37,18 @@ export class SegmentStore {
   readonly compressed: ByteLRU<ArrayBuffer>;
   private decoding = new Map<string, Promise<BufferLike>>();
   private packHeaders = new Map<string, PackHeader>();
+  /** whole packs already split into the compressed cache (a re-fetch is a new ArrayBuffer) */
+  private ingested = new WeakSet<ArrayBuffer>();
   private listeners = new Set<(key: SegKey, buf: BufferLike) => void>();
-  /** negative cache: key → {fails, until(ms)} so a 404/decoder error is not retried every tick */
-  private failed = new Map<string, { fails: number; until: number }>();
-  stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0, backedOff: 0 };
+  /**
+   * negative cache: key → {fails, until(ms)} so a 404/decoder error is not retried every tick.
+   * `kind` is what failed last: a successful byte fetch clears a fetch failure but not a decode
+   * one, so a member whose bytes are fine and whose opus is corrupt keeps ratcheting.
+   */
+  private failed = new Map<string, { fails: number; until: number; kind: 'fetch' | 'decode' }>();
+  /** byte-only prefetches in flight, keyed like `failed`: one failure per request, not per tick */
+  private fetchingOnly = new Map<string, Promise<unknown>>();
+  stats = { decodedOk: 0, decodeErrors: 0, fetchErrors: 0, wholePacks: 0, rangeMembers: 0, backedOff: 0, coverageStalls: 0 };
   lastError: string | null = null;
   /** Range for a blind header probe: a full-size pack's header (the length table may be shorter) */
   private readonly headerProbe: { start: number; end: number };
@@ -78,6 +86,11 @@ export class SegmentStore {
     return this.decoded.peek(keyStr(key));
   }
 
+  /** decoded and cached, without touching the hit/miss counters */
+  has(key: SegKey): boolean {
+    return this.decoded.has(keyStr(key));
+  }
+
   pin(key: SegKey): void {
     this.decoded.pin(keyStr(key));
   }
@@ -105,11 +118,11 @@ export class SegmentStore {
     return f ? Math.max(0, f.until - this.nowMs()) : 0;
   }
 
-  private noteFailure(ks: string): void {
+  private noteFailure(ks: string, kind: 'fetch' | 'decode'): void {
     const prev = this.failed.get(ks);
     const fails = (prev?.fails ?? 0) + 1;
     const wait = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (fails - 1));
-    this.failed.set(ks, { fails, until: this.nowMs() + wait });
+    this.failed.set(ks, { fails, until: this.nowMs() + wait, kind });
   }
 
   /** Ensure one segment is (being) decoded; resolves with the buffer. */
@@ -134,8 +147,12 @@ export class SegmentStore {
     }
     // an urgent request (switch commit / audible fill) takes the whole pack: one round trip beats header+member
     if (priority <= 0 && loc.slot >= 0) opts = { ...opts, whole: true };
+    let fetched = false;
     const p = this.bytesFor(loc, priority, opts)
-      .then((bytes) => this.decoder.decode(bytes, priority))
+      .then((bytes) => {
+        fetched = true;
+        return this.decoder.decode(bytes, priority);
+      })
       .then((buf) => {
         this.decoded.set(ks, buf);
         this.failed.delete(ks);
@@ -147,7 +164,7 @@ export class SegmentStore {
         if (!(e instanceof AbortedError)) {
           this.stats.decodeErrors++;
           this.lastError = `${ks}: ${(e as Error)?.message ?? String(e)}`;
-          this.noteFailure(ks);
+          this.noteFailure(ks, fetched ? 'decode' : 'fetch');
         }
         throw e;
       })
@@ -184,7 +201,34 @@ export class SegmentStore {
         if (w.fetchOnly) {
           const loc = this.locate(w.key)!;
           if (this.compressed.has(loc.cid)) continue;
-          this.bytesFor(loc, whole ? best : w.priority, { whole, tag }).catch(() => undefined);
+          const ks = keyStr(w.key);
+          // One entry per in-flight byte fetch, the way `decoding` dedups the decode path.
+          // want() runs every prefetch tick and none of its earlier guards sees a byte-only
+          // fetch in flight (it never populates `decoding`, and `compressed` is only filled on
+          // success), so without this every tick would attach another handler to the same
+          // Fetcher promise and one failed request would be recorded as a failure per tick —
+          // walking the exponential backoff to its 30 s cap inside a single event.
+          if (this.fetchingOnly.has(ks)) continue;
+          // A bytes-only miss enters the negative cache like a request() miss does, otherwise
+          // nothing stops the prefetcher from re-issuing the fetch for a missing pack every tick.
+          // That is the same per-key cache request() consults, so a prefetch failure also holds
+          // the audible path off this key for 1-30 s — as the non-fetchOnly branch below has
+          // always done via request(). A success clears a *fetch* failure (as request() does for
+          // a decode one) so unrelated transient network errors cannot ratchet the backoff up
+          // over a session; a key that fetches fine and will not decode keeps its count.
+          const p = this.bytesFor(loc, whole ? best : w.priority, { whole, tag })
+            .then(
+              () => {
+                if (this.failed.get(ks)?.kind === 'fetch') this.failed.delete(ks);
+              },
+              (e) => {
+                if (e instanceof AbortedError) return;
+                this.lastError = `${ks}: ${(e as Error)?.message ?? String(e)}`;
+                this.noteFailure(ks, 'fetch');
+              },
+            )
+            .finally(() => this.fetchingOnly.delete(ks));
+          this.fetchingOnly.set(ks, p);
         } else {
           this.request(w.key, whole ? best : w.priority, { whole, tag }).catch(() => undefined);
         }
@@ -217,8 +261,19 @@ export class SegmentStore {
     if (opts.whole || wholeInFlight) {
       try {
         const pack = await this.fetcher.get(loc.url, { priority, sticky: true, tag: 'pack' });
-        this.ingestPack(loc.url, pack);
-        this.stats.wholePacks++;
+        // every member waiting on this pack shares one fetch promise and wakes up here with the
+        // same ArrayBuffer: split it once, not once per waiter (24 splits of a 24-member pack).
+        // Mark it ingested only once the split succeeded: a pack whose bytes do not parse must
+        // let every waiter see the parse error, not just the first one, with the rest reporting
+        // a misleading 'member N missing from pack' (and overwriting lastError with it).
+        // A member evicted from the compressed cache between the split and this waiter waking
+        // must be re-split from the bytes we already hold, not reported as missing from the pack.
+        const first = !this.ingested.has(pack);
+        if (first || !this.compressed.has(loc.cid)) {
+          this.ingestPack(loc.url, pack);
+          this.ingested.add(pack);
+          if (first) this.stats.wholePacks++; // the same bytes split twice is not a second pack
+        }
       } catch (e) {
         this.stats.fetchErrors++;
         throw e;
