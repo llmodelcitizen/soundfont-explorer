@@ -14,10 +14,17 @@ export interface SettingsCallbacks {
   trackTitle(): string;
 }
 
+/** what the Display hint says when nothing has gone wrong */
+const FULLSCREEN_HINT = 'Fill the screen with the player. Shortcut: Shift + F (Esc leaves it).';
+
 export class SettingsModal {
   readonly el: HTMLElement;
   visible = false;
   private box: HTMLElement;
+  private fullscreenBtn: HTMLButtonElement | null = null;
+  private fullscreenHint: HTMLElement | null = null;
+  /** why the last full-screen attempt did not happen, shown in place of the hint */
+  private fullscreenNote = '';
 
   constructor(private prefs: Prefs, private cb: SettingsCallbacks) {
     this.box = h('div', { class: 'overlay-box settings', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'settings-title' });
@@ -39,9 +46,31 @@ export class SettingsModal {
     this.render();
   }
 
-  /** repaint while open — the full-screen button's label follows the document's own state */
-  refresh(): void {
-    if (this.visible) this.render();
+  /**
+   * Repaint just the full-screen control, whose label follows the document's own state. Not a
+   * full render(): a `fullscreenchange` can arrive at any moment (Esc, F11, another surface) and
+   * rebuilding the dialog would drop the focus and any half-typed "listened after" value.
+   */
+  refresh(note = this.fullscreenNote): void {
+    this.fullscreenNote = note;
+    const can = fullscreenSupported();
+    const btn = this.fullscreenBtn;
+    if (btn) {
+      btn.textContent = isFullscreen() ? 'leave full screen' : 'full screen';
+      btn.disabled = !can;
+      btn.title = can ? 'fill the screen (Shift + F)' : FULLSCREEN_UNSUPPORTED;
+    }
+    const hint = this.fullscreenHint;
+    if (hint) {
+      hint.textContent = note || (can ? FULLSCREEN_HINT : FULLSCREEN_UNSUPPORTED);
+      hint.classList.toggle('warn', !!note);
+    }
+  }
+
+  /** show why full screen did not happen, where the explanation already lives (#34) */
+  reportFullscreen(problem: string): void {
+    this.toggle(true);
+    this.refresh(problem);
   }
 
   toggle(force?: boolean): void {
@@ -85,8 +114,13 @@ export class SettingsModal {
     const resetFont = h('button', { class: 'btn colaction', type: 'button', title: 'restore the default Modern font' }, 'reset font');
     resetFont.addEventListener('click', () => this.cb.onResetFont());
     const canFullscreen = fullscreenSupported();
-    const fullscreen = h('button', { class: 'btn fullscreen-btn', type: 'button', disabled: !canFullscreen, title: canFullscreen ? 'fill the screen (Shift + F)' : FULLSCREEN_UNSUPPORTED }, isFullscreen() ? 'leave full screen' : 'full screen');
-    fullscreen.addEventListener('click', () => void toggleFullscreen().then(() => this.render()));
+    const fullscreen = h('button', { class: 'btn fullscreen-btn', type: 'button', disabled: !canFullscreen, title: canFullscreen ? 'fill the screen (Shift + F)' : FULLSCREEN_UNSUPPORTED }, isFullscreen() ? 'leave full screen' : 'full screen') as HTMLButtonElement;
+    this.fullscreenBtn = fullscreen;
+    // a rejected request (no user gesture, a permissions policy) resolves false instead of throwing
+    fullscreen.addEventListener('click', () => void toggleFullscreen().then((ok) => this.refresh(ok ? '' : FULLSCREEN_UNSUPPORTED)));
+    const fullscreenHint = h('span', { class: 'muted small' }, this.fullscreenNote || (canFullscreen ? FULLSCREEN_HINT : FULLSCREEN_UNSUPPORTED));
+    if (this.fullscreenNote) fullscreenHint.classList.add('warn');
+    this.fullscreenHint = fullscreenHint;
     const close = h('button', { class: 'btn close-settings', type: 'button' }, 'close');
     close.addEventListener('click', () => this.toggle(false));
     const wipe = h('button', { class: 'btn danger', type: 'button', title: 'Forget everything this site stored in this browser (settings, favorites, listened marks, pane sizes) and reload' }, 'clear all site data');
@@ -132,7 +166,7 @@ export class SettingsModal {
         'section',
         { class: 'setting' },
         h('div', { class: 'setting-title' }, 'Display'),
-        h('div', { class: 'btnrow colfoot' }, fullscreen, h('span', { class: 'muted small' }, canFullscreen ? 'Fill the screen with the player. Shortcut: Shift + F (Esc leaves it).' : FULLSCREEN_UNSUPPORTED)),
+        h('div', { class: 'btnrow colfoot' }, fullscreen, fullscreenHint),
       ),
       h('div', { class: 'btnrow' }, close, wipe),
     );

@@ -7,7 +7,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { KeymapOverlay } from '../../src/ui/keymapOverlay';
+import { SettingsModal } from '../../src/ui/settings';
 import { installKeyboard, type KeyActions } from '../../src/input/keyboard';
+import { DEFAULT_PREFS } from '../../src/state/prefs';
 
 function actions(): KeyActions {
   return {
@@ -93,5 +95,41 @@ describe('KeymapOverlay (#33)', () => {
     // closing something already closed must not steal focus from wherever it is
     overlay.toggle(false);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SettingsModal full screen (#34)', () => {
+  const callbacks = () => ({ onChange: vi.fn(), onResetTrack: vi.fn(), onResetAll: vi.fn(), onResetFont: vi.fn(), trackTitle: () => 'a track' });
+
+  it('repaints only the full-screen control, keeping focus and a half-typed value', () => {
+    const settings = new SettingsModal({ ...DEFAULT_PREFS }, callbacks());
+    document.body.append(settings.el);
+    settings.toggle(true);
+    const num = settings.el.querySelector('.settings .num') as HTMLInputElement;
+    const button = settings.el.querySelector('.fullscreen-btn') as HTMLButtonElement;
+    num.focus();
+    num.value = '7.5'; // typed, not yet committed: `change` has not fired
+
+    settings.refresh(); // what a fullscreenchange does — from Esc, F11, or another surface
+
+    expect(settings.el.querySelector('.settings .num')).toBe(num); // not rebuilt
+    expect(settings.el.querySelector('.fullscreen-btn')).toBe(button);
+    expect(document.activeElement).toBe(num);
+    expect(num.value).toBe('7.5');
+  });
+
+  it('says why full screen did not happen, next to the button that offers it', () => {
+    const settings = new SettingsModal({ ...DEFAULT_PREFS }, callbacks());
+    document.body.append(settings.el);
+    settings.reportFullscreen('nope, this browser cannot');
+
+    expect(settings.visible).toBe(true);
+    const hint = settings.el.querySelector('.settings .colfoot span.warn');
+    expect(hint?.textContent).toBe('nope, this browser cannot');
+    // and it survives the repaint a fullscreenchange would trigger
+    settings.refresh();
+    expect(settings.el.querySelector('.settings .colfoot span.warn')?.textContent).toBe('nope, this browser cannot');
+    settings.refresh('');
+    expect(settings.el.querySelector('.settings .colfoot span.warn')).toBeNull();
   });
 });

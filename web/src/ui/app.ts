@@ -210,13 +210,20 @@ export class App {
     for (const name of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(name, () => this.settings.refresh());
   }
 
-  /** Shift + F and the Settings button; unsupported browsers (iPhone Safari) just say so. */
+  /**
+   * Shift + F. A browser with no element full screen (iPhone Safari) and a request the browser
+   * refuses (no user gesture, an iframe without allowfullscreen) both end in the Settings dialog,
+   * next to the Display button — the transport status strip is 10ch wide and hidden on phones.
+   */
   private goFullscreen(): void {
     if (!fullscreenSupported()) {
-      this.transport?.setStatus(FULLSCREEN_UNSUPPORTED, 'wontload');
+      this.settings.reportFullscreen(FULLSCREEN_UNSUPPORTED);
       return;
     }
-    void toggleFullscreen().then(() => this.settings.refresh());
+    void toggleFullscreen().then((ok) => {
+      if (ok) this.settings.refresh('');
+      else this.settings.reportFullscreen(FULLSCREEN_UNSUPPORTED);
+    });
   }
 
   private creditsEl: HTMLElement | null = null;
