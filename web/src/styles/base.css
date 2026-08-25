@@ -880,6 +880,7 @@ select:focus-visible {
 .keymap td {
   padding: 2px 10px 2px 0;
 }
+.keymap-foot,
 .share-foot {
   display: flex;
   gap: 8px;

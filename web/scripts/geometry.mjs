@@ -110,6 +110,24 @@ async function measure(theme, viewport, label) {
       if (wasHidden) debug.classList.add('hidden');
       return result;
     })();
+    // issue #38 (amiga): every shortcut in the '?' screen sits in a roomy box, text centred
+    const keymapKeys = (() => {
+      const overlay = document.querySelector('#keymap-title')?.closest('.overlay');
+      if (!overlay) return null;
+      const wasHidden = overlay.classList.contains('hidden');
+      overlay.classList.remove('hidden');
+      const keys = Array.from(overlay.querySelectorAll('.keymap kbd')).map((key) => {
+        const box = rect(key);
+        const range = document.createRange();
+        range.selectNodeContents(key);
+        const text = range.getBoundingClientRect();
+        return box && text.width ? { w: box.w, h: box.h, fontSize: getComputedStyle(key).fontSize, dx: text.x + text.width / 2 - box.cx, dy: text.y + text.height / 2 - box.cy } : null;
+      }).filter(Boolean);
+      const closeButton = rect(overlay.querySelector('.close-keymap'));
+      const legacyHint = Array.from(overlay.querySelectorAll('p')).some((p) => /esc to close/i.test(p.textContent ?? ''));
+      if (wasHidden) overlay.classList.add('hidden');
+      return { keys, hasCloseButton: !!closeButton, legacyHint };
+    })();
     const namedRects = {};
     for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) namedRects[selector] = rect(document.querySelector(selector));
     const headerControls = allRects('.top > .themepick, .top > .btn, .top > .vol-top');
@@ -198,6 +216,7 @@ async function measure(theme, viewport, label) {
       states,
       titleTypography,
       debugTitleBar,
+      keymapKeys,
       amigaVerticalAlignment: {
         tracks: verticallyCenteredHeader('.tracks .np-head'),
         nowPlaying: verticallyCenteredHeader('.nowplaying .np-head'),
@@ -500,6 +519,10 @@ for (const [label, viewport] of Object.entries(viewports)) {
     assert(titleBar?.height === 36 && titleBar.paddingLeft === '8px', `${label}/${themed.theme}: debug title bar does not have the themed dimensions: ${JSON.stringify(titleBar)}`);
     assert(titleBar && close(titleBar.captionOffset, 0, 0.5), `${label}/${themed.theme}: debug caption is not vertically centered: ${JSON.stringify(titleBar)}`);
     assert(titleBar?.buttonOffsets.every((offset) => close(offset, 0, 0.5)), `${label}/${themed.theme}: debug title-bar buttons are not vertically centered: ${JSON.stringify(titleBar)}`);
+  }
+  // issue #33: the keys screen closes with a real button in every theme, not a line of prose
+  for (const themed of [modern, win95, amiga]) {
+    assert(themed.keymapKeys?.hasCloseButton && !themed.keymapKeys.legacyHint, `${label}/${themed.theme}: the keys screen has no close button: ${JSON.stringify(themed.keymapKeys)}`);
   }
   for (const [name, alignment] of Object.entries(amiga.amigaVerticalAlignment)) {
     if (name === 'favoriteContent' || name === 'listenedContentSize') continue;
