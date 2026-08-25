@@ -47,6 +47,7 @@ export class RunsView {
   private picked = new Set<string>();
   private status = el('span', { class: 'statusline' });
   private timer: number | null = null;
+  private pollGen = 0; // bumped by stop(): a tick already in flight must not re-arm
   private openLogs = new Set<string>();
 
   constructor() {
@@ -74,6 +75,7 @@ export class RunsView {
   }
 
   stop(): void {
+    this.pollGen++;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
   }
@@ -85,10 +87,14 @@ export class RunsView {
 
   private poll(): void {
     this.stop();
+    const gen = this.pollGen;
     this.timer = window.setTimeout(async () => {
+      this.timer = null;
       const list = this.root.querySelector('.runlist');
       if (list) await this.renderRuns(list as HTMLElement);
-      this.poll();
+      // stop() (tab switch) or a fresh load() may have landed while renderRuns was in
+      // flight; clearTimeout alone cannot catch that, so re-arm only for our generation
+      if (gen === this.pollGen) this.poll();
     }, 5000);
   }
 
