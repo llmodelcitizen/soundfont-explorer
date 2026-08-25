@@ -1,4 +1,6 @@
 /** Modern-theme font choices. The selection is local-only and intentionally absent from URLs. */
+import { safeStorage } from '../state/storage';
+
 export const MODERN_FONTS = [
   { id: 'ibm-plex-sans', label: 'IBM Plex Sans', family: "'SFP IBM Plex Sans', system-ui, sans-serif" },
   { id: 'inter', label: 'Inter', family: "'SFP Inter', system-ui, sans-serif" },
@@ -25,29 +27,17 @@ export function modernFont(id: ModernFontId) {
 }
 
 export function readModernFont(): ModernFontId {
-  try {
-    const value = localStorage.getItem(MODERN_FONT_KEY);
-    return MODERN_FONTS.some((font) => font.id === value) ? (value as ModernFontId) : DEFAULT_MODERN_FONT;
-  } catch {
-    return DEFAULT_MODERN_FONT;
-  }
+  const value = safeStorage.get(MODERN_FONT_KEY);
+  return MODERN_FONTS.some((font) => font.id === value) ? (value as ModernFontId) : DEFAULT_MODERN_FONT;
 }
 
 export function saveModernFont(id: ModernFontId): void {
-  try {
-    localStorage.setItem(MODERN_FONT_KEY, id);
-  } catch {
-    /* private mode: the applied in-memory selection still works */
-  }
+  safeStorage.set(MODERN_FONT_KEY, id);
 }
 
 /** Restore the default without leaving a redundant preference behind. */
 export function clearModernFontPreference(): ModernFontId {
-  try {
-    localStorage.removeItem(MODERN_FONT_KEY);
-  } catch {
-    /* private mode */
-  }
+  safeStorage.remove(MODERN_FONT_KEY);
   return DEFAULT_MODERN_FONT;
 }
 

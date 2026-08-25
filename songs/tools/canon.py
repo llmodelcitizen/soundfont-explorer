@@ -171,6 +171,24 @@ def import_out_name(rel: str) -> str:
     return rel if rel.endswith(".mid") else rel + ".mid"
 
 
+def strip_midi_ext(rel: str) -> str:
+    """The stem rule: ``.mid``/``.midi`` come off (any case), everything else — ``.rmi``
+    included — stays. Titles lose the extension; the file on disk keeps it (import_out_name)."""
+    return re.sub(r"\.midi?$", "", rel, flags=re.I)
+
+
+def fallback_labels(rel: str, explicit_title: Optional[str] = None) -> Tuple[str, str]:
+    """(id, title) for an import file whose SMF could not be parsed, from its
+    import/FILES/-relative path alone: directory path plus the file's stem — exactly what
+    import_labels() produces for a file that carries no sequence title. The admin server and
+    admin/scripts/ingest.py both mint ids for unparsable uploads this way, and an id minted
+    here is pinned in library.json forever, so the rule lives in one place."""
+    parent, _, stem = strip_midi_ext(rel).rpartition("/")
+    name = explicit_title or stem
+    title = f"{parent}/{name}" if parent else name
+    return slug(title), title
+
+
 def import_labels(src: str, smf: S.Smf, explicit_title: Optional[str] = None) -> Tuple[str, str, str]:
     """(id, title, output path) for a song imported from songs/import/FILES/.
 
@@ -181,7 +199,7 @@ def import_labels(src: str, smf: S.Smf, explicit_title: Optional[str] = None) ->
     matches its source.
     """
     rel = src[len(IMPORT_ROOT):] if src.startswith(IMPORT_ROOT) else src
-    parent, _, stem = re.sub(r"\.midi?$", "", rel, flags=re.I).rpartition("/")
+    parent, _, stem = strip_midi_ext(rel).rpartition("/")
     name = explicit_title or sequence_title(smf) or stem
     title = f"{parent}/{name}" if parent else name
     return slug(title), title, os.path.join(RENDERED_DIR, import_out_name(rel))

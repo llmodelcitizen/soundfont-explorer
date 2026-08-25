@@ -1,5 +1,6 @@
 /** Debug panel (D): live playback, audio, decode, fetch, cache, device and page diagnostics. Nothing leaves the browser. */
 import type { Metrics } from '../audio/engine';
+import { safeStorage } from '../state/storage';
 import { clear, fmtBytes, h, pct, percentile } from './dom';
 
 export class DebugPanel {
@@ -22,10 +23,8 @@ export class DebugPanel {
     close.addEventListener('click', () => this.toggle(false));
     const head = h('div', { class: 'dbg-head', title: 'drag to move · double-click to reset' }, h('strong', null, 'debug'), h('div', { class: 'dbg-actions' }, copy, close));
     this.el = h('aside', { class: 'debug hidden' }, head, this.body);
-    try {
-      const saved = JSON.parse(localStorage.getItem(DebugPanel.POSITION_KEY) ?? 'null') as { x?: unknown; y?: unknown } | null;
-      if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') this.savedPosition = { x: saved.x, y: saved.y };
-    } catch { /* fresh/private browsing */ }
+    const saved = safeStorage.getJson<{ x?: unknown; y?: unknown }>(DebugPanel.POSITION_KEY);
+    if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') this.savedPosition = { x: saved.x, y: saved.y };
     head.addEventListener('pointerdown', (e) => this.startDrag(e));
     head.addEventListener('pointermove', (e) => this.moveDrag(e));
     head.addEventListener('pointerup', (e) => this.endDrag(e));
@@ -81,9 +80,7 @@ export class DebugPanel {
     if (!this.drag || e.pointerId !== this.drag.pointerId) return;
     this.drag = null;
     this.el.classList.remove('dragging');
-    try {
-      localStorage.setItem(DebugPanel.POSITION_KEY, JSON.stringify(this.savedPosition));
-    } catch { /* private browsing */ }
+    safeStorage.setJson(DebugPanel.POSITION_KEY, this.savedPosition);
   }
 
   private place(x: number, y: number): void {
@@ -104,8 +101,6 @@ export class DebugPanel {
     this.el.style.removeProperty('top');
     this.el.style.removeProperty('right');
     this.el.style.removeProperty('bottom');
-    try {
-      localStorage.removeItem(DebugPanel.POSITION_KEY);
-    } catch { /* private browsing */ }
+    safeStorage.remove(DebugPanel.POSITION_KEY);
   }
 }

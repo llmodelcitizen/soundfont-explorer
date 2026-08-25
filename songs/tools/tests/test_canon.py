@@ -253,6 +253,36 @@ class ImportNameTests(unittest.TestCase):
         self.assertEqual(canon.import_labels("import/FILES/x.midi", m)[1], "x")
 
 
+class StemRuleTests(unittest.TestCase):
+    """strip_midi_ext/fallback_labels: the id-minting rule the admin server and
+    admin/scripts/ingest.py apply to files smf.py cannot parse. Ids minted there are pinned
+    in library.json forever, so the rule may only exist once, here."""
+
+    def test_only_mid_and_midi_come_off(self):
+        self.assertEqual(canon.strip_midi_ext("a/b.mid"), "a/b")
+        self.assertEqual(canon.strip_midi_ext("a/b.MID"), "a/b")
+        self.assertEqual(canon.strip_midi_ext("dir/x.midi"), "dir/x")
+        self.assertEqual(canon.strip_midi_ext("dir/x.MIDI"), "dir/x")
+        self.assertEqual(canon.strip_midi_ext("x.rmi"), "x.rmi")   # kept: .rmi is not stripped
+        self.assertEqual(canon.strip_midi_ext("x.mid.mid"), "x.mid")  # one extension only
+        self.assertEqual(canon.strip_midi_ext("song.nsf"), "song.nsf")
+        self.assertEqual(canon.strip_midi_ext("midi/x"), "midi/x")  # not a trailing extension
+
+    def test_fallback_labels(self):
+        self.assertEqual(canon.fallback_labels("videogame/crys_cave.mid"),
+                         ("videogame-crys-cave", "videogame/crys_cave"))
+        self.assertEqual(canon.fallback_labels("x.mid", "Title"), ("title", "Title"))
+        self.assertEqual(canon.fallback_labels("game/x.rmi"), ("game-x-rmi", "game/x.rmi"))
+        self.assertEqual(canon.fallback_labels("a/b/x.MIDI"), ("a-b-x", "a/b/x"))
+
+    def test_agrees_with_import_labels_on_a_file_with_no_sequence_title(self):
+        m = build(tracks=[[], []])
+        for rel, explicit in (("game/crys_cave.mid", None), ("x.MIDI", None),
+                              ("game/x.rmi", None), ("game/x.mid", "Explicit Title")):
+            sid, title, _ = canon.import_labels("import/FILES/" + rel, m, explicit)
+            self.assertEqual(canon.fallback_labels(rel, explicit), (sid, title), rel)
+
+
 class StemCollisionTests(unittest.TestCase):
     """x.mid and x.MID in one import directory are two songs; both used to be written to
     rendered/game/x.mid, so the songs.json sha256 of whichever came first no longer matched

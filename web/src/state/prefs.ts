@@ -1,8 +1,10 @@
 /**
  * User preferences (localStorage `sfp.prefs.v1`) and the per-track "listened" ledger
  * (`sfp.listened.v1`: seconds of actual playback per song × variant). Both survive reloads;
- * both tolerate a missing/blocked localStorage.
+ * both tolerate a missing/blocked localStorage (safeStorage).
  */
+import { safeStorage } from './storage';
+
 export interface Prefs {
   /** seconds of audible playback before a variant's dot lights up */
   listenedAfterS: number;
@@ -27,20 +29,11 @@ const PREFS_KEY = 'sfp.prefs.v1';
 const LISTENED_KEY = 'sfp.listened.v1';
 
 function read<T>(key: string): T | null {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
+  return safeStorage.getJson<T>(key);
 }
 
 function write(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* private mode / quota: keep in memory only */
-  }
+  safeStorage.setJson(key, value);
 }
 
 export function loadPrefs(): Prefs {

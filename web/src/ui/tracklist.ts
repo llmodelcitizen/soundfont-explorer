@@ -7,6 +7,7 @@
  */
 import type { StatusKind } from '../audio/engine';
 import { songTitle, type SongEntry } from '../contracts/songs';
+import { safeStorage } from '../state/storage';
 import { clear, h } from './dom';
 
 const OPEN_KEY = 'sfp.folders.v1';
@@ -100,7 +101,8 @@ export class TrackList {
     toggles: { autoNext: TrackToggle; preserve: TrackToggle },
   ) {
     try {
-      this.open = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]);
+      // the try still guards new Set(): a hand-edited store can hold something un-iterable
+      this.open = new Set(safeStorage.getJson<string[]>(OPEN_KEY) ?? []);
     } catch { /* fresh */ }
     this.body = h('div', { class: 'track-rows', role: 'listbox', 'aria-label': 'tracks' });
     this.autoNextBox = this.toggle('auto-next-track', toggles.autoNext);
@@ -235,9 +237,7 @@ export class TrackList {
   }
 
   private saveOpen(): void {
-    try {
-      localStorage.setItem(OPEN_KEY, JSON.stringify([...this.open]));
-    } catch { /* private mode */ }
+    safeStorage.setJson(OPEN_KEY, [...this.open]);
   }
 
   private render(): void {
