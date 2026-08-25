@@ -406,9 +406,14 @@ def merge_fragment(corpus: dict) -> dict:
 
 
 def run_public(corpus: dict, check: bool, lenient: bool = False,
-               only: Optional[set] = None) -> Tuple[List[dict], bool, List[dict]]:
+               only: Optional[set] = None) -> Tuple[List[dict], bool, List[dict], List[str]]:
+    """(entries, songs.json unchanged, per-song refusals, ids dropped from songs.json).
+    `dropped` is only ever non-empty for a targeted (--only) run; it rides in
+    canon-report.json so the admin UI can show it — the printed version below goes to
+    stdout, which the admin inherits into the journal and never shows (#19)."""
     entries: List[dict] = []
     refused: List[dict] = []
+    dropped: List[str] = []
     for spec in corpus["songs"]:
         sid = spec.get("id")
         if only is not None and sid is not None and sid not in only:
@@ -439,8 +444,25 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
         with open(os.path.join(SONGS_DIR, "songs.json"), encoding="utf-8") as fh:
             existing = json.load(fh)["songs"]
         by_id = {e["id"]: e for e in entries}
-        merged = [by_id.pop(e["id"], e) for e in existing]
-        entries = merged + [e for e in entries if e["id"] in by_id]
+        merged: List[dict] = []
+        for e in existing:
+            if e["id"] in by_id:
+                merged.append(by_id.pop(e["id"]))       # re-canonicalized this run
+            elif e["id"] not in only:
+                merged.append(e)                        # not selected: untouched
+            else:
+                # selected but not produced (refused, or gone from the corpus): its stale
+                # entry must not survive, or the render list goes on offering a song canon
+                # has just rejected
+                dropped.append(e["id"])
+        entries = merged + list(by_id.values())
+        if dropped:
+            # the admin's publish path refuses to drop a track that is live on the site, so
+            # this is also the moment that path stops working for it — say so here rather
+            # than at the next "Republish songs.json" (#19)
+            print("  dropped from songs.json (selected, not produced): %s" % ", ".join(dropped))
+            print("  if one of those is live on the site, publishing is blocked until it is "
+                  "fixed, hidden (Library) or removed (Published tab)")
     ids = [e["id"] for e in entries]
     if len(set(ids)) != len(ids):
         raise SystemExit("duplicate song ids")
@@ -457,7 +479,7 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
     data["default"] = corpus["default"]
     data["songs"] = entries
     ok = write_json(os.path.join(SONGS_DIR, "songs.json"), data, check)
-    return entries, ok, refused
+    return entries, ok, refused, dropped
 
 
 def run_private(corpus: dict, check: bool) -> Tuple[List[dict], bool]:
@@ -508,12 +530,15 @@ def main(argv: List[str]) -> int:
         corpus = json.load(fh)
     corpus = merge_fragment(corpus)
     print("public corpus:")
-    _, ok1, refused = run_public(corpus, args.check, lenient=args.lenient,
-                                 only=set(args.only) if args.only else None)
+    _, ok1, refused, dropped = run_public(corpus, args.check, lenient=args.lenient,
+                                          only=set(args.only) if args.only else None)
     print("private songs:")
     _, ok2 = run_private(corpus, args.check)
     if args.lenient:
-        report = {"schema": 1, "refused": refused}
+        # `dropped` is how the admin UI learns what a targeted run cost: the printed
+        # version above goes to canon.py's stdout, which library.canon_run inherits
+        # into the sfadmin journal on purpose and never shows the operator (#19)
+        report = {"schema": 1, "refused": refused, "dropped": dropped}
         with open(os.path.join(SONGS_DIR, "canon-report.json"), "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=1, ensure_ascii=False)
             fh.write("\n")

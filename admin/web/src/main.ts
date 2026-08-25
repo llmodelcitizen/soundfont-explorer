@@ -95,6 +95,8 @@ function shell(me: Me): void {
   };
   const update = el('button', {}, 'Update & restart');
   update.onclick = async () => {
+    // a refused write has to say so: unhandled, the button just stayed disabled and the
+    // page never reloaded, with the reason only in the devtools console (#19)
     update.disabled = true;
     try {
       await post('/api/update');
@@ -114,7 +116,7 @@ function shell(me: Me): void {
       await post('/api/shutdown');
     } catch (e) {
       note(`shutdown: ${(e as Error).message}`, true);
-      return;
+      return;                                  // the box is still up: do not say "Bye"
     }
     app.replaceChildren(el('div', { class: 'wait' },
       el('h1', {}, 'Terminating'),

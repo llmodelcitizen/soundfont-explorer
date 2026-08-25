@@ -121,6 +121,8 @@ def parse_track(buf: bytes) -> List[Event]:
             raise SmfError("truncated track")
         b = buf[pos]
         if b == 0xFF:
+            if pos + 1 >= n:
+                raise SmfError("truncated meta event")
             mtype = buf[pos + 1]
             length, p = read_vlq(buf, pos + 2)
             data = bytes(buf[p:p + length])
@@ -160,12 +162,24 @@ def parse_track(buf: bytes) -> List[Event]:
 
 
 def parse(blob: bytes) -> Smf:
+    """Parse an SMF blob. Malformed input always raises SmfError (a ValueError) — never a
+    bare IndexError/struct.error — so callers can tell bad data from a parser bug (the
+    admin maps ValueError to 400 and anything else to 500)."""
+    try:
+        return _parse(blob)
+    except (IndexError, struct.error) as e:  # a bounds check the parser missed
+        raise SmfError("malformed SMF: %s" % e) from e
+
+
+def _parse(blob: bytes) -> Smf:
     if blob[:4] != b"MThd":
         # some files have a RIFF RMID wrapper — look for the MThd inside
         i = blob.find(b"MThd")
         if i < 0:
             raise SmfError("not a Standard MIDI File (no MThd)")
         blob = blob[i:]
+    if len(blob) < 14:
+        raise SmfError("truncated header")
     hlen = struct.unpack(">I", blob[4:8])[0]
     fmt, ntrk, div = struct.unpack(">HHH", blob[8:14])
     if fmt not in (0, 1):

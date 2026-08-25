@@ -77,6 +77,14 @@ def canon_persist_blockers(local_ids: set[str], bucket_ids: set[str], entries: d
                   and e["canon"]["status"] not in ("refused", "unparsed"))
 
 
+def put_precondition(etag: str | None) -> dict:
+    """PutObject condition for library.json: match the ETag load() read from S3, or — when
+    load() fell back to the local mirror and never saw the S3 copy — require that no S3
+    copy exists. The fallback used to PUT unconditionally, replacing a possibly newer S3
+    document with the boot-time mirror (#19)."""
+    return {"IfMatch": etag} if etag else {"IfNoneMatch": "*"}
+
+
 class Library:
     def __init__(self) -> None:
         self.cfg = get_config()
@@ -106,16 +114,19 @@ class Library:
     def _save(self) -> None:
         body = (json.dumps(self.doc, indent=1, sort_keys=True) + "\n").encode()
         kwargs = {"Bucket": self.cfg.bucket, "Key": "library/library.json",
-                  "Body": body, "ContentType": "application/json"}
-        if self.etag:
-            kwargs["IfMatch"] = self.etag
+                  "Body": body, "ContentType": "application/json",
+                  **put_precondition(self.etag)}
         try:
             r = self.cfg.s3.put_object(**kwargs)
-        except self.cfg.s3.exceptions.ClientError as e:  # pragma: no cover - boto shape
+        except self.cfg.s3.exceptions.ClientError as e:
             code = e.response.get("Error", {}).get("Code")
             if code in ("PreconditionFailed", "ConditionalRequestConflict"):
+                had_etag = self.etag
                 self.load()  # resync to the winner
-                raise ConflictError("library.json changed in S3 — another writer exists; reloaded") from e
+                raise ConflictError(
+                    "library.json changed in S3 — another writer exists; reloaded" if had_etag
+                    else "library.json exists in S3 but this server started from the local "
+                         "mirror (S3 was unreadable at boot); reloaded — retry") from e
             raise
         self.etag = r.get("ETag")
         os.makedirs(os.path.dirname(self.cfg.library_json), exist_ok=True)
@@ -403,7 +414,15 @@ class Library:
         if p.returncode != 0:
             raise RuntimeError(f"canon.py failed: {p.stderr[-2000:]}")
         with open(os.path.join(repo, "songs", "canon-report.json")) as fh:
-            refused = {r["id"]: r["reason"] for r in json.load(fh)["refused"]}
+            report = json.load(fh)
+        refused = {r["id"]: r["reason"] for r in report["refused"]}
+        # songs canon.py --only took out of songs.json. The operator has to know: the
+        # publish path refuses to drop a track that is still live on the site, so from here
+        # on "Republish songs.json", the render-run finisher and the Published tab all fail
+        # until the track is fixed, hidden or removed. canon.py says so on stdout, which is
+        # inherited on purpose (progress lines land in the journal live) and so never
+        # reaches this UI (#19).
+        dropped = list(report.get("dropped") or [])
         with open(os.path.join(repo, "songs", "songs.json")) as fh:
             built = {e["id"]: e for e in json.load(fh)["songs"]}
         ts = now_iso()
@@ -435,6 +454,8 @@ class Library:
                 # a targeted run should report the tracks it ran, not the library totals
                 result["ran"] = {sid: dict(self.doc["entries"][sid]["canon"])
                                  for sid in only if sid in self.doc["entries"]}
+        if dropped:
+            result["dropped"] = dropped
         result["persisted"] = self._persist_canon_products(full_run=only is None)
         return result
 

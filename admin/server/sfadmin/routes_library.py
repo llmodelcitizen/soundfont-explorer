@@ -1,15 +1,13 @@
 """Library API: browse, upload, move, edit, hide, delete, canon runs, preview, zip."""
 from __future__ import annotations
 
-import hashlib
 import os
 import threading
-import zipfile
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
-from . import bootstrapstate, preview
+from . import bootstrapstate, libzip, preview
 from .config import get_config
 from .library import ConflictError, clean_rel_path, get_library, now_iso
 
@@ -151,24 +149,19 @@ def preview_mp3(sid: str):
         raise HTTPException(503, str(e)) from e
     if job is None:  # cached between the check and ensure()
         return FileResponse(preview.cached(entry["sha256"]), media_type="audio/mpeg")
-    return StreamingResponse(preview.follow(job), media_type="audio/mpeg")
+    try:
+        stream = preview.open_stream(job)
+    except RuntimeError as e:  # fluidsynth/ffmpeg failed before producing anything
+        raise HTTPException(500, f"preview render failed: {e}") from e
+    return StreamingResponse(stream, media_type="audio/mpeg")
 
 
 @router.get("/api/library.zip")
 def library_zip() -> FileResponse:
     """The whole MIDI library as one zip (built once per library version, then cached)."""
     lib = _lib()
-    stamp = hashlib.sha256((lib.doc.get("updated_at") or "empty").encode()).hexdigest()[:16]
-    out = os.path.join(get_config().cache, f"library-{stamp}.zip")
-    if not os.path.exists(out):
-        for f in os.listdir(get_config().cache):  # drop stale library zips
-            if f.startswith("library-") and f.endswith(".zip"):
-                os.remove(os.path.join(get_config().cache, f))
-        tmp = out + ".tmp"
-        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-            for e in lib.entries():
-                src = lib.local_path(e["id"])
-                if os.path.exists(src):
-                    z.write(src, "FILES/" + e["path"])
-        os.replace(tmp, out)
+    with lib.lock:  # version stamp and file list from the same snapshot of the library
+        updated_at = lib.doc.get("updated_at")
+        files = [(lib.local_path(e["id"]), "FILES/" + e["path"]) for e in lib.entries()]
+    out = libzip.ensure_zip(get_config().cache, updated_at, files)
     return FileResponse(out, media_type="application/zip", filename="soundfont-explorer-midi-library.zip")

@@ -88,6 +88,20 @@ class ParserWriterTests(unittest.TestCase):
         with self.assertRaises(S.SmfError):
             S.parse(b"not a midi file")
 
+    def test_malformed_input_is_always_smferror(self):
+        # truncated inputs used to escape as IndexError / struct.error, which the admin's
+        # channels endpoint turned into a 500 instead of a 400 (#19)
+        header = b"MThd" + struct.pack(">IHHH", 6, 1, 1, 96)
+        cases = {
+            "bare MThd": b"MThd",
+            "short header": b"MThd" + b"\x00\x00\x00\x06\x00\x01",
+            "track ends on 0xFF": header + b"MTrk" + struct.pack(">I", 2) + b"\x00\xff",
+            "track ends after meta type": header + b"MTrk" + struct.pack(">I", 3) + b"\x00\xff\x51",
+        }
+        for name, blob in cases.items():
+            with self.assertRaises(S.SmfError, msg=name):
+                S.parse(blob)
+
     def test_real_corpus_files_roundtrip(self):
         # canonical MIDIs live under songs/rendered/, imported ones in sub-directories mirroring
         # their path under songs/import/FILES/
