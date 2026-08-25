@@ -11,6 +11,10 @@ Shape (docs/RENDER.md "Cloud runs"):
 """
 import json, os, pathlib, subprocess, sys, threading, time, traceback
 
+# the image puts render/sfr and render/cloud side by side under /opt and sets PYTHONPATH=/opt, so
+# the shard reads the publish header table instead of carrying a copy that could drift (#14)
+from sfr.publish import IMMUTABLE, OBJECT_KINDS
+
 FONTS_BUCKET = os.environ["SFR_FONTS_BUCKET"]
 SITE_BUCKET = os.environ["SFR_SITE_BUCKET"]
 INDEX = int(os.environ.get("AWS_BATCH_JOB_ARRAY_INDEX", "0"))
@@ -125,6 +129,20 @@ def expected(song: str, sel: list[str]) -> int:
     return n
 
 
+def sync_commands(public: pathlib.Path, bucket: str) -> list[list[str]]:
+    """One `s5cmd sync` per object kind under out/public, stamping the Content-Type and
+    Cache-Control sfr.publish prescribes. A bare sync sends no Cache-Control at all and the type
+    /etc/mime.types guesses (application/x-tex-pk for a .pk), so CloudFront held fleet-published
+    audio for a day instead of a year (#14). --include also keeps a stray .pk.tmp out of the bucket."""
+    cmds = []
+    for pre, glob, ctype in OBJECT_KINDS:
+        d = public / pre
+        if d.exists():
+            cmds.append(["s5cmd", "sync", "--size-only", "--include", glob, "--content-type", ctype,
+                         "--cache-control", IMMUTABLE, f"{d}/", f"s3://{bucket}/{pre}/"])
+    return cmds
+
+
 def publish_song(song: str, partial_ok: bool = False) -> bool:
     """Manifest the song, then upload only if it really produced variants.
 
@@ -152,10 +170,8 @@ def publish_song(song: str, partial_ok: bool = False) -> bool:
         return False
     # objects under a/ c/ s/ are immutable and content-addressed, so they go straight to the
     # site bucket; songs.json is written once at the end by submit.py, not per shard.
-    for pre in ("a", "c", "s"):
-        d = OUT / "public" / pre
-        if d.exists():
-            sh(["s5cmd", "sync", "--size-only", f"{d}/", f"s3://{SITE_BUCKET}/{pre}/"])
+    for cmd in sync_commands(OUT / "public", SITE_BUCKET):
+        sh(cmd)
     log(f"published {song}: {got} variants in {time.monotonic() - t:.0f}s")
     return True
 

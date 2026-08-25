@@ -2,6 +2,7 @@
 billable action: always run with --dry-run first."""
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import subprocess
@@ -12,6 +13,36 @@ from .config import Paths
 
 IMMUTABLE = "public,max-age=31536000,immutable"
 SONGS_CC = "public,max-age=60,stale-while-revalidate=600"
+
+# (top-level prefix, filename glob, Content-Type) for every kind of immutable object under
+# out/public; each is served with IMMUTABLE. This is the one table every publisher derives its
+# headers from — `sfr publish` (aws s3 sync), the cloud shards (s5cmd sync, render/cloud/shard.py)
+# and `sfr publish --restamp` — so they cannot drift (#14: the shards used to upload bare, and
+# CloudFront held their audio for a day instead of a year, under whatever type /etc/mime.types
+# guessed — application/x-tex-pk for a .pk). The client never looks at the Content-Type
+# (fetch → arrayBuffer → decodeAudioData); the values are for caches and humans.
+OBJECT_KINDS: tuple[tuple[str, str, str], ...] = (
+    ("a", "*.opus", "audio/ogg; codecs=opus"),
+    ("a", "*.pk", "application/octet-stream"),
+    ("c", "*.json", "application/json"),
+    ("s", "*.json", "application/json"),
+)
+
+
+def kind_of(key: str) -> tuple[str, str, str] | None:
+    """The OBJECT_KINDS row for bucket key `key`, or None when no publisher writes such a key
+    (client files, songs.json, a stray .pk.tmp): --restamp leaves those alone."""
+    top, _, rest = key.partition("/")
+    for row in OBJECT_KINDS:
+        if top == row[0] and rest and fnmatch.fnmatchcase(rest, row[1]):
+            return row
+    return None
+
+
+def headers_for(key: str) -> tuple[str, str] | None:
+    """(Content-Type, Cache-Control) the object at `key` must carry, or None (see kind_of)."""
+    row = kind_of(key)
+    return (row[2], IMMUTABLE) if row else None
 
 
 def resolve_targets(paths: Paths, bucket: str | None, distribution: str | None) -> tuple[str, str | None]:
@@ -31,19 +62,12 @@ def resolve_targets(paths: Paths, bucket: str | None, distribution: str | None) 
 
 def commands(public: Path, bucket: str, distribution: str | None, *, dry_run: bool) -> list[list[str]]:
     dr = ["--dryrun"] if dry_run else []
-    a = f"s3://{bucket}/a/"
-    cmds = [
-        ["aws", "s3", "sync", str(public / "a") + "/", a, "--exclude", "*", "--include", "*.opus",
-         "--content-type", "audio/ogg; codecs=opus", "--cache-control", IMMUTABLE, "--size-only", *dr],
-        ["aws", "s3", "sync", str(public / "a") + "/", a, "--exclude", "*", "--include", "*.pk",
-         "--content-type", "application/octet-stream", "--cache-control", IMMUTABLE, "--size-only", *dr],
-        ["aws", "s3", "sync", str(public / "c") + "/", f"s3://{bucket}/c/", "--exclude", "*", "--include", "*.json",
-         "--content-type", "application/json", "--cache-control", IMMUTABLE, *dr],
-        ["aws", "s3", "sync", str(public / "s") + "/", f"s3://{bucket}/s/", "--exclude", "*", "--include", "*.json",
-         "--content-type", "application/json", "--cache-control", IMMUTABLE, *dr],
-        ["aws", "s3", "cp", str(public / "songs.json"), f"s3://{bucket}/songs.json",
-         "--content-type", "application/json", "--cache-control", SONGS_CC, *dr],
-    ]
+    # --size-only for every kind: the names are content hashes, so a same-named object has the same bytes
+    cmds = [["aws", "s3", "sync", str(public / pre) + "/", f"s3://{bucket}/{pre}/", "--exclude", "*", "--include", glob,
+             "--content-type", ctype, "--cache-control", IMMUTABLE, "--size-only", *dr]
+            for pre, glob, ctype in OBJECT_KINDS]
+    cmds.append(["aws", "s3", "cp", str(public / "songs.json"), f"s3://{bucket}/songs.json",
+                 "--content-type", "application/json", "--cache-control", SONGS_CC, *dr])
     if distribution and not dry_run:
         cmds.append(["aws", "cloudfront", "create-invalidation", "--distribution-id", distribution,
                      "--paths", "/songs.json"])
