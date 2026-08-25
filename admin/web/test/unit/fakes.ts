@@ -1,0 +1,87 @@
+// Test doubles for the admin views: a route-table fetch() so the views exercise the real
+// api.ts helpers (status handling, error messages), plus library document factories.
+import type { Entry, LibraryDoc } from '../../src/library';
+
+/** Thrown by a route handler to answer with an HTTP error (JSON `{error}` body). */
+export class Fail extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+type Handler = (body: unknown) => unknown;
+
+export interface Call {
+  method: string;
+  path: string;
+  body: unknown;
+}
+
+export class FakeFetch {
+  calls: Call[] = [];
+  private routes = new Map<string, Handler>();
+
+  /** Route `method path` to `handler`; its return value is the JSON body. A `Fail` becomes an
+   *  HTTP error response, any other throw rejects fetch() like a network failure would. */
+  on(method: string, path: string, handler: Handler): this {
+    this.routes.set(`${method} ${path}`, handler);
+    return this;
+  }
+
+  count(method: string, path: string): number {
+    return this.calls.filter((c) => c.method === method && c.path === path).length;
+  }
+
+  fn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+    const method = init?.method ?? 'GET';
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body;
+    this.calls.push({ method, path, body });
+    const h = this.routes.get(`${method} ${path}`);
+    if (!h) throw new Error(`unrouted ${method} ${path}`);
+    let out: unknown;
+    try {
+      out = await h(body);
+    } catch (e) {
+      if (e instanceof Fail) return json({ error: e.message }, e.status);
+      throw e;
+    }
+    return json(out, 200);
+  };
+}
+
+function json(v: unknown, status: number): Response {
+  return new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
+}
+
+export function entry(id: string, path: string, over: Partial<Entry> = {}): Entry {
+  return {
+    id,
+    path,
+    name: path.slice(path.lastIndexOf('/') + 1),
+    sha256: 'deadbeef'.repeat(8),
+    size: 4096,
+    composer: null,
+    sequencer: null,
+    source_url: null,
+    hidden: false,
+    inject: null,
+    trim: null,
+    notes: null,
+    canon: { status: 'ok', reason: null, canonical_sha256: null, duration_s: 60, checked_at: null },
+    ...over,
+  };
+}
+
+export function libraryDoc(entries: Entry[]): LibraryDoc {
+  return { updated_at: null, entries, preview: { fluidsynth: true, ffmpeg: true, gm_sf2: true } };
+}
+
+/** Resolve once `pred` holds (polling microtasks), or fail after `tries` turns. */
+export async function until(pred: () => boolean, tries = 50): Promise<void> {
+  for (let i = 0; i < tries; i++) {
+    if (pred()) return;
+    await Promise.resolve();
+  }
+  throw new Error('condition not met');
+}

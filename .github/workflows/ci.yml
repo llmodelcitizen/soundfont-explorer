@@ -69,6 +69,7 @@ jobs:
           cache-dependency-path: admin/web/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test -- --run
       - run: npm run build
 
   lint:
