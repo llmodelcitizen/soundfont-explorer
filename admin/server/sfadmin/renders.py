@@ -58,15 +58,24 @@ def _ms(iso: str) -> int:
 
 
 LOG_END_SLACK_MS = 60_000  # a terminated shard still logs for a few seconds after finished_at
+# A finished run's window is bounded by finished_at, but a live one's would grow with the
+# run — and the SPA re-reads every open log box every 5 s, so the walk has to stay O(1) in
+# run length. Half an hour of shard output is far more than the 100 events shown (#19).
+LIVE_TAIL_MS = 30 * 60_000
 
 
-def _log_query(rec: dict, log_group: str) -> dict:
-    """filter_log_events window for one run: from submit to (once finished) shortly after
-    the end, so a later run's shards never show up in this run's tail. The log group is
-    shared by every run."""
-    q = {"logGroupName": log_group, "startTime": _ms(rec["submitted_at"])}
+def _log_query(rec: dict, log_group: str, now_ms: int | None = None) -> dict:
+    """filter_log_events window for one run: from submit (or the last LIVE_TAIL_MS of a run
+    still going) to, once finished, shortly after the end — so a later run's shards never
+    show up in this run's tail. The log group is shared by every run."""
+    start = _ms(rec["submitted_at"])
+    q = {"logGroupName": log_group}
     if rec.get("finished_at"):
         q["endTime"] = _ms(rec["finished_at"]) + LOG_END_SLACK_MS
+    else:
+        now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+        start = max(start, now_ms - LIVE_TAIL_MS)
+    q["startTime"] = start
     return q
 
 

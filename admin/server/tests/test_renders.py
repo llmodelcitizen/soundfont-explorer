@@ -230,11 +230,21 @@ class LogTailTests(unittest.TestCase):
         import datetime
         start = int(datetime.datetime(2026, 8, 24, tzinfo=datetime.timezone.utc).timestamp() * 1000)
         rec = run_record("r1", "running")
-        q = renders._log_query(rec, "/aws/batch/x")
+        q = renders._log_query(rec, "/aws/batch/x", now_ms=start + 60_000)
         self.assertEqual(q, {"logGroupName": "/aws/batch/x", "startTime": start})
         rec["finished_at"] = "2026-08-24T02:00:00Z"
         q = renders._log_query(rec, "/aws/batch/x")
         self.assertEqual(q["endTime"], start + 2 * 3600 * 1000 + renders.LOG_END_SLACK_MS)
+        self.assertEqual(q["startTime"], start)      # a finished run keeps its whole window
+
+    def test_a_live_runs_window_does_not_grow_with_the_run(self):
+        """Every open log box is re-read every 5 s, so the walk must not be O(run volume) —
+        a long run (or one whose finished_at was never recorded) scanned all of it (#19)."""
+        rec = run_record("r1", "running")            # submitted_at, no finished_at
+        now = renders._ms("2026-08-24T00:00:00Z") + 6 * 3600 * 1000
+        q = renders._log_query(rec, "/aws/batch/x", now_ms=now)
+        self.assertEqual(q["startTime"], now - renders.LIVE_TAIL_MS)
+        self.assertNotIn("endTime", q)
 
 
 class FinisherTests(unittest.TestCase):
