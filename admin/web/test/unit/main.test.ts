@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Fail, FakeFetch, libraryDoc, until } from './fakes';
+import { Fail, FakeFetch, drain, libraryDoc, until } from './fakes';
 
 // main.ts boots on import: stage #app and the fake API first, then import a fresh copy.
 async function boot(ff: FakeFetch): Promise<HTMLElement> {
@@ -64,6 +64,34 @@ describe('tab switching', () => {
     await until(() => document.querySelector('main .notice') !== null);
     expect(document.querySelector('main .notice')!.textContent)
       .toMatch(/^renders failed to load: /);
+  });
+
+  it('does not paint a late failure over the tab the user switched to', async () => {
+    // The tab handlers do not await load(), so a load that fails after the user has moved
+    // on used to replace whatever tab is now on screen with its own notice.
+    let release: ((v: unknown) => void) | null = null;
+    let first = true;
+    const ff = api()
+      .on('GET', '/api/library', () => {
+        if (first) {
+          first = false;
+          return libraryDoc([]); // the initial Library render
+        }
+        return new Promise((r) => { release = r; });
+      })
+      .on('GET', '/api/render/songs', () => ({ render_enabled: true, songs: [] }))
+      .on('GET', '/api/runs', () => ({ runs: [] }));
+    await boot(ff);
+    button('Library').click(); // a second /api/library that hangs
+    await until(() => release !== null);
+    button('Renders').click(); // ... while the user moves on
+    await until(() => document.querySelector('main .runs') !== null);
+
+    // a doc without `entries` (an older/newer server) makes the library load throw
+    release!({ updated_at: null, preview: { fluidsynth: true, ffmpeg: true, gm_sf2: true } });
+    await drain();
+    expect(document.querySelector('main > .notice')).toBeNull();
+    expect(document.querySelector('main .runs')).not.toBeNull();
   });
 });
 

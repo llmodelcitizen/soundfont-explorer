@@ -51,24 +51,28 @@ function shell(me: Me): void {
   // Every tab shows its view with an un-awaited load(). Each load() reports its own failed
   // fetch inside the view, but a throw from the render path would reject unhandled and
   // leave the tab blank with nothing said; only the Library tab used to catch that.
-  const showFailure = (what: string) => (e: Error): void => {
+  // The notice belongs to the tab that failed: a slow load answering after the user has
+  // moved on must not replace whatever tab is on screen now, so paint only while the
+  // failing view is still the one shown.
+  const showFailure = (what: string, root: HTMLElement) => (e: Error): void => {
     if (isSessionExpired(e)) return; // already on the way to /auth/login
+    if (main.firstChild !== root) return; // the user has since switched tabs
     main.replaceChildren(el('div', { class: 'notice' }, `${what} failed to load: ${e.message}`));
   };
   const views: [string, () => void][] = [
     ['Library', () => {
       runs.stop();
       main.replaceChildren(lib.root);
-      lib.load().catch(showFailure('library'));
+      lib.load().catch(showFailure('library', lib.root));
     }],
     ['Renders', () => {
       main.replaceChildren(runs.root);
-      runs.load().catch(showFailure('renders'));
+      runs.load().catch(showFailure('renders', runs.root));
     }],
     ['Published', () => {
       runs.stop();
       main.replaceChildren(pub.root);
-      pub.load().catch(showFailure('published'));
+      pub.load().catch(showFailure('published', pub.root));
     }],
   ];
   const pub = new PublishedView();
