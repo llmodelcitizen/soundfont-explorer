@@ -10,8 +10,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
-from catalog import adlbanks, build, variants
+from catalog import _util, adlbanks, build, variants
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CATALOG = os.path.join(REPO, "catalog")
@@ -466,6 +467,31 @@ class M2bEngineVariants(unittest.TestCase):
         bad = {"engines": {"sc55": {"romset_flag": {"sc55-x": "x"}}}}
         with self.assertRaises(ValueError):
             variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, OPN, bad, None, now=NOW)
+
+    def test_render_cmd_flags_read_from_engines_json(self):
+        """Issue #24: variants.py keeps no copies of the engines.json tables — with no engines doc (or a doc
+        missing a key) every render.cmd flag comes from the committed render/engines.json."""
+        committed = _util.load_engines()["engines"]
+        doc = variants.build(self.facets, SCAN, _small_banks_doc(), PASSES, OPN, None, None, now=NOW)
+        by = {v["id"]: v for v in doc["variants"]}
+        for vid, eid in (("adl-b0", "adlmidi"), ("opn-xg", "opnmidi"), ("edm-opll", "edmidi"),
+                         ("gus-freepats", "timidity"), ("sc55-mk2", "sc55"), ("mt32", "munt")):
+            self.assertIn(" ".join(committed[eid]["base_args"]), by[vid]["render"]["cmd"], vid)
+        sf2 = next(v for v in doc["variants"] if v["engine"] == "fluidsynth")
+        self.assertIn(" ".join(committed["fluidsynth"]["base_args"]), sf2["render"]["cmd"])
+        self.assertEqual(by["mt32"]["source"]["url"], committed["munt"]["url"])
+        self.assertEqual([n for n in dir(variants) if n.startswith("DEFAULT_")], [],
+                         "engine flag tables live in render/engines.json only")
+        # the fallback really is the file, not a literal: another committed doc changes the commands, per key
+        fake = {"engines": {"adlmidi": {"base_args": ["--from-file"], "chips": 7},
+                            "fluidsynth": {"base_args": ["-x"], "dynamic_sample_loading_above_bytes": 10}}}
+        with mock.patch.object(variants, "_committed_engines", return_value=fake):
+            self.assertEqual(variants.adl_cmd(3, "-e", None), "adlmidiplay <song>.mid --from-file -e 3 7")
+            self.assertEqual(variants.adl_cmd(3, "-e", {"engines": {"adlmidi": {"chips": 2}}}),
+                             "adlmidiplay <song>.mid --from-file -e 3 2")
+            self.assertEqual(variants.fluid_cmd("a.sf2", 11, None),
+                             "fluidsynth -F raw.wav -x -o synth.dynamic-sample-loading=1 /fonts/a.sf2 <song>.mid")
+            self.assertEqual(variants.fluid_cmd("a.sf2", 9, None), "fluidsynth -F raw.wav -x /fonts/a.sf2 <song>.mid")
 
     def test_variant_overrides(self):
         ov = {"variants": {"adl-b0-esfmu": {"publish": False, "notes": "null test > 0.99"},
