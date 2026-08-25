@@ -25,15 +25,12 @@ import sys
 import threading
 import time
 
+from .clock import now_iso
 from .config import get_config
 
 TERMINAL = ("succeeded", "failed", "terminated")
 POLL_S = 30
 STAGE_EXCLUDES = ["--exclude", "import/*", "--exclude", "*__pycache__/*", "--exclude", "*.pyc"]
-
-
-def _now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _planner():
@@ -138,7 +135,7 @@ class RunManager:
                       "instance_types": instance_types, "shard_vcpus": shard_vcpus,
                       "shard_memory_mib": shard_memory_mib, "variants": variants},
             "estimate": {k: est[k] for k in ("jobs", "cpu_h", "usd")},
-            "batch_job_id": None, "submitted_at": _now(), "finished_at": None,
+            "batch_job_id": None, "submitted_at": now_iso(), "finished_at": None,
             "status_summary": {}, "published_sets": {},
             "instance_types_before": None, "instance_types_restored": True,
             "finisher": {"ran_at": None, "songs_json_published": False, "error": None},
@@ -177,7 +174,7 @@ class RunManager:
         except Exception as e:
             rec["state"] = "failed"
             rec["finisher"]["error"] = f"submit failed: {e}"
-            rec["finished_at"] = _now()
+            rec["finished_at"] = now_iso()
             self._put(rec)
             self._sleep_fleet(rec)
             raise
@@ -218,7 +215,7 @@ class RunManager:
                 self._scan_published(rec)
                 if j["status"] in ("SUCCEEDED", "FAILED"):
                     rec["state"] = "succeeded" if j["status"] == "SUCCEEDED" else "failed"
-                    rec["finished_at"] = _now()
+                    rec["finished_at"] = now_iso()
                 self._put(rec)
                 if rec["state"] in TERMINAL:
                     break
@@ -286,7 +283,7 @@ class RunManager:
                 if age > 300:
                     rec["state"] = "failed"
                     rec["finisher"]["error"] = "no Batch job was ever submitted (crash during submit)"
-                    rec["finished_at"] = _now()
+                    rec["finished_at"] = now_iso()
                     self._put(rec)
                     self._sleep_fleet(rec)
                 continue
@@ -312,9 +309,9 @@ class RunManager:
         try:
             publishops.sync_down()
             publishops.rebuild_and_publish()
-            rec["finisher"] = {"ran_at": _now(), "songs_json_published": True, "error": None}
+            rec["finisher"] = {"ran_at": now_iso(), "songs_json_published": True, "error": None}
         except Exception as e:
-            rec["finisher"] = {"ran_at": _now(), "songs_json_published": False, "error": str(e)}
+            rec["finisher"] = {"ran_at": now_iso(), "songs_json_published": False, "error": str(e)}
         self._put(rec)
         return rec
 
@@ -329,7 +326,7 @@ class RunManager:
             boto3.client("batch").terminate_job(jobId=rec["batch_job_id"],
                                                 reason="admin UI terminate")
         rec["state"] = "terminated"
-        rec["finished_at"] = _now()
+        rec["finished_at"] = now_iso()
         self._put(rec)
         self._sleep_fleet(rec)
         return rec
