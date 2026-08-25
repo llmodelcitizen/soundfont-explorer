@@ -38,6 +38,9 @@ jobs:
       - name: circuit breaker lambda tests
         if: hashFiles('infra/modules/circuit-breaker/lambda/tests/**') != ''
         run: python3 -m unittest discover -s infra/modules/circuit-breaker/lambda/tests -t infra/modules/circuit-breaker/lambda -v
+      - name: render fleet watchdog tests
+        if: hashFiles('infra/modules/render-fleet/lambda/tests/**') != ''
+        run: python3 -m unittest discover -s infra/modules/render-fleet/lambda/tests -t infra/modules/render-fleet/lambda -v
 
   web:
     name: web unit tests

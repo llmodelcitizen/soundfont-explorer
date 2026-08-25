@@ -18,6 +18,13 @@ data "aws_caller_identity" "current" {}
 
 resource "aws_s3_bucket" "tfstate" {
   bucket = "soundfont-explorer-tfstate-${data.aws_caller_identity.current.account_id}"
+
+  # Everything in infra/live is reachable only through this bucket's contents. A plan that wants it
+  # gone (a renamed resource, a stray destroy) must fail here, not be one "yes" away from orphaning
+  # the whole account; delete the block deliberately if the bucket ever really has to go.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_s3_bucket_versioning" "tfstate" {
