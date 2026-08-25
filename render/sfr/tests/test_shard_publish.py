@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 
 CLOUD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cloud")
 shard = None   # bound by setUpModule
@@ -374,11 +375,18 @@ class WorkerFactorTests(unittest.TestCase):
 
     def test_the_memory_reserve_scales_with_the_workers_not_the_cores(self):
         """Over-subscribing must not outgrow the per-worker overhead reserve — that is what
-        OOM-killed engines the first time admission and reality disagreed."""
+        OOM-killed engines the first time admission and reality disagreed.
+
+        The container size is pinned rather than read from this host: on a small CI runner both
+        counts clamp to the floor and the assertion silently stops testing anything."""
         m = self.reload_with(SFR_WORKER_FACTOR=2)
-        few, many = m._mem_units(32), m._mem_units(128)
-        self.assertLess(many, few)          # more workers reserved => less admission left
-        self.assertGreaterEqual(many, 64)   # ... but never below the floor
+        with unittest.mock.patch.object(m, "_allocated_memory", lambda: 120000 * 1024 * 1024):
+            few, many = m._mem_units(64), m._mem_units(128)
+            self.assertEqual((few, many), (404, 340))   # the fleet's real numbers
+            self.assertLess(many, few)                  # more workers reserved => less admission
+        # and the floor still holds when the box is far too small to over-subscribe on
+        with unittest.mock.patch.object(m, "_allocated_memory", lambda: 4 * 1024 ** 3):
+            self.assertGreaterEqual(m._mem_units(128), 64)
 
 
 class PhaseTests(unittest.TestCase):
