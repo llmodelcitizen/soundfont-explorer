@@ -48,6 +48,8 @@ type Row = { kind: 'folder'; path: string } | { kind: 'track'; e: Entry };
 
 const OPEN_KEY = 'sfadmin.folders.v1';
 const AUTOPLAY_KEY = 'sfadmin.autoplay.v1';
+const CANON_POLL_MS = 3000;
+const CANON_POLL_MAX_FAILURES = 10; // consecutive failed status GETs before the poll gives up
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]
@@ -499,8 +501,8 @@ export class LibraryView {
     const inp = el('input', { type: 'file', multiple: '', accept: '.mid,.midi,.rmi' });
     inp.onchange = async () => {
       if (!inp.files?.length) return;
-      const dir = prompt('Upload into directory (empty = top level):',
-        this.selectedDir()) ?? '';
+      const dir = prompt('Upload into directory (empty = top level):', this.selectedDir());
+      if (dir === null) return this.note('upload cancelled'); // Cancel used to fall through as '' and upload to the top level
       const fd = new FormData();
       for (const f of inp.files) fd.append('files', f);
       fd.append('dir', dir.trim());
@@ -533,11 +535,29 @@ export class LibraryView {
       totals: Record<string, number>;
       ran?: Record<string, { status: string; reason: string | null }>;
     }
+    // The run keeps going server-side whatever happens to this poll, so one failed status
+    // GET (the box is busy running fluidsynth) must not orphan it — the status line would
+    // stay on "running…" forever. Give up only after several consecutive failures so a
+    // dead server does not leave a zombie loop behind.
+    let failures = 0;
     const poll = async (): Promise<void> => {
-      const s = await get<{ running: boolean; error?: string; result?: CanonResult }>('/api/library/canon/status');
+      let s: { running: boolean; error?: string; result?: CanonResult };
+      try {
+        s = await get('/api/library/canon/status');
+        failures = 0;
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (++failures >= CANON_POLL_MAX_FAILURES) {
+          this.note(`canon: lost track of the run after ${failures} failed status checks (${msg}) — reload to see the result`, true);
+          return;
+        }
+        this.note(`canon: status check failed (${msg}), retrying…`, true);
+        setTimeout(poll, CANON_POLL_MS);
+        return;
+      }
       if (s.running) {
         this.note('canon: running… (a full run takes a few minutes on this box)');
-        setTimeout(poll, 3000);
+        setTimeout(poll, CANON_POLL_MS);
         return;
       }
       if (s.error) this.note(`canon: ${s.error}`, true);
@@ -547,9 +567,13 @@ export class LibraryView {
         const shown = parts.slice(0, 3).join(' · ') + (parts.length > 3 ? ` · +${parts.length - 3} more` : '');
         this.note(`canon: ${shown}`, Object.values(s.result.ran).some((c) => c.status !== 'ok'));
       } else this.note(`canon (library totals): ${JSON.stringify(s.result?.totals ?? s.result)}`);
-      await this.load();
+      try {
+        await this.load();
+      } catch (e) {
+        this.note(`canon finished, but reloading the library failed: ${(e as Error).message}`, true);
+      }
     };
-    poll();
+    void poll();
   }
 
   private async injectFix(e: Entry): Promise<void> {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryView } from '../../src/library';
-import { FakeFetch, entry, libraryDoc } from './fakes';
+import { FakeFetch, entry, libraryDoc, until } from './fakes';
 
 const doc = () => libraryDoc([
   entry('a1', 'alpha/one.mid'),
@@ -17,6 +17,20 @@ function mount(ff: FakeFetch): LibraryView {
 
 const status = (view: LibraryView) => view.root.querySelector('.statusline')!;
 const search = (view: LibraryView) => view.root.querySelector<HTMLInputElement>('input[type=search]')!;
+const button = (view: LibraryView, label: string) =>
+  [...view.root.querySelectorAll('button')].find((b) => b.textContent === label)!;
+
+/** Open the upload dialog and return the (detached) file picker it clicks. */
+function openUpload(view: LibraryView, files: File[]): HTMLInputElement {
+  let picker: HTMLInputElement | undefined;
+  vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+    picker = this;
+  });
+  button(view, 'Upload…').click();
+  if (!picker) throw new Error('no file picker opened');
+  Object.defineProperty(picker, 'files', { value: files });
+  return picker;
+}
 
 describe('LibraryView filter box', () => {
   beforeEach(() => {
@@ -57,5 +71,89 @@ describe('LibraryView filter box', () => {
     expect(buttons).toContain('Canon check (1 refused)');
     expect(view.root.querySelector('.toolbar .count')?.textContent).toBe('1 tracks');
     expect(status(view)).toBeTruthy();
+  });
+});
+
+describe('LibraryView upload dialog', () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('Cancel on the directory prompt aborts the upload', async () => {
+    const ff = new FakeFetch().on('GET', '/api/library', doc)
+      .on('POST', '/api/library/upload', () => ({ results: [{ ok: true, path: 'one.mid' }] }));
+    const view = mount(ff);
+    await view.load();
+    vi.stubGlobal('prompt', () => null);
+    const picker = openUpload(view, [new File(['x'], 'one.mid')]);
+    await picker.onchange!.call(picker, new Event('change'));
+    expect(ff.count('POST', '/api/library/upload')).toBe(0);
+    expect(status(view).textContent).toBe('upload cancelled');
+  });
+
+  it('an accepted prompt uploads into that directory', async () => {
+    const ff = new FakeFetch().on('GET', '/api/library', doc)
+      .on('POST', '/api/library/upload', () => ({ results: [{ ok: true, path: 'alpha/one.mid' }] }));
+    const view = mount(ff);
+    await view.load();
+    vi.stubGlobal('prompt', () => 'alpha');
+    const picker = openUpload(view, [new File(['x'], 'one.mid')]);
+    await picker.onchange!.call(picker, new Event('change'));
+    expect(ff.count('POST', '/api/library/upload')).toBe(1);
+    const fd = ff.calls.at(-2)?.body as FormData; // followed by the GET /api/library reload
+    expect(fd.get('dir')).toBe('alpha');
+    expect(fd.getAll('files')).toHaveLength(1);
+    expect(status(view).textContent).toBe('upload 1 file(s): done');
+  });
+});
+
+describe('LibraryView canon poll', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+    vi.unstubAllGlobals();
+  });
+
+  it('survives a failed status GET and still reports the result', async () => {
+    let n = 0;
+    const ff = new FakeFetch().on('GET', '/api/library', doc)
+      .on('POST', '/api/library/canon', () => ({ ok: true }))
+      .on('GET', '/api/library/canon/status', () => {
+        n++;
+        if (n === 1) return { running: true };
+        if (n === 2) throw new Error('socket hang up');
+        return { running: false, result: { totals: { ok: 3 } } };
+      });
+    const view = mount(ff);
+    await view.load();
+    button(view, 'Canon check').click();
+    await until(() => ff.count('GET', '/api/library/canon/status') === 1);
+    await vi.advanceTimersByTimeAsync(3000);
+    await until(() => /retrying/.test(status(view).textContent ?? ''));
+    expect(status(view).classList.contains('error')).toBe(true);
+    await vi.advanceTimersByTimeAsync(3000);
+    await until(() => ff.count('GET', '/api/library') === 2); // result shown, library reloaded
+    expect(status(view).textContent).toBe('canon (library totals): {"ok":3}');
+    expect(status(view).classList.contains('error')).toBe(false);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(n).toBe(3); // and the poll stopped
+  });
+
+  it('gives up after repeated failures instead of polling forever', async () => {
+    const ff = new FakeFetch().on('GET', '/api/library', doc)
+      .on('POST', '/api/library/canon', () => ({ ok: true }))
+      .on('GET', '/api/library/canon/status', () => { throw new Error('down'); });
+    const view = mount(ff);
+    await view.load();
+    button(view, 'Canon check').click();
+    await until(() => ff.count('GET', '/api/library/canon/status') === 1);
+    await vi.advanceTimersByTimeAsync(3000 * 20);
+    expect(ff.count('GET', '/api/library/canon/status')).toBe(10);
+    expect(status(view).textContent).toMatch(/lost track of the run after 10 failed/);
+    expect(status(view).classList.contains('error')).toBe(true);
+    expect(ff.count('GET', '/api/library')).toBe(1); // no reload without a result
   });
 });

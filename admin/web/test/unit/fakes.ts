@@ -51,7 +51,11 @@ export class FakeFetch {
 }
 
 function json(v: unknown, status: number): Response {
-  return new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
+  // A plain object rather than a real Response: the code under test only reads
+  // ok/status/statusText/json(), and a real body stream needs macrotasks that the
+  // fake-timer tests never run.
+  const ok = status >= 200 && status < 300;
+  return { ok, status, statusText: `HTTP ${status}`, json: async () => v } as unknown as Response;
 }
 
 export function entry(id: string, path: string, over: Partial<Entry> = {}): Entry {
