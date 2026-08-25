@@ -58,7 +58,16 @@ def run_job(job: Job, paths: Paths, *, sem: WeightedSemaphore | None = None, ret
                 if k in prev:
                     meta[k] = prev[k]
             meta["reencoded_from"] = prev.get("render_hash")
+            # the master on disk is this meta's master (classify() vouched for it and it is the
+            # decode source below) whatever --keep-masters says this run; without this, a plain
+            # re-encode would disown it and the next one would have to re-render (#13)
+            meta["master_kept"] = True
         else:
+            # a master.flac here belongs to an earlier spec or to a run that never finished
+            # (classify() would have chosen REENCODE otherwise); left behind by a non-keep
+            # render it became a REENCODE source once master_hash matched, so an encode change
+            # re-encoded stale audio (#13). --keep-masters rewrites it in master_pcm().
+            job.master_path(paths).unlink(missing_ok=True)
             # ---- 1. render -------------------------------------------------
             spec = engines.get(job.engine).spec(job, paths, engines_json, tmp)
             weight = 0

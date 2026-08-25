@@ -42,8 +42,14 @@ def validate_job(job: Job, paths: Paths, *, thorough: bool = False) -> Verdict:
         return Verdict(False, meta.get("reason") or meta.get("status") or "failed")
     if meta.get("spec_hash") != job.spec_hash:
         return Verdict(False, "stale-spec")
-    if meta.get("master_kept", True) and not job.master_path(paths).exists():
+    kept, master = bool(meta.get("master_kept", True)), job.master_path(paths).exists()
+    if kept and not master:
         return Verdict(False, "no-master")
+    if master and not kept:
+        # a master.flac this meta does not vouch for is the previous spec's audio that a re-render
+        # without --keep-masters used to leave behind (#13): never a re-encode source, and not a
+        # state the pipeline produces any more — the remedy is to delete the file
+        return Verdict(False, "stale-master")
     lufs = meta.get("lufs")
     if lufs is None or not (lufs > job.settings.silent_below_lufs):
         return Verdict(False, "silent")

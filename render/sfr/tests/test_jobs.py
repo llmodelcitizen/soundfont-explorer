@@ -126,6 +126,25 @@ class TestClassify(unittest.TestCase):
         write_meta(j.meta_path(p), {"status": "ok", "spec_hash": "old", "master_hash": "old"})
         self.assertEqual(classify(j, p), State.STALE)
 
+    def test_unkept_master_is_not_a_reencode_source(self):
+        """A re-render without --keep-masters used to leave the previous spec's master.flac on
+        disk; once meta.master_hash matched, classify() took that file for a REENCODE source and
+        an encode change re-encoded stale audio under a fresh render_hash (#13)."""
+        j, p = self.job, self.paths
+        self._outputs()
+        base = {"status": "ok", "spec_hash": "old", "master_hash": j.master_hash}
+        write_meta(j.meta_path(p), dict(base, master_kept=False))
+        self.assertEqual(classify(j, p), State.STALE)
+        write_meta(j.meta_path(p), dict(base, master_kept=True))
+        self.assertEqual(classify(j, p), State.REENCODE)
+        write_meta(j.meta_path(p), base)            # metas older than the flag always wrote the FLAC
+        self.assertEqual(classify(j, p), State.REENCODE)
+        # a finished non-keep render needs no master to count as DONE
+        j.master_path(p).unlink()
+        write_meta(j.meta_path(p), {"status": "ok", "spec_hash": j.spec_hash, "master_hash": j.master_hash,
+                                    "master_kept": False})
+        self.assertEqual(classify(j, p), State.DONE)
+
 
 if __name__ == "__main__":
     unittest.main()

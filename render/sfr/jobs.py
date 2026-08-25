@@ -205,10 +205,13 @@ def classify(job: Job, paths: Paths) -> str:
         return State.FAILED
     if meta.get("status") == "running":   # interrupted mid-job
         return State.TODO
-    if meta.get("spec_hash") == job.spec_hash and outputs_complete(
-            job, paths, need_master=bool(meta.get("master_kept", True))):
+    kept = bool(meta.get("master_kept", True))   # metas older than the flag always wrote the FLAC
+    if meta.get("spec_hash") == job.spec_hash and outputs_complete(job, paths, need_master=kept):
         return State.DONE
-    if meta.get("master_hash") == job.master_hash and job.master_path(paths).exists():
+    # master.flac is a REENCODE source only when the run that wrote this meta vouches for it: a
+    # re-render without --keep-masters used to leave the previous spec's FLAC behind, and once
+    # master_hash matched an encode change re-encoded that stale audio under a new render_hash (#13)
+    if meta.get("master_hash") == job.master_hash and kept and job.master_path(paths).exists():
         return State.REENCODE
     return State.STALE
 
