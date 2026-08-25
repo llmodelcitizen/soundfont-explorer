@@ -127,5 +127,75 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(classify(j, p), State.STALE)
 
 
+def rom_variant(romset="sc55-mk2"):
+    return dict(sf2_variant(9), id=romset, requires_rom=True, romset=romset)
+
+
+class TestRomIdentity(unittest.TestCase):
+    """The ROM images are a render input: roms/<romset>/ contents key requires_rom masters."""
+    EMETA = ENGINES_JSON["engines"]["fluidsynth"]
+
+    def test_non_rom_hashes_are_pinned(self):
+        # every published object is keyed by master_hash, so its inputs are a contract: adding the
+        # ROM digest (#21) must not move a single non-ROM hash. Values computed before the change.
+        self.assertEqual(Job(song(), sf2_variant(), SETTINGS, self.EMETA).master_hash, "e4c1e4cfb94c")
+        self.assertEqual(Job(song(), adl_variant(), SETTINGS, ENGINES_JSON["engines"]["adlmidi"]).master_hash,
+                         "5e4f30ba360f")
+        self.assertEqual(Job(song(), sf2_variant(), SETTINGS, self.EMETA, rom_sha256="f" * 64).master_hash,
+                         "e4c1e4cfb94c")   # ignored unless requires_rom
+
+    def test_rom_contents_key_rom_variants(self):
+        a = Job(song(), rom_variant(), SETTINGS, self.EMETA, rom_sha256="a" * 64)
+        b = Job(song(), rom_variant(), SETTINGS, self.EMETA, rom_sha256="b" * 64)
+        none = Job(song(), rom_variant(), SETTINGS, self.EMETA)
+        self.assertNotEqual(a.master_hash, b.master_hash)
+        self.assertNotEqual(a.master_hash, none.master_hash)
+        self.assertEqual(a.master_hash, Job(song(), rom_variant(), SETTINGS, self.EMETA, rom_sha256="a" * 64).master_hash)
+
+    def test_rom_digest_is_content_only(self):
+        from sfr.jobs import rom_digest
+        with tempfile.TemporaryDirectory() as td:
+            d1, d2, d3 = (Path(td) / n for n in ("one", "two", "three"))
+            for d in (d1, d2, d3):
+                d.mkdir()
+            (d1 / "MT32_CONTROL.ROM").write_bytes(b"ctrl-1.07")
+            (d1 / "MT32_PCM.ROM").write_bytes(b"pcm")
+            (d2 / "b.bin").write_bytes(b"ctrl-1.07")          # same contents, other names/order
+            (d2 / "a.bin").write_bytes(b"pcm")
+            (d2 / "notes").mkdir()                              # sub-directories are not ROMs
+            (d2 / "notes" / "x").write_bytes(b"whatever")
+            (d3 / "MT32_CONTROL.ROM").write_bytes(b"ctrl-2.04")   # another control ROM version
+            (d3 / "MT32_PCM.ROM").write_bytes(b"pcm")
+            self.assertEqual(rom_digest(d1), rom_digest(d2))
+            self.assertNotEqual(rom_digest(d1), rom_digest(d3))
+            self.assertEqual(len(rom_digest(d1)), 64)
+
+    def test_plan_jobs_threads_the_digest(self):
+        variants = [rom_variant(), sf2_variant(1)]
+        jobs = plan_jobs([song()], variants, SETTINGS, ENGINES_JSON, available_roms={"sc55-mk2": "d" * 64})
+        by_id = {j.variant_id: j for j in jobs}
+        self.assertEqual(by_id["sc55-mk2"].rom_sha256, "d" * 64)
+        self.assertIsNone(by_id[sf2_variant(1)["id"]].rom_sha256)
+        # a plain set still filters, None still means "do not filter"
+        self.assertEqual([j.variant_id for j in plan_jobs([song()], variants, SETTINGS, ENGINES_JSON, available_roms=set())],
+                         [sf2_variant(1)["id"]])
+        self.assertEqual({j.variant_id for j in plan_jobs([song()], variants, SETTINGS, ENGINES_JSON)},
+                         {"sc55-mk2", sf2_variant(1)["id"]})
+
+    def test_cli_available_roms_digests_each_directory(self):
+        from sfr.cli import available_roms
+        from sfr.jobs import rom_digest
+        with tempfile.TemporaryDirectory() as td:
+            roms = Path(td) / "roms"
+            self.assertEqual(available_roms(Paths(roms=roms)), {})
+            (roms / "mt32").mkdir(parents=True)
+            (roms / "mt32" / "MT32_PCM.ROM").write_bytes(b"pcm")
+            (roms / "sc55-mk2").mkdir()
+            (roms / "README").write_text("not a romset")
+            got = available_roms(Paths(roms=roms))
+            self.assertEqual(set(got), {"mt32", "sc55-mk2"})
+            self.assertEqual(got["mt32"], rom_digest(roms / "mt32"))
+
+
 if __name__ == "__main__":
     unittest.main()
