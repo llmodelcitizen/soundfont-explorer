@@ -3,6 +3,22 @@ import { POLICY } from '../config';
 import { fmtTime, h, setPressed } from './dom';
 import { ICONS, setIcon } from './icons';
 
+/**
+ * What the transport should show for a (possibly suspended) AudioContext this frame.
+ *
+ * A suspended context — an iOS interruption, a tab the browser froze — gets a 'tap to resume'
+ * notice in place of the engine's own status. The engine only repaints its status when the
+ * status changes, so the frame the context comes back has to take the notice down itself:
+ * without that edge, a context that resumed without an engine event left 'tap to resume' on
+ * screen for the rest of the session while audio played underneath it.
+ *
+ * `was` is the `suspended` this returned for the previous frame.
+ */
+export function resumeNotice(state: string, playing: boolean, was: boolean): { suspended: boolean; notice: string | null; restore: boolean } {
+  const suspended = state !== 'running' && playing;
+  return { suspended, notice: suspended ? `audio ${state} — tap to resume` : null, restore: !suspended && was };
+}
+
 export interface TransportCallbacks {
   onToggle(): void;
   onStop(): void;

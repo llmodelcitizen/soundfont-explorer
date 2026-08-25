@@ -32,7 +32,7 @@ import { Favorites, ListenedLedger, TrackPositions, loadPrefs, savePrefs, type P
 import { applyTheme, nextTheme, readTheme, type ThemeName } from './theme';
 import { applyModernFont, clearModernFontPreference, modernFont, nextModernFont, readModernFont, saveModernFont, type ModernFontId } from './modernFont';
 import { audioSession, createContext, installResumeOnGesture, unlock } from '../audio/unlock';
-import { Transport } from './transport';
+import { Transport, resumeNotice } from './transport';
 
 import probeUrl from '../assets/probe-1k-40ms.opus?url';
 
@@ -918,11 +918,11 @@ export class App {
     const loop = () => {
       const now = performance.now();
       this.transport.update(this.engine.position(), this.engine.playing);
-      const suspended = this.ctx.state !== 'running' && this.engine.playing;
-      if (suspended) this.transport.setStatus(`audio ${this.ctx.state} — tap to resume`, 'wontload');
+      const resume = resumeNotice(this.ctx.state, this.engine.playing, this.suspendedNotice);
+      if (resume.notice) this.transport.setStatus(resume.notice, 'wontload');
       // the context came back without an engine status change: repaint the engine's own status
-      else if (this.suspendedNotice) this.onStatus(this.engine.status);
-      this.suspendedNotice = suspended;
+      else if (resume.restore) this.onStatus(this.engine.status);
+      this.suspendedNotice = resume.suspended;
       this.accumulateListened(now);
       if (this.debug.visible && now - this.debugAt >= 1000 / App.DEBUG_HZ) {
         this.debugAt = now;
