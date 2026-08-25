@@ -379,12 +379,14 @@
   border-bottom-color: #000080;
 }
 
-/* The playing variant is VGA green; status dots are square LEDs. */
+/* The playing variant is VGA green. The listened LED keeps base's round 10 px dot, the same
+   shape the modern theme shows: the period rule this theme is held to (and that geometry.mjs
+   gates over this stylesheet) is about square *window chrome*, not about flattening a status
+   indicator. The rule below is colour only: do not square this LED off again. */
 [data-theme='win95'] .row.audible .label {
   color: #008000;
 }
 [data-theme='win95'] .row .dot {
-  border-radius: 0;
   border-color: #808080;
 }
 [data-theme='win95'] .row.audible .dot {
