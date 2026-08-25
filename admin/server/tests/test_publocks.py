@@ -67,10 +67,25 @@ class ExclusiveTests(unittest.TestCase):
             self.assertLess(time.monotonic() - t0, 3)
 
 
+def _imported_writers(tree: ast.AST) -> dict[str, str]:
+    """local name -> writer, for `from .publishops import prune [as p]`. Without this the
+    scan below only sees `publishops.prune(...)`, and a module that imported the name bare
+    passed the very guard that exists to catch it (#19)."""
+    found: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("publishops"):
+            for alias in node.names:
+                if alias.name in WRITERS:
+                    found[alias.asname or alias.name] = alias.name
+    return found
+
+
 def _guarded_calls(tree: ast.AST) -> tuple[set[str], set[str]]:
-    """(publishops writers called inside a `with publocks.exclusive(...)`, and outside one)."""
+    """(publishops writers called inside a `with publocks.exclusive(...)`, and outside one).
+    Both call shapes count: `publishops.prune(...)` and a directly imported `prune(...)`."""
     inside: set[str] = set()
     outside: set[str] = set()
+    imported = _imported_writers(tree)
 
     def visit(node, held: bool) -> None:
         if isinstance(node, (ast.With, ast.AsyncWith)):
@@ -83,10 +98,13 @@ def _guarded_calls(tree: ast.AST) -> tuple[set[str], set[str]]:
             for stmt in node.body:
                 visit(stmt, held or guard)
             return
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name) and node.func.value.id == "publishops"
-                and node.func.attr in WRITERS):
-            (inside if held else outside).add(node.func.attr)
+        if isinstance(node, ast.Call):
+            f = node.func
+            if (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)
+                    and f.value.id == "publishops" and f.attr in WRITERS):
+                (inside if held else outside).add(f.attr)
+            elif isinstance(f, ast.Name) and f.id in imported:
+                (inside if held else outside).add(imported[f.id])
         for child in ast.iter_child_nodes(node):
             visit(child, held)
 
@@ -120,6 +138,28 @@ class RouteGuardTests(unittest.TestCase):
             _, outside = _guarded_calls(self.source(name))
             self.assertEqual(outside, set(), f"{name}: publishops writer outside the mutex")
         self.assertGreater(checked, 5)
+
+    def test_no_module_imports_a_writer_name_directly(self):
+        """`from .publishops import prune` then a bare `prune()` is the same bug in a shape
+        the scan above had to grow a second case for. Keeping every call site spelled
+        `publishops.<writer>(...)` keeps the guard simple and greppable (#19)."""
+        for name in sorted(f for f in os.listdir(SFADMIN) if f.endswith(".py")):
+            imported = _imported_writers(self.source(name))
+            self.assertEqual(imported, {},
+                             f"{name}: call it as publishops.{next(iter(imported.values()), '')}()"
+                             if imported else "")
+
+    def test_the_scan_catches_a_bare_imported_writer(self):
+        """The guard's own regression test: this module shape used to pass it clean."""
+        sneaky = ast.parse("from .publishops import prune\n"
+                           "def go():\n"
+                           "    return prune(dry_run=False)\n")
+        self.assertEqual(_guarded_calls(sneaky), (set(), {"prune"}))
+        locked = ast.parse("from .publishops import prune as p\n"
+                           "def go():\n"
+                           "    with publocks.exclusive('x'):\n"
+                           "        return p()\n")
+        self.assertEqual(_guarded_calls(locked), ({"prune"}, set()))
 
 
 if __name__ == "__main__":
