@@ -94,6 +94,7 @@ export class LibraryView {
   private cols = el('div', { class: 'cols' });
   private audio = el('audio', { controls: '', preload: 'none' });
   private audioFor: string | null = null;
+  private canonGen = 0; // bumped by canonRun(): only the newest status poll may run
 
   constructor() {
     try {
@@ -524,6 +525,11 @@ export class LibraryView {
   }
 
   private async canonRun(ids?: string[]): Promise<void> {
+    // Single-flight. Pressing 'c' and then clicking "Canon check" (or double-clicking it)
+    // used to leave one independent 3 s loop each, both writing to the status line and both
+    // reloading the library at the end. The loop is deliberately not tied to the tab being
+    // shown: the server run outlives a tab switch and its result still belongs here.
+    const gen = ++this.canonGen;
     try {
       this.note('canon: starting…');
       await post('/api/library/canon', ids ? { ids } : {});
@@ -541,11 +547,13 @@ export class LibraryView {
     // dead server does not leave a zombie loop behind.
     let failures = 0;
     const poll = async (): Promise<void> => {
+      if (gen !== this.canonGen) return; // a newer canon run took this poll over
       let s: { running: boolean; error?: string; result?: CanonResult };
       try {
         s = await get('/api/library/canon/status');
         failures = 0;
       } catch (e) {
+        if (gen !== this.canonGen) return;
         const msg = (e as Error).message;
         if (++failures >= CANON_POLL_MAX_FAILURES) {
           this.note(`canon: lost track of the run after ${failures} failed status checks (${msg}) — reload to see the result`, true);
@@ -555,6 +563,7 @@ export class LibraryView {
         setTimeout(poll, CANON_POLL_MS);
         return;
       }
+      if (gen !== this.canonGen) return; // ... or while this status GET was in flight
       if (s.running) {
         this.note('canon: running… (a full run takes a few minutes on this box)');
         setTimeout(poll, CANON_POLL_MS);

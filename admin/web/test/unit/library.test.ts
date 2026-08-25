@@ -142,6 +142,24 @@ describe('LibraryView canon poll', () => {
     expect(n).toBe(3); // and the poll stopped
   });
 
+  it('a second canon run replaces the first poll instead of racing it', async () => {
+    const ff = new FakeFetch().on('GET', '/api/library', doc)
+      .on('POST', '/api/library/canon', () => ({ ok: true }))
+      .on('GET', '/api/library/canon/status', () => ({ running: true }));
+    const view = mount(ff);
+    await view.load();
+    button(view, 'Canon check').click();
+    await until(() => ff.count('GET', '/api/library/canon/status') === 1);
+    button(view, 'Canon check').click(); // 'c' on a selection, a double click, same thing
+    await until(() => ff.count('GET', '/api/library/canon/status') === 2);
+
+    const started = ff.count('GET', '/api/library/canon/status');
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(ff.count('GET', '/api/library/canon/status') - started).toBe(1); // one loop, not two
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(ff.count('GET', '/api/library/canon/status') - started).toBe(2);
+  });
+
   it('gives up after repeated failures instead of polling forever', async () => {
     const ff = new FakeFetch().on('GET', '/api/library', doc)
       .on('POST', '/api/library/canon', () => ({ ok: true }))
