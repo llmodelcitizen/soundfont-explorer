@@ -29,6 +29,11 @@ from .config import get_config
 
 TERMINAL = ("succeeded", "failed", "terminated")
 POLL_S = 30
+# describe_jobs answers `jobs: []` for a job Batch no longer knows — it forgets jobs some
+# days after they end, e.g. a run whose terminal state was never recorded because the
+# server was down. Retrying that forever kept the run live and every submit/prune 409'd
+# (#19). Ten polls (5 min) also covers describe_jobs lagging a fresh submit_job.
+MISSING_JOB_POLLS = 10
 STAGE_EXCLUDES = ["--exclude", "import/*", "--exclude", "*__pycache__/*", "--exclude", "*.pyc"]
 
 
@@ -226,25 +231,9 @@ class RunManager:
 
     def _watch(self, rid: str) -> None:
         import boto3
-        batch = boto3.client("batch")
         try:
             rec = self.get(rid)
-            while rec["state"] not in TERMINAL:
-                try:
-                    j = batch.describe_jobs(jobs=[rec["batch_job_id"]])["jobs"][0]
-                except Exception:  # transient API error or job not yet visible
-                    time.sleep(POLL_S)
-                    continue
-                summary = j.get("arrayProperties", {}).get("statusSummary") or {j["status"]: 1}
-                rec["status_summary"] = summary
-                self._scan_published(rec)
-                if j["status"] in ("SUCCEEDED", "FAILED"):
-                    rec["state"] = "succeeded" if j["status"] == "SUCCEEDED" else "failed"
-                    rec["finished_at"] = _now()
-                self._put(rec)
-                if rec["state"] in TERMINAL:
-                    break
-                time.sleep(POLL_S)
+            self._poll(rec, boto3.client("batch"))
             self._sleep_fleet(rec)
             try:
                 self.finish(rid)
@@ -253,6 +242,42 @@ class RunManager:
         finally:
             with self.lock:
                 self._watching.discard(rid)
+
+    def _poll(self, rec: dict, batch, sleep=time.sleep) -> None:
+        """Follow the Batch job until the run is terminal — Batch says so, terminate() did,
+        or Batch has stopped knowing the job at all (MISSING_JOB_POLLS)."""
+        missing = 0
+        while rec["state"] not in TERMINAL:
+            try:
+                jobs = batch.describe_jobs(jobs=[rec["batch_job_id"]])["jobs"]
+            except Exception:  # transient API error
+                sleep(POLL_S)
+                continue
+            if not jobs:
+                missing += 1
+                if missing < MISSING_JOB_POLLS:
+                    sleep(POLL_S)
+                    continue
+                rec["state"] = "failed"
+                rec["status_summary"] = {"UNKNOWN": 1}
+                rec["finisher"]["error"] = (f"Batch job {rec['batch_job_id']} is unknown to "
+                                            f"describe_jobs ({missing} polls): expired or never ran; "
+                                            "outcome unknown")
+                rec["finished_at"] = _now()
+                self._put(rec)
+                return
+            missing = 0
+            j = jobs[0]
+            summary = j.get("arrayProperties", {}).get("statusSummary") or {j["status"]: 1}
+            rec["status_summary"] = summary
+            self._scan_published(rec)
+            if j["status"] in ("SUCCEEDED", "FAILED"):
+                rec["state"] = "succeeded" if j["status"] == "SUCCEEDED" else "failed"
+                rec["finished_at"] = _now()
+            self._put(rec)
+            if rec["state"] in TERMINAL:
+                return
+            sleep(POLL_S)
 
     def _scan_published(self, rec: dict) -> None:
         """One paginated list over /s/ marks songs whose set doc landed after submit."""

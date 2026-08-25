@@ -64,6 +64,71 @@ def run_record(rid: str, state: str, **kw) -> dict:
     return rec
 
 
+class FakeBatch:
+    """describe_jobs scripted per call: a dict = one job, [] = unknown job, Exception = API error."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.calls = 0
+
+    def describe_jobs(self, jobs):
+        self.calls += 1
+        item = self.script.pop(0) if self.script else []
+        if isinstance(item, Exception):
+            raise item
+        return {"jobs": [item] if item else []}
+
+
+class WatchTests(unittest.TestCase):
+    """_poll(): a job Batch no longer knows ends the run instead of being retried forever (#19)."""
+
+    def setUp(self):
+        self.m = FakeManager()
+        self.rec = run_record("r1", "running")
+        self.m.runs["r1"] = self.rec
+        self.sleeps = []
+
+    def sleep(self, s):
+        self.sleeps.append(s)
+
+    def test_terminal_status_ends_the_run(self):
+        batch = FakeBatch([{"status": "RUNNING"},
+                           {"status": "SUCCEEDED", "arrayProperties": {"statusSummary": {"SUCCEEDED": 2}}}])
+        self.m._poll(self.rec, batch, self.sleep)
+        self.assertEqual(self.rec["state"], "succeeded")
+        self.assertEqual(self.rec["status_summary"], {"SUCCEEDED": 2})
+        self.assertIsNotNone(self.rec["finished_at"])
+        self.assertEqual(len(self.sleeps), 1)
+
+    def test_unknown_job_fails_the_run_after_the_grace_polls(self):
+        batch = FakeBatch([])  # every answer: jobs == []
+        self.m._poll(self.rec, batch, self.sleep)
+        self.assertEqual(batch.calls, renders.MISSING_JOB_POLLS)
+        self.assertEqual(self.rec["state"], "failed")
+        self.assertEqual(self.rec["status_summary"], {"UNKNOWN": 1})
+        self.assertIn("unknown to describe_jobs", self.rec["finisher"]["error"])
+        self.assertIsNotNone(self.rec["finished_at"])
+        self.assertIsNone(self.m.active())                      # submits/prune unblocked
+        self.assertEqual(self.m.puts[-1]["state"], "failed")
+
+    def test_a_brief_gap_or_api_error_is_tolerated(self):
+        batch = FakeBatch([[], RuntimeError("throttled"), [], {"status": "RUNNING"}, [],
+                           {"status": "FAILED"}])
+        self.m._poll(self.rec, batch, self.sleep)
+        self.assertEqual(self.rec["state"], "failed")
+        self.assertEqual(self.rec["status_summary"], {"FAILED": 1})
+        self.assertIsNone(self.rec["finisher"]["error"])       # a real verdict, not "unknown"
+
+    def test_terminate_stops_the_poll(self):
+        batch = FakeBatch([{"status": "RUNNING"}] * 5)
+
+        def sleep(s):
+            self.rec["state"] = "terminated"                    # terminate() from another thread
+
+        self.m._poll(self.rec, batch, sleep)
+        self.assertEqual(batch.calls, 1)
+
+
 class FinisherTests(unittest.TestCase):
     """finish() is single-writer and a finishing run still counts as active (#19)."""
 
