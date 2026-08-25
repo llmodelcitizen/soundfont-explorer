@@ -529,6 +529,18 @@ select:focus-visible {
 .hcell.sorted {
   color: var(--accent);
 }
+/* A spent header ('#' while the list is already in the catalog order) has nothing left to do:
+   it drops every affordance of a live control — no hand cursor, no hover accent, a dimmed
+   label — so the pointer is told what aria-disabled tells a screen reader. */
+.hcell[aria-disabled='true'] {
+  cursor: default;
+}
+.hcell[aria-disabled='true']:hover {
+  color: var(--fg-dim);
+}
+.hcell[aria-disabled='true'] .hlabel {
+  opacity: 0.55;
+}
 .hcell .arrow {
   margin-left: 3px;
   font-size: 0.8em;
@@ -1257,6 +1269,15 @@ kbd {
     max-height: none;
     height: 100%;
     border-top: 0;
+  }
+  /* Open filters: the handle steps aside with the pane it resizes, and the list pane takes the
+     whole grid. The handle is positioned, so left in its row it paints its bar over the filter
+     buttons of a panel tall enough to reach into the (now empty) Now Playing rows. */
+  .filters-open .main {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .filters-open .hsplit {
+    display: none;
   }
   /* the five buttons stretch to fill the line (equal widths) next to ▲ ▼ */
   .transport > .btn,

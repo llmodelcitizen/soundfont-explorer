@@ -219,6 +219,28 @@ async function measure(theme, viewport, label) {
           return dot ? `${dot.w}x${dot.h}` : null;
         })(),
       },
+      // the listened LED through the states the row classes produce, painted on a real row so
+      // that the whole cascade (base.css and the theme) decides the colour, as it does live
+      listenedLed: (() => {
+        const row = document.querySelector('.rows .row');
+        const dot = row?.querySelector('.cell.dot');
+        if (!row || !dot) return null;
+        const was = row.className;
+        const paint = (classes) => {
+          row.className = classes;
+          return getComputedStyle(dot).backgroundColor;
+        };
+        const led = {
+          listened: paint('row cached'),
+          playing: paint('row audible'),
+          buffering: paint('row cached audible loading'),
+          selectedListened: paint('row sel cached'),
+          selectedPlaying: paint('row sel cached audible'),
+          selectedBuffering: paint('row sel cached audible loading'),
+        };
+        row.className = was;
+        return led;
+      })(),
       folderEdge: (() => {
         const folder = document.createElement('div');
         folder.className = 'track-folder';
@@ -256,10 +278,23 @@ async function measure(theme, viewport, label) {
     const style = getComputedStyle(el);
     const label = el.querySelector('.label');
     const meta = el.querySelector('.meta');
+    const dot = el.querySelector('.cell.dot');
+    const was = el.className;
+    const paint = (classes) => {
+      el.className = classes;
+      return dot ? getComputedStyle(dot).backgroundColor : null;
+    };
+    const listenedDot = paint(`${was} cached`);
+    const playingDot = paint(`${was} cached audible`);
+    const bufferingDot = paint(`${was} cached audible loading`);
+    el.className = was;
     return {
       background: style.backgroundColor,
       labelColor: label ? getComputedStyle(label).color : null,
       metaColor: meta ? getComputedStyle(meta).color : null,
+      listenedDot,
+      playingDot,
+      bufferingDot,
     };
   });
   // Tab is an app shortcut (A/B), so probe keyboard focus by focusing the theme select directly.
@@ -399,6 +434,109 @@ async function filterPanelResetsOnSongSwitch() {
 await filterPanelResetsOnSongSwitch();
 
 /**
+ * Phone portrait only: the open filter panel takes the whole grid, so the handle that resizes
+ * Now Playing must go with the pane it resizes. It is positioned, so left in its grid row it
+ * paints its bar across the filter buttons of a panel tall enough to reach that row. CSS in a
+ * breakpoint has no unit test (web/test/unit runs in the node environment, with no cascade), so
+ * it is measured here, in all three themes, by what a thumb would hit: every filter button on
+ * screen must be the topmost element at its own centre, and the list pane must own the grid the
+ * hidden Now Playing rows left behind (otherwise the panel is squeezed back into a third of it).
+ */
+async function filterPanelClearsTheResizeHandle() {
+  for (const theme of ['modern', 'win95', 'amiga']) {
+    const label = `phone/${theme}`;
+    const page = await browser.newPage({ viewport: viewports.phone, hasTouch: true });
+    page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+    const target = new URL(url);
+    target.searchParams.set('theme', theme);
+    await page.goto(target.href, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.rows .row', { timeout: 20000 });
+    const result = await page.evaluate(() => {
+      const handle = document.querySelector('.hsplit');
+      const before = handle ? getComputedStyle(handle).display : null;
+      const toggle = Array.from(document.querySelectorAll('.filterrow .btn')).find((button) => (button.title ?? '').startsWith('filters'));
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      const main = document.querySelector('.main');
+      const left = document.querySelector('.left');
+      const facets = document.querySelector('.facets');
+      const panel = facets.getBoundingClientRect();
+      const opts = Array.from(document.querySelectorAll('.facets .opt'));
+      // only the buttons the panel is actually showing: it scrolls, and one scrolled out of its
+      // box is behind the scrim by design, not covered by anything the layout put there
+      const onScreen = opts.filter((opt) => {
+        const rect = opt.getBoundingClientRect();
+        return rect.top >= panel.top - 0.5 && rect.bottom <= panel.bottom + 0.5;
+      });
+      const covered = onScreen
+        .map((opt) => {
+          const rect = opt.getBoundingClientRect();
+          const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return top === opt || opt.contains(top) ? null : { opt: opt.textContent?.trim() ?? '', by: top?.className || top?.tagName || 'nothing' };
+        })
+        .filter(Boolean);
+      const mainBox = main.getBoundingClientRect();
+      const leftBox = left.getBoundingClientRect();
+      return {
+        before,
+        display: getComputedStyle(handle).display,
+        covered,
+        onScreen: onScreen.length,
+        opts: opts.length,
+        rows: getComputedStyle(main).gridTemplateRows.split(' ').length,
+        listReachesTheBottom: Math.abs(leftBox.bottom - mainBox.bottom) <= 1,
+        deadSpace: Math.round(mainBox.bottom - leftBox.bottom),
+        open: document.querySelector('#app')?.classList.contains('filters-open') ?? false,
+      };
+    });
+    assert(result.before === 'block', `${label}: the phone layout has no Now Playing handle to get out of the way: ${JSON.stringify(result)}`);
+    assert(result.open && result.onScreen > 0, `${label}: the filter panel did not open: ${JSON.stringify(result)}`);
+    assert(result.display === 'none', `${label}: the Now Playing handle is still drawn while the filter panel is open: ${JSON.stringify(result)}`);
+    assert(result.covered.length === 0, `${label}: something is drawn over the filter panel: ${JSON.stringify(result.covered)}`);
+    assert(result.rows === 1 && result.listReachesTheBottom, `${label}: the list pane does not take the grid the hidden Now Playing left behind — ${result.deadSpace}px of dead space below it: ${JSON.stringify(result)}`);
+    await page.close();
+  }
+}
+
+await filterPanelClearsTheResizeHandle();
+
+/**
+ * The listened LED of the row you are hearing, in the state the app really produces: a variant
+ * played until its row is the selection, audible and listened at once. The stylesheet is pinned
+ * by the probes in measure() (which need no audio and are the regression guard); this checks
+ * that the class combination they paint is the one the app reaches, and that the LED is green
+ * (win95 and modern) rather than turning white. It is the only check here that needs audio to
+ * decode, so a runner that cannot play any skips it rather than failing the suite — the colours
+ * it expects are the ones asserted from measure() above.
+ */
+async function listenedLedOfThePlayingRow() {
+  for (const [theme, expected] of [['win95', 'rgb(0, 255, 0)'], ['modern', 'rgb(0, 255, 65)'], ['amiga', 'rgb(0, 0, 0)']]) {
+    const label = `desktop/${theme}`;
+    const page = await browser.newPage({ viewport: viewports.desktop });
+    page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+    const target = new URL(url);
+    target.searchParams.set('theme', theme);
+    await page.goto(target.href, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.rows .row', { timeout: 20000 });
+    await page.click('.rows .row:nth-child(3)');
+    try {
+      await page.waitForFunction(() => !!document.querySelector('.rows .row.sel.audible.cached'), undefined, { timeout: 60000 });
+    } catch (error) {
+      process.stderr.write(`${label}: no variant played long enough to light its listened LED — skipping the playback check (${String(error).split('\n')[0]})\n`);
+      await page.close();
+      continue;
+    }
+    const led = await page.evaluate(() => {
+      const row = document.querySelector('.rows .row.sel.audible.cached');
+      return { classes: row.className, dot: getComputedStyle(row.querySelector('.cell.dot')).backgroundColor };
+    });
+    assert(led.dot === expected, `${label}: the listened LED of the playing selection is ${led.dot}, not ${expected} (${led.classes})`);
+    await page.close();
+  }
+}
+
+await listenedLedOfThePlayingRow();
+
+/**
  * Space on the Modern font title cycles the font and must not also reach the window keymap,
  * where Space is play/pause: the handler stops propagation. Checked here for the same reason as
  * the filter panel above — App is only exercisable in a real document.
@@ -426,6 +564,155 @@ async function titleSpaceStaysOnTheTitle() {
 }
 
 await titleSpaceStaysOnTheTitle();
+
+/**
+ * Sorting from the header row: every other column cycles ascending → descending → catalog order,
+ * while '#' *is* the catalog order and restores it in one click, then stops offering anything.
+ * nextSort() is unit-tested; the wiring (App.toggleSort), the rebuilt header and the focus it
+ * must keep only exist in a real document, so they are checked here like the filter panel above.
+ */
+async function headerSorting() {
+  const label = 'desktop/modern';
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const result = await page.evaluate(() => {
+    const header = (key) => document.querySelector(`.row.head .hcell.col-${key}`);
+    const ids = () => Array.from(document.querySelectorAll('.rows .row')).map((row) => row.dataset.id).join(' ');
+    const state = (key) => ({ sort: header(key).getAttribute('aria-sort'), disabled: header(key).getAttribute('aria-disabled'), title: header(key).getAttribute('title') });
+    const click = (key) => header(key).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const catalog = ids();
+    const idle = state('idx');
+    click('engine');
+    const ascending = { order: ids(), engine: state('engine'), idx: state('idx') };
+    click('engine');
+    const descending = { order: ids(), engine: state('engine') };
+    header('engine').focus();
+    click('engine');
+    const cycled = { order: ids(), engine: state('engine'), focus: document.activeElement?.dataset.col ?? null };
+    click('engine');
+    click('engine');
+    click('idx'); // one click, from a descending sort straight back to the catalog order
+    const restored = { order: ids(), engine: state('engine'), idx: state('idx') };
+    // and again in the catalog order: nothing to do, so nothing may happen — re-applying the
+    // order would rebuild the head, scroll the cursor back into view and jump the prefetcher
+    const list = document.querySelector('.list');
+    list.scrollTop = 300;
+    header('idx').dataset.geometryProbe = 'before'; // survives only if the head is not rebuilt
+    click('idx');
+    const spent = { order: ids(), scrollTop: list.scrollTop, scrollable: list.scrollHeight - list.clientHeight, rebuilt: !header('idx').dataset.geometryProbe };
+    return { catalog, idle, ascending, descending, cycled, restored, spent };
+  });
+  assert(result.ascending.engine.sort === 'ascending' && result.descending.engine.sort === 'descending' && result.cycled.engine.sort === 'none', `${label}: the engine header does not cycle ascending, descending, catalog order: ${JSON.stringify([result.ascending.engine, result.descending.engine, result.cycled.engine])}`);
+  assert(result.cycled.order === result.catalog, `${label}: the third engine click did not restore the catalog order`);
+  assert(result.cycled.focus === 'engine', `${label}: sorting moved the focus off the header that was activated: ${result.cycled.focus}`);
+  // a catalogue whose engine order happens to be the catalog order cannot exercise the restore
+  if (result.descending.order === result.catalog) process.stderr.write(`${label}: the served catalogue sorts by engine into its own order — skipping the '#' restore check\n`);
+  else assert(result.restored.order === result.catalog && result.restored.engine.sort === 'none', `${label}: one '#' click did not restore the catalog order: ${JSON.stringify(result.restored.engine)}`);
+  assert(result.idle.disabled === 'true' && !result.idle.title.includes('click'), `${label}: '#' offers an order the list is already in: ${JSON.stringify(result.idle)}`);
+  assert(result.ascending.idx.disabled === null && result.ascending.idx.title.endsWith('click for the catalog order'), `${label}: '#' does not offer the catalog order while a sort is active: ${JSON.stringify(result.ascending.idx)}`);
+  assert(result.restored.idx.disabled === 'true', `${label}: '#' still claims to be actionable after restoring the catalog order: ${JSON.stringify(result.restored.idx)}`);
+  assert(!result.spent.rebuilt && result.spent.order === result.catalog && (result.spent.scrollable < 300 || result.spent.scrollTop === 300), `${label}: clicking '#' in the catalog order re-applied the order anyway: ${JSON.stringify({ ...result.spent, order: result.spent.order === result.catalog })}`);
+  // A focused header sorts on its own activation keys. Space is play/pause on the window and the
+  // keymap preventDefaults it before the button's default activation runs, so the header handles
+  // Space itself (as the Modern title does) and Enter reaches the click listener: without both,
+  // a header that has the focus after a click still cannot be operated from the keyboard.
+  await page.evaluate(() => document.querySelector('.row.head .hcell.col-engine').focus());
+  await page.keyboard.press(' ');
+  // the transport button flips to 'pause' within a frame of a play/pause reaching the keymap
+  await page.waitForTimeout(300);
+  const space = await page.evaluate(() => ({
+    sort: document.querySelector('.row.head .hcell.col-engine').getAttribute('aria-sort'),
+    focus: document.activeElement?.dataset.col ?? null,
+    icon: document.querySelector('.transport .play')?.dataset.icon ?? null,
+  }));
+  await page.keyboard.press('Enter');
+  const enter = await page.evaluate(() => document.querySelector('.row.head .hcell.col-engine').getAttribute('aria-sort'));
+  assert(space.sort === 'ascending' && space.focus === 'engine', `${label}: Space on the focused engine header did not sort it: ${JSON.stringify(space)}`);
+  assert(space.icon !== 'pause', `${label}: Space on a focused header also reached the window keymap and started playback: ${JSON.stringify(space)}`);
+  assert(enter === 'descending', `${label}: Enter on the focused engine header did not reverse the sort: ${enter}`);
+  await page.close();
+}
+
+await headerSorting();
+
+/**
+ * The '#' header in the catalog order has nothing left to restore, and says so with
+ * aria-disabled. The pointer must be told the same thing: no hand cursor, no hover colour, no
+ * press — otherwise a mouse user gets a control that lights up, depresses and does nothing while
+ * a screen reader is told it is unavailable. Checked in all three themes, each of which draws
+ * its own hover and active states for a header.
+ */
+async function spentHeaderIsNotAControl() {
+  for (const theme of ['modern', 'win95', 'amiga']) {
+    const label = `desktop/${theme}`;
+    const page = await browser.newPage({ viewport: viewports.desktop });
+    page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+    const target = new URL(url);
+    target.searchParams.set('theme', theme);
+    await page.goto(target.href, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.rows .row', { timeout: 20000 });
+    const probe = () => page.evaluate(() => {
+      const idx = document.querySelector('.row.head .hcell.col-idx');
+      const style = getComputedStyle(idx);
+      return { disabled: idx.getAttribute('aria-disabled'), cursor: style.cursor, color: style.color, background: style.backgroundColor, shadow: style.boxShadow, label: getComputedStyle(idx.querySelector('.hlabel')).opacity };
+    });
+    const away = await probe(); // catalog order, pointer elsewhere
+    await page.hover('.row.head .hcell.col-idx');
+    const hovered = await probe();
+    await page.mouse.down();
+    const pressed = await probe();
+    await page.mouse.up();
+    await page.click('.row.head .hcell.col-engine'); // now '#' has an order to restore
+    await page.hover('.row.head .hcell.col-idx');
+    const live = await probe();
+    assert(away.disabled === 'true' && live.disabled === null, `${label}: the '#' header did not go from spent to live: ${JSON.stringify([away.disabled, live.disabled])}`);
+    assert(hovered.cursor === 'default' && live.cursor === 'pointer', `${label}: the spent '#' header's cursor is ${hovered.cursor} and the live one's ${live.cursor}`);
+    assert(Number(hovered.label) < 1 && Number(live.label) === 1, `${label}: the spent '#' label is not dimmed against the live one: ${JSON.stringify([hovered.label, live.label])}`);
+    assert(hovered.color === away.color && hovered.background === away.background, `${label}: the spent '#' header lights up under the pointer: ${JSON.stringify([away, hovered])}`);
+    assert(pressed.shadow === away.shadow, `${label}: the spent '#' header depresses when pressed: ${JSON.stringify([away.shadow, pressed.shadow])}`);
+    await page.close();
+  }
+}
+
+await spentHeaderIsNotAControl();
+
+/**
+ * The Now Playing tier pill: its tooltip is written once, in the NowPlaying constructor, and its
+ * label by setTier() as the engine promotes the audio. tierLabel()/tierTitle() are unit-tested;
+ * the strings only reach a user through a real document, so a real playback is checked here.
+ * The tooltip half needs no audio and is asserted; the label half is skipped, not failed, on a
+ * runner that cannot decode any (the strings themselves are pinned by the unit tests).
+ */
+async function nowPlayingTierPill() {
+  const label = 'desktop/modern';
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const tooltip = await page.evaluate(() => document.querySelector('.tier')?.getAttribute('title') ?? null);
+  assert(/^audio tier: scrubbing \(\d+ kbps\) or listening \(\d+ kbps\)$/.test(tooltip ?? ''), `desktop/modern: the tier tooltip does not name the tiers as the pill does: ${tooltip}`);
+  const pill = { first: null, listening: null };
+  await page.click('.rows .row:nth-child(3)');
+  try {
+    await page.waitForFunction(() => (document.querySelector('.tier')?.textContent ?? '').length > 0, undefined, { timeout: 30000 });
+    pill.first = await page.evaluate(() => document.querySelector('.tier').textContent);
+    await page.waitForFunction(() => (document.querySelector('.tier')?.textContent ?? '').startsWith('listening'), undefined, { timeout: 30000 });
+    pill.listening = await page.evaluate(() => document.querySelector('.tier').textContent);
+  } catch (error) {
+    process.stderr.write(`${label}: the tier pill never named the tier being played — skipping the playback check: ${JSON.stringify(pill)} (${String(error).split('\n')[0]})\n`);
+  }
+  if (pill.first) assert(/^(scrubbing|listening) · \d+k$/.test(pill.first), `${label}: the tier pill reads ${pill.first}`);
+  if (pill.listening) assert(/^listening · \d+k$/.test(pill.listening), `${label}: the listening pill reads ${pill.listening}`);
+  await page.close();
+}
+
+await nowPlayingTierPill();
 
 
 for (const [label, viewport] of Object.entries(viewports)) {
@@ -467,8 +754,24 @@ for (const [label, viewport] of Object.entries(viewports)) {
   assert(win95.highlight.optionBackground === 'rgb(0, 0, 128)', `${label}/win95: selected option background is ${win95.highlight.optionBackground}`);
   assert(win95.hover.background === 'rgb(0, 0, 128)', `${label}/win95: hovered row background is ${win95.hover.background}`);
   for (const [part, color] of Object.entries(win95.hover)) {
-    if (color !== null && part !== 'background') assert(color === 'rgb(255, 255, 255)', `${label}/win95: hovered ${part} is ${color}`);
+    if (color !== null && part !== 'background' && !part.endsWith('Dot')) assert(color === 'rgb(255, 255, 255)', `${label}/win95: hovered ${part} is ${color}`);
   }
+  // The LED of the row you are hearing stays green while it is the selection or under the
+  // pointer, as it does in modern; only the muted listened LED turns white to read on the navy.
+  assert(win95.listenedLed?.playing === 'rgb(0, 128, 0)', `${label}/win95: the playing LED is ${win95.listenedLed?.playing}`);
+  assert(win95.listenedLed?.selectedPlaying === 'rgb(0, 255, 0)' && win95.hover.playingDot === 'rgb(0, 255, 0)', `${label}/win95: the highlighted playing LED is ${JSON.stringify([win95.listenedLed?.selectedPlaying, win95.hover.playingDot])}, not the bright green that reads on the navy`);
+  assert(win95.listenedLed?.selectedListened === 'rgb(255, 255, 255)' && win95.hover.listenedDot === 'rgb(255, 255, 255)', `${label}/win95: the highlighted listened LED is ${JSON.stringify([win95.listenedLed?.selectedListened, win95.hover.listenedDot])}, not white`);
+  assert(modern.listenedLed?.playing === 'rgb(0, 255, 65)' && modern.listenedLed.selectedPlaying === modern.listenedLed.playing, `${label}/modern: the playing LED does not keep the accent through the selection: ${JSON.stringify(modern.listenedLed)}`);
+  assert(amiga.listenedLed?.selectedPlaying === 'rgb(0, 0, 0)', `${label}/amiga: the highlighted playing LED is ${amiga.listenedLed?.selectedPlaying}, not the theme's black`);
+  // Buffering outranks playing in every theme, as it does in base: while the audio is still
+  // arriving the LED blinks that theme's warning colour, selected, hovered or plain — the one
+  // state where win95 used to keep painting green over the top of it.
+  for (const [name, probe, warn] of [['modern', modern, 'rgb(255, 204, 102)'], ['win95', win95, 'rgb(255, 255, 0)']]) {
+    assert(probe.listenedLed?.buffering === warn && probe.listenedLed?.selectedBuffering === warn && probe.hover.bufferingDot === warn, `${label}/${name}: the buffering LED is ${JSON.stringify([probe.listenedLed?.buffering, probe.listenedLed?.selectedBuffering, probe.hover.bufferingDot])}, not the theme's ${warn} in all three row states`);
+  }
+  // amiga is the exception it always was: every LED on the highlight is its flat black, and the
+  // buffering one says so by blinking to white (theme-amiga.css) rather than by its colour
+  assert(amiga.listenedLed?.buffering === 'rgb(240, 128, 0)' && amiga.listenedLed?.selectedBuffering === 'rgb(0, 0, 0)', `${label}/amiga: the buffering LED is ${JSON.stringify([amiga.listenedLed?.buffering, amiga.listenedLed?.selectedBuffering])}, not the warning orange on a plain row and black on the highlight`);
   assert(win95.states.disabledColor === 'rgb(128, 128, 128)', `${label}/win95: disabled button text is ${win95.states.disabledColor}`);
   assert(win95.states.linkColor === 'rgb(0, 0, 255)', `${label}/win95: link color is ${win95.states.linkColor}`);
   assert(win95.focusOutline === 'dotted', `${label}/win95: keyboard focus outline is ${win95.focusOutline}, not dotted`);

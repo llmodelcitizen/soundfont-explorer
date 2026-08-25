@@ -245,6 +245,11 @@
   background: #f08000;
   color: #000000;
 }
+/* a spent header ('#' in the catalog order) does not light up under the pointer: it has nothing
+   to sort, and aria-disabled already says so to a screen reader */
+[data-theme='amiga'] .hcell[aria-disabled='true']:hover {
+  background: transparent;
+}
 [data-theme='amiga'] .row.head > button.hcell.col-fav,
 [data-theme='amiga'] .row.head > button.hcell.col-dot {
   display: grid;
