@@ -47,6 +47,7 @@ export class RunsView {
   private picked = new Set<string>();
   private status = el('span', { class: 'statusline' });
   private timer: number | null = null;
+  private pollGen = 0; // bumped by stop(): a tick already in flight must not re-arm
   private openLogs = new Set<string>();
 
   constructor() {
@@ -59,6 +60,10 @@ export class RunsView {
   }
 
   async load(): Promise<void> {
+    // The shell shows this view with an un-awaited load() and leaves it with a synchronous
+    // stop(), so a tab switch can land during either round-trip below. Without the
+    // generation check, load() would go on to arm a poll for a view nobody is looking at.
+    const gen = this.pollGen;
     try {
       const doc = await get<{ render_enabled: boolean; missing_canon?: number; songs: RenderSong[] }>('/api/render/songs');
       this.songs = doc.songs;
@@ -69,11 +74,14 @@ export class RunsView {
         `render songs unavailable: ${(e as Error).message}`));
       return;
     }
+    if (gen !== this.pollGen) return;
     await this.render();
+    if (gen !== this.pollGen) return;
     this.poll();
   }
 
   stop(): void {
+    this.pollGen++;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
   }
@@ -84,12 +92,34 @@ export class RunsView {
   }
 
   private poll(): void {
-    this.stop();
+    // Clear the armed timer directly rather than through stop(): stop() also bumps pollGen,
+    // and a re-arm that bumps it invalidates a load() that is still fetching — re-clicking
+    // the already-active Renders tab starts exactly that, and the render was then skipped,
+    // leaving a stale submit form and canon-stale notice on screen. Only leaving the view
+    // (stop()) may cancel a generation.
+    if (this.timer !== null) clearTimeout(this.timer);
+    const gen = this.pollGen;
     this.timer = window.setTimeout(async () => {
-      const list = this.root.querySelector('.runlist');
-      if (list) await this.renderRuns(list as HTMLElement);
-      this.poll();
+      this.timer = null;
+      const list = this.root.querySelector<HTMLElement>('.runlist');
+      if (list) await this.refreshRuns(list);
+      // stop() (tab switch) or a fresh load() may have landed while renderRuns was in
+      // flight; clearTimeout alone cannot catch that, so re-arm only for our generation
+      if (gen === this.pollGen) this.poll();
     }, 5000);
+  }
+
+  /** renderRuns() with the layout work it ends with (scroll anchoring, fitLogBox) reported
+   *  on the status line instead of thrown. renderRuns catches its own GET but not that, and
+   *  every caller is a timer callback or a click handler: a rejection there is unhandled —
+   *  it would end the poll chain for the rest of the session, or leave a click's own
+   *  "done" on screen over a list that never refreshed, either way with nothing said. */
+  private async refreshRuns(host: HTMLElement): Promise<void> {
+    try {
+      await this.renderRuns(host);
+    } catch (e) {
+      this.note(`runs refresh: ${(e as Error).message}`, true);
+    }
   }
 
   private async render(): Promise<void> {
@@ -256,19 +286,26 @@ export class RunsView {
       if (!['succeeded', 'failed', 'terminated'].includes(r.state)) {
         const t = el('button', { class: 'danger' }, 'Terminate');
         t.onclick = async () => {
-          if (confirm(`Terminate run ${r.run_id}?`)) {
+          if (!confirm(`Terminate run ${r.run_id}?`)) return;
+          try {
             await post(`/api/runs/${r.run_id}/terminate`);
-            await this.renderRuns(host);
+          } catch (e) {
+            this.note(`terminate: ${(e as Error).message}`, true);
           }
+          await this.refreshRuns(host);
         };
         actions.append(t);
       } else if (!r.finisher.songs_json_published) {
         const f = el('button', {}, 'Run finisher');
         f.onclick = async () => {
           this.note('finisher running…');
-          await post(`/api/runs/${r.run_id}/finish`);
-          this.note('finisher done');
-          await this.renderRuns(host);
+          try {
+            await post(`/api/runs/${r.run_id}/finish`);
+            this.note('finisher done');
+          } catch (e) {
+            this.note(`finisher: ${(e as Error).message}`, true);
+          }
+          await this.refreshRuns(host);
         };
         actions.append(f);
       }

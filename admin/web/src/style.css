@@ -38,6 +38,16 @@ header.topbar {
 }
 header.topbar h1 { font-size: 16px; font-weight: 600; margin: 0; }
 header.topbar .spacer { flex: 1; }
+header.topbar .statusline {
+  /* the topbar is a flex row with no flex-wrap, and a text span's min-width is auto, so
+     it does not shrink: an un-capped message (e.g. "shutdown: not on EC2 (no instance
+     metadata)") pushes the email and the log-out link off the right edge of a narrow
+     window. main.ts puts the whole message in the span's title. */
+  max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* the span is always in the DOM, so without this an empty status line still spends one
+   16px flex gap and shifts the top-right controls for a message that is not there */
+header.topbar .statusline:empty { display: none; }
 header.topbar .who { color: var(--dim); font-size: 13px; }
 header.topbar a { color: var(--dim); font-size: 13px; }
 main { padding: 16px; max-width: 1400px; margin: 0 auto; }

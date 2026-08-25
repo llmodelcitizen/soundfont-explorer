@@ -5,7 +5,7 @@
 // h hide/unhide, d delete. "Play on click" auto-previews the selected track, debounced
 // 350 ms so arrowing through the list doesn't stack renders on the 2-vCPU box (the
 // server additionally caps concurrent preview renders at 2).
-import { get, patch, post } from './api';
+import { get, isSessionExpired, patch, post } from './api';
 
 export interface CanonInfo {
   status: 'ok' | 'pending' | 'refused' | 'unparsed';
@@ -48,6 +48,9 @@ type Row = { kind: 'folder'; path: string } | { kind: 'track'; e: Entry };
 
 const OPEN_KEY = 'sfadmin.folders.v1';
 const AUTOPLAY_KEY = 'sfadmin.autoplay.v1';
+const CANON_POLL_MS = 3000;
+const CANON_POLL_MAX_FAILURES = 10; // consecutive failed status GETs before the poll gives up
+const CANON_POLL_MAX_BACKOFF = 5; // ... spaced out to at most 5x the interval between tries
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]
@@ -83,8 +86,16 @@ export class LibraryView {
   private autoplay = false;
   private autoplayTimer: number | null = null;
   private status = el('span', { class: 'statusline' });
+  // The toolbar is built once and stays in the DOM; render() only swaps the columns
+  // below it. Rebuilding the filter box on every render — i.e. on every keystroke —
+  // replaced the focused element and dropped focus after the first character.
+  private search = el('input', { type: 'search', placeholder: 'filter…' });
+  private canonBtn = el('button', {}, 'Canon check');
+  private trackCount = el('span', { class: 'count' });
+  private cols = el('div', { class: 'cols' });
   private audio = el('audio', { controls: '', preload: 'none' });
   private audioFor: string | null = null;
+  private canonGen = 0; // bumped by canonRun(): only the newest status poll may run
 
   constructor() {
     try {
@@ -120,7 +131,9 @@ export class LibraryView {
       this.note(`${label}: done`);
       return true;
     } catch (e) {
-      this.note(`${label}: ${(e as Error).message}`, true);
+      // an expired session is not this action's failure: api.ts has already sent the
+      // browser to /auth/login, so the message would only flash up on the way out
+      if (!isSessionExpired(e)) this.note(`${label}: ${(e as Error).message}`, true);
       return false;
     }
   }
@@ -349,7 +362,11 @@ export class LibraryView {
     // re-rendering must not move the list under the mouse: restore the tree's scroll
     // position, and only chase the cursor when navigation came from the keyboard
     const prevScroll = (this.root.querySelector('.tree') as HTMLElement | null)?.scrollTop ?? 0;
-    this.root.replaceChildren(this.toolbar(refused.length), el('div', { class: 'cols' }, tree, panel));
+    if (this.cols.parentNode !== this.root) this.root.replaceChildren(this.toolbar(), this.cols);
+    this.canonBtn.textContent = refused.length ? `Canon check (${refused.length} refused)` : 'Canon check';
+    const pvWarn = this.doc.preview.gm_sf2 ? '' : ' — no gm.sf2, previews off';
+    this.trackCount.textContent = `${this.doc.entries.length} tracks${pvWarn}`;
+    this.cols.replaceChildren(tree, panel);
     tree.scrollTop = prevScroll;
     if (this.keyboardNav) {
       this.keyboardNav = false;
@@ -357,10 +374,9 @@ export class LibraryView {
     }
   }
 
-  private toolbar(refusedCount: number): HTMLElement {
-    const search = el('input', { type: 'search', placeholder: 'filter…', value: this.filter });
-    search.oninput = () => {
-      this.filter = search.value;
+  private toolbar(): HTMLElement {
+    this.search.oninput = () => {
+      this.filter = this.search.value;
       this.render();
     };
     const auto = el('input', { type: 'checkbox', id: 'autoplay' });
@@ -375,16 +391,12 @@ export class LibraryView {
     const upload = el('button', {}, 'Upload…');
     upload.onclick = () => this.uploadDialog();
     const zip = el('a', { href: '/api/library.zip', class: 'btnish' }, 'Download all');
-    const canon = el('button', {}, refusedCount ? `Canon check (${refusedCount} refused)` : 'Canon check');
-    canon.onclick = () => this.canonRun();
-    const n = this.doc!.entries.length;
-    const pv = this.doc!.preview;
-    const pvWarn = pv.gm_sf2 ? '' : ' — no gm.sf2, previews off';
+    this.canonBtn.onclick = () => this.canonRun();
     return el('div', { class: 'toolbar' },
-      search, upload, canon, zip,
+      this.search, upload, this.canonBtn, zip,
       el('label', { class: 'autoplay', for: 'autoplay', title: 'preview the selected track automatically' },
         auto, ' play on click'),
-      el('span', { class: 'count' }, `${n} tracks${pvWarn}`),
+      this.trackCount,
       this.status);
   }
 
@@ -493,8 +505,8 @@ export class LibraryView {
     const inp = el('input', { type: 'file', multiple: '', accept: '.mid,.midi,.rmi' });
     inp.onchange = async () => {
       if (!inp.files?.length) return;
-      const dir = prompt('Upload into directory (empty = top level):',
-        this.selectedDir()) ?? '';
+      const dir = prompt('Upload into directory (empty = top level):', this.selectedDir());
+      if (dir === null) return this.note('upload cancelled'); // Cancel used to fall through as '' and upload to the top level
       const fd = new FormData();
       for (const f of inp.files) fd.append('files', f);
       fd.append('dir', dir.trim());
@@ -516,22 +528,59 @@ export class LibraryView {
   }
 
   private async canonRun(ids?: string[]): Promise<void> {
+    // Single-flight. Pressing 'c' and then clicking "Canon check" (or double-clicking it)
+    // used to leave one independent 3 s loop each, both writing to the status line and both
+    // reloading the library at the end. The loop is deliberately not tied to the tab being
+    // shown: the server run outlives a tab switch and its result still belongs here.
     try {
       this.note('canon: starting…');
       await post('/api/library/canon', ids ? { ids } : {});
     } catch (e) {
-      this.note(`canon: ${(e as Error).message}`, true);
+      if (!isSessionExpired(e)) this.note(`canon: ${(e as Error).message}`, true);
       return;
     }
+    // Claim the generation only once the POST has actually started a run. The server runs
+    // one canon at a time and answers 409 to a concurrent start, so claiming it first let a
+    // refused second click cancel the first run's poll — orphaning a run that keeps going
+    // for minutes, with the 409 frozen on the status line and no reload at the end.
+    const gen = ++this.canonGen;
     interface CanonResult {
       totals: Record<string, number>;
       ran?: Record<string, { status: string; reason: string | null }>;
     }
+    // The run keeps going server-side whatever happens to this poll, so one failed status
+    // GET (the box is busy running fluidsynth) must not orphan it — the status line would
+    // stay on "running…" forever. Give up only after several consecutive failures so a
+    // dead server does not leave a zombie loop behind. Back the retries off as they pile
+    // up: ten of them at a flat 3 s would abandon a run that is still going after 27 s,
+    // which is nothing next to the few minutes a full run takes on this box, while the
+    // backoff stretches the same budget to nearly two minutes.
+    let failures = 0;
+    const retryDelay = (): number => CANON_POLL_MS * Math.min(failures, CANON_POLL_MAX_BACKOFF);
     const poll = async (): Promise<void> => {
-      const s = await get<{ running: boolean; error?: string; result?: CanonResult }>('/api/library/canon/status');
+      if (gen !== this.canonGen) return; // a newer canon run took this poll over
+      let s: { running: boolean; error?: string; result?: CanonResult };
+      try {
+        s = await get('/api/library/canon/status');
+        failures = 0;
+      } catch (e) {
+        if (gen !== this.canonGen) return;
+        // an expired session is terminal: retrying it just re-assigns location.href ten
+        // times over while the browser is already on its way to the login flow
+        if (isSessionExpired(e)) return;
+        const msg = (e as Error).message;
+        if (++failures >= CANON_POLL_MAX_FAILURES) {
+          this.note(`canon: lost track of the run after ${failures} failed status checks (${msg}) — reload to see the result`, true);
+          return;
+        }
+        this.note(`canon: status check failed (${msg}), retrying…`, true);
+        setTimeout(poll, retryDelay());
+        return;
+      }
+      if (gen !== this.canonGen) return; // ... or while this status GET was in flight
       if (s.running) {
         this.note('canon: running… (a full run takes a few minutes on this box)');
-        setTimeout(poll, 3000);
+        setTimeout(poll, CANON_POLL_MS);
         return;
       }
       if (s.error) this.note(`canon: ${s.error}`, true);
@@ -541,9 +590,13 @@ export class LibraryView {
         const shown = parts.slice(0, 3).join(' · ') + (parts.length > 3 ? ` · +${parts.length - 3} more` : '');
         this.note(`canon: ${shown}`, Object.values(s.result.ran).some((c) => c.status !== 'ok'));
       } else this.note(`canon (library totals): ${JSON.stringify(s.result?.totals ?? s.result)}`);
-      await this.load();
+      try {
+        await this.load();
+      } catch (e) {
+        this.note(`canon finished, but reloading the library failed: ${(e as Error).message}`, true);
+      }
     };
-    poll();
+    void poll();
   }
 
   private async injectFix(e: Entry): Promise<void> {
