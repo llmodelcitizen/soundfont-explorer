@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import auth, bootstrapstate, routes_library, routes_publish, routes_runs
 from .config import get_config
+from .safepath import contained_file
 
 OPEN_PATHS = ("/auth/", "/healthz")
 
@@ -112,7 +113,7 @@ if os.path.isdir(WEB_DIST):  # absent in unit tests
 
     @app.get("/{full_path:path}")
     def spa(full_path: str) -> FileResponse:
-        candidate = os.path.join(WEB_DIST, full_path)
-        if full_path and os.path.isfile(candidate):
-            return FileResponse(candidate)
-        return FileResponse(os.path.join(WEB_DIST, "index.html"))
+        # a file of the built SPA, or the SPA shell for client-side routes — never anything
+        # outside WEB_DIST (see safepath: Starlette does not collapse `..` for us)
+        f = contained_file(WEB_DIST, full_path)
+        return FileResponse(f or os.path.join(WEB_DIST, "index.html"))
