@@ -399,6 +399,44 @@ async function filterPanelResetsOnSongSwitch() {
 await filterPanelResetsOnSongSwitch();
 
 /**
+ * Phone portrait only: the open filter panel takes the whole grid, so the handle that resizes
+ * Now Playing must go with the pane it resizes. It is positioned, so left in its grid row it
+ * paints its bar across the filter buttons of a panel tall enough to reach that row. CSS in a
+ * breakpoint has no unit test (web/test/unit runs in the node environment, with no cascade), so
+ * it is measured here, in all three themes: no filter button may be under the handle.
+ */
+async function filterPanelClearsTheResizeHandle() {
+  for (const theme of ['modern', 'win95', 'amiga']) {
+    const label = `phone/${theme}`;
+    const page = await browser.newPage({ viewport: viewports.phone, hasTouch: true });
+    page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+    const target = new URL(url);
+    target.searchParams.set('theme', theme);
+    await page.goto(target.href, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.rows .row', { timeout: 20000 });
+    const result = await page.evaluate(() => {
+      const handle = document.querySelector('.hsplit');
+      const before = handle ? getComputedStyle(handle).display : null;
+      const toggle = Array.from(document.querySelectorAll('.filterrow .btn')).find((button) => (button.title ?? '').startsWith('filters'));
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      const box = handle.getBoundingClientRect();
+      const opts = Array.from(document.querySelectorAll('.facets .opt'));
+      const covered = opts.filter((opt) => {
+        const rect = opt.getBoundingClientRect();
+        return Math.min(rect.right, box.right) - Math.max(rect.left, box.left) > 0.5 && Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top) > 0.5;
+      }).length;
+      return { before, display: getComputedStyle(handle).display, covered, opts: opts.length, open: document.querySelector('#app')?.classList.contains('filters-open') ?? false };
+    });
+    assert(result.before === 'block', `${label}: the phone layout has no Now Playing handle to get out of the way: ${JSON.stringify(result)}`);
+    assert(result.open && result.opts > 0, `${label}: the filter panel did not open: ${JSON.stringify(result)}`);
+    assert(result.display === 'none' && result.covered === 0, `${label}: the Now Playing handle is drawn over the filter panel: ${JSON.stringify(result)}`);
+    await page.close();
+  }
+}
+
+await filterPanelClearsTheResizeHandle();
+
+/**
  * Space on the Modern font title cycles the font and must not also reach the window keymap,
  * where Space is play/pause: the handler stops propagation. Checked here for the same reason as
  * the filter panel above — App is only exercisable in a real document.

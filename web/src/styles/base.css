@@ -1178,6 +1178,15 @@ kbd {
     height: 100%;
     border-top: 0;
   }
+  /* Open filters: the handle steps aside with the pane it resizes, and the list pane takes the
+     whole grid. The handle is positioned, so left in its row it paints its bar over the filter
+     buttons of a panel tall enough to reach into the (now empty) Now Playing rows. */
+  .filters-open .main {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .filters-open .hsplit {
+    display: none;
+  }
   /* the five buttons stretch to fill the line (equal widths) next to ▲ ▼ */
   .transport > .btn,
   .transport .toggle {
