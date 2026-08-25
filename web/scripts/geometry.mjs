@@ -483,6 +483,38 @@ async function headerSorting() {
 
 await headerSorting();
 
+/**
+ * The Now Playing tier pill: its tooltip is written once, in the NowPlaying constructor, and its
+ * label by setTier() as the engine promotes the audio. tierLabel()/tierTitle() are unit-tested;
+ * the strings only reach a user through a real document, so a real playback is checked here.
+ */
+async function nowPlayingTierPill() {
+  const label = 'desktop/modern';
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  const tooltip = await page.evaluate(() => document.querySelector('.tier')?.getAttribute('title') ?? null);
+  assert(/^audio tier: scrubbing \(\d+ kbps\) or listening \(\d+ kbps\)$/.test(tooltip ?? ''), `desktop/modern: the tier tooltip does not name the tiers as the pill does: ${tooltip}`);
+  const pill = { first: null, listening: null };
+  await page.click('.rows .row:nth-child(3)');
+  try {
+    await page.waitForFunction(() => (document.querySelector('.tier')?.textContent ?? '').length > 0, undefined, { timeout: 30000 });
+    pill.first = await page.evaluate(() => document.querySelector('.tier').textContent);
+    await page.waitForFunction(() => (document.querySelector('.tier')?.textContent ?? '').startsWith('listening'), undefined, { timeout: 30000 });
+    pill.listening = await page.evaluate(() => document.querySelector('.tier').textContent);
+  } catch (error) {
+    failures.push(`${label}: the tier pill never named the tier being played: ${JSON.stringify(pill)} (${String(error).split('\n')[0]})`);
+  }
+  if (pill.first) assert(/^(scrubbing|listening) · \d+k$/.test(pill.first), `${label}: the tier pill reads ${pill.first}`);
+  if (pill.listening) assert(/^listening · \d+k$/.test(pill.listening), `${label}: the listening pill reads ${pill.listening}`);
+  await page.close();
+}
+
+await nowPlayingTierPill();
+
 
 for (const [label, viewport] of Object.entries(viewports)) {
   const modern = await measure('modern', viewport, label);

@@ -9,6 +9,18 @@ export interface NowPlayingActions {
   toggleFavorite(id: string): boolean;
 }
 
+/** the tier pill: what you are hearing right now — the scrubbing tier or the listening one */
+export function tierLabel(t: 's' | 'l' | null, set: SetDoc): string {
+  if (t === 'l') return `listening · ${set.listen.bitrate}k`;
+  if (t === 's') return `scrubbing · ${set.scrub.bitrate}k`;
+  return '';
+}
+
+/** the pill's tooltip: both tiers, named as the pill names them, with their bitrates */
+export function tierTitle(set: SetDoc): string {
+  return `audio tier: scrubbing (${set.scrub.bitrate} kbps) or listening (${set.listen.bitrate} kbps)`;
+}
+
 export class NowPlaying {
   readonly el: HTMLElement;
   private tierEl: HTMLElement;
@@ -18,14 +30,14 @@ export class NowPlaying {
   private favoriteBtn: HTMLButtonElement | null = null;
 
   constructor(private readonly catalog: CatalogDoc, private readonly set: SetDoc, private readonly song: SongEntry, private actions: NowPlayingActions) {
-    this.tierEl = h('span', { class: 'tier', title: `audio tier: scrub (${set.scrub.bitrate} kbps) or listen (${set.listen.bitrate} kbps)` }, '');
+    this.tierEl = h('span', { class: 'tier', title: tierTitle(set) }, '');
     this.statusEl = h('span', { class: 'np-status' }, '');
     this.body = h('div', { class: 'np-body' }, h('p', { class: 'muted' }, 'Select a variant (↑/↓) to hear the song through it.'));
     this.el = h('section', { class: 'nowplaying', 'aria-live': 'polite' }, h('div', { class: 'np-head' }, h('span', { class: 'np-title' }, 'now playing'), this.tierEl, this.statusEl), this.body);
   }
 
   setTier(t: 's' | 'l' | null): void {
-    this.tierEl.textContent = t === 'l' ? `listen · ${this.set.listen.bitrate}k` : t === 's' ? `scrub · ${this.set.scrub.bitrate}k` : '';
+    this.tierEl.textContent = tierLabel(t, this.set);
     this.tierEl.className = `tier ${t ?? ''}`;
   }
 
