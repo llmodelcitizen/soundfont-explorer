@@ -219,6 +219,27 @@ async function measure(theme, viewport, label) {
           return dot ? `${dot.w}x${dot.h}` : null;
         })(),
       },
+      // the listened LED through the states the row classes produce, painted on a real row so
+      // that the whole cascade (base.css and the theme) decides the colour, as it does live
+      listenedLed: (() => {
+        const row = document.querySelector('.rows .row');
+        const dot = row?.querySelector('.cell.dot');
+        if (!row || !dot) return null;
+        const was = row.className;
+        const paint = (classes) => {
+          row.className = classes;
+          return getComputedStyle(dot).backgroundColor;
+        };
+        const led = {
+          listened: paint('row cached'),
+          playing: paint('row audible'),
+          selectedListened: paint('row sel cached'),
+          selectedPlaying: paint('row sel cached audible'),
+          selectedBuffering: paint('row sel cached audible loading'),
+        };
+        row.className = was;
+        return led;
+      })(),
       folderEdge: (() => {
         const folder = document.createElement('div');
         folder.className = 'track-folder';
@@ -256,10 +277,21 @@ async function measure(theme, viewport, label) {
     const style = getComputedStyle(el);
     const label = el.querySelector('.label');
     const meta = el.querySelector('.meta');
+    const dot = el.querySelector('.cell.dot');
+    const was = el.className;
+    const paint = (classes) => {
+      el.className = classes;
+      return dot ? getComputedStyle(dot).backgroundColor : null;
+    };
+    const listenedDot = paint(`${was} cached`);
+    const playingDot = paint(`${was} cached audible`);
+    el.className = was;
     return {
       background: style.backgroundColor,
       labelColor: label ? getComputedStyle(label).color : null,
       metaColor: meta ? getComputedStyle(meta).color : null,
+      listenedDot,
+      playingDot,
     };
   });
   // Tab is an app shortcut (A/B), so probe keyboard focus by focusing the theme select directly.
@@ -437,6 +469,40 @@ async function filterPanelClearsTheResizeHandle() {
 await filterPanelClearsTheResizeHandle();
 
 /**
+ * The listened LED of the row you are hearing, in the state the app really produces: a variant
+ * played until its row is the selection, audible and listened at once. The stylesheet is pinned
+ * by the probes in measure(); this checks that the class combination they paint is the one the
+ * app reaches, and that the LED is green (win95 and modern) rather than turning white.
+ */
+async function listenedLedOfThePlayingRow() {
+  for (const [theme, expected] of [['win95', 'rgb(0, 255, 0)'], ['modern', 'rgb(0, 255, 65)'], ['amiga', 'rgb(0, 0, 0)']]) {
+    const label = `desktop/${theme}`;
+    const page = await browser.newPage({ viewport: viewports.desktop });
+    page.on('pageerror', (error) => errors.push(`${label}: ${String(error)}`));
+    const target = new URL(url);
+    target.searchParams.set('theme', theme);
+    await page.goto(target.href, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.rows .row', { timeout: 20000 });
+    await page.click('.rows .row:nth-child(3)');
+    try {
+      await page.waitForFunction(() => !!document.querySelector('.rows .row.sel.audible.cached'), undefined, { timeout: 60000 });
+    } catch (error) {
+      failures.push(`${label}: no variant played long enough to light its listened LED: ${String(error).split('\n')[0]}`);
+      await page.close();
+      continue;
+    }
+    const led = await page.evaluate(() => {
+      const row = document.querySelector('.rows .row.sel.audible.cached');
+      return { classes: row.className, dot: getComputedStyle(row.querySelector('.cell.dot')).backgroundColor };
+    });
+    assert(led.dot === expected, `${label}: the listened LED of the playing selection is ${led.dot}, not ${expected} (${led.classes})`);
+    await page.close();
+  }
+}
+
+await listenedLedOfThePlayingRow();
+
+/**
  * Space on the Modern font title cycles the font and must not also reach the window keymap,
  * where Space is play/pause: the handler stops propagation. Checked here for the same reason as
  * the filter panel above — App is only exercisable in a real document.
@@ -593,8 +659,16 @@ for (const [label, viewport] of Object.entries(viewports)) {
   assert(win95.highlight.optionBackground === 'rgb(0, 0, 128)', `${label}/win95: selected option background is ${win95.highlight.optionBackground}`);
   assert(win95.hover.background === 'rgb(0, 0, 128)', `${label}/win95: hovered row background is ${win95.hover.background}`);
   for (const [part, color] of Object.entries(win95.hover)) {
-    if (color !== null && part !== 'background') assert(color === 'rgb(255, 255, 255)', `${label}/win95: hovered ${part} is ${color}`);
+    if (color !== null && part !== 'background' && !part.endsWith('Dot')) assert(color === 'rgb(255, 255, 255)', `${label}/win95: hovered ${part} is ${color}`);
   }
+  // The LED of the row you are hearing stays green while it is the selection or under the
+  // pointer, as it does in modern; only the muted listened LED turns white to read on the navy.
+  assert(win95.listenedLed?.playing === 'rgb(0, 128, 0)', `${label}/win95: the playing LED is ${win95.listenedLed?.playing}`);
+  assert(win95.listenedLed?.selectedPlaying === 'rgb(0, 255, 0)' && win95.hover.playingDot === 'rgb(0, 255, 0)', `${label}/win95: the highlighted playing LED is ${JSON.stringify([win95.listenedLed?.selectedPlaying, win95.hover.playingDot])}, not the bright green that reads on the navy`);
+  assert(win95.listenedLed?.selectedBuffering === 'rgb(0, 255, 0)', `${label}/win95: the buffering LED of the playing selection is ${win95.listenedLed?.selectedBuffering} — it blinks, it does not change colour`);
+  assert(win95.listenedLed?.selectedListened === 'rgb(255, 255, 255)' && win95.hover.listenedDot === 'rgb(255, 255, 255)', `${label}/win95: the highlighted listened LED is ${JSON.stringify([win95.listenedLed?.selectedListened, win95.hover.listenedDot])}, not white`);
+  assert(modern.listenedLed?.playing === 'rgb(0, 255, 65)' && modern.listenedLed.selectedPlaying === modern.listenedLed.playing, `${label}/modern: the playing LED does not keep the accent through the selection: ${JSON.stringify(modern.listenedLed)}`);
+  assert(amiga.listenedLed?.selectedPlaying === 'rgb(0, 0, 0)', `${label}/amiga: the highlighted playing LED is ${amiga.listenedLed?.selectedPlaying}, not the theme's black`);
   assert(win95.states.disabledColor === 'rgb(128, 128, 128)', `${label}/win95: disabled button text is ${win95.states.disabledColor}`);
   assert(win95.states.linkColor === 'rgb(0, 0, 255)', `${label}/win95: link color is ${win95.states.linkColor}`);
   assert(win95.focusOutline === 'dotted', `${label}/win95: keyboard focus outline is ${win95.focusOutline}, not dotted`);

@@ -381,9 +381,17 @@
 [data-theme='win95'] .row.sel.audible .label {
   color: #ffffff;
 }
-[data-theme='win95'] .row.sel.cached .dot,
-[data-theme='win95'] .row:hover.cached .dot {
+/* Only the muted listened LED turns white on the navy highlight: the playing one stays green
+   for as long as it is playing, as it does in the modern theme. On navy it lights up — the
+   VGA bright green of the 16-colour palette, because #008000 on #000080 is 3.1:1, a hair over
+   the 3:1 floor for a 10px indicator, while #00ff00 reads at 11.7:1. */
+[data-theme='win95'] .row.sel.cached:not(.audible) .dot,
+[data-theme='win95'] .row:hover.cached:not(.audible) .dot {
   background: #ffffff;
+}
+[data-theme='win95'] .row.sel.audible .dot,
+[data-theme='win95'] .row:hover.audible .dot {
+  background: #00ff00;
 }
 [data-theme='win95'] .track.current .track-meta {
   color: #ffffff;
