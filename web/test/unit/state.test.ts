@@ -123,6 +123,12 @@ describe('URL state', () => {
     expect(buildSearch({ theme: 'modern', t: 0 })).toBe('');
   });
 
+  // "preserve track position" off makes the app pass no `t` at all: a reload must start at zero
+  it('carries no position when there is none to restore', () => {
+    expect(buildSearch({ song: 'x', t: undefined })).toBe('?song=x');
+    expect(parseUrl(buildSearch({ song: 'x', t: undefined })).t).toBeUndefined();
+  });
+
   it('round-trips the Amiga theme', () => {
     const search = buildSearch({ theme: 'amiga' });
     expect(search).toBe('?theme=amiga');

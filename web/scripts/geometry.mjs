@@ -644,6 +644,48 @@ async function trackListObserversAreReleased() {
 
 await trackListObserversAreReleased();
 
+/**
+ * #35: turning "preserve track position" off resets the positions a reload would restore — the
+ * saved map and the URL's `t=` — and leaves what is currently audible where it is.
+ */
+async function unpreservingClearsTheSavedPositionOnly() {
+  const page = await browser.newPage({ viewport: viewports.desktop });
+  page.on('pageerror', (error) => errors.push(`desktop/preserve: ${String(error)}`));
+  const target = new URL(url);
+  target.searchParams.set('theme', 'modern');
+  target.searchParams.set('t', '30');
+  await page.goto(target.href, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.rows .row', { timeout: 20000 });
+  try {
+    await page.waitForFunction(() => new URLSearchParams(location.search).get('t') === '30', undefined, { timeout: 20000 });
+  } catch (error) {
+    failures.push(`desktop/preserve: the URL never carried the boot position: ${String(error)}`);
+    await page.close();
+    return;
+  }
+  const before = await page.evaluate(() => ({ t: new URLSearchParams(location.search).get('t'), seek: Number(document.querySelector('.transport .seek').value) }));
+  const clicked = await page.evaluate(() => {
+    document.querySelector('.top [aria-label="settings"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const box = Array.from(document.querySelectorAll('.settings .trackopts input[type="checkbox"]'))
+      .find((input) => (input.closest('label')?.textContent ?? '').includes('Preserve track position'));
+    box?.click();
+    return { found: !!box, checked: box?.checked ?? null };
+  });
+  // the transport clock follows the engine on the next frame, and the URL settles a beat later
+  await page.waitForTimeout(400);
+  const after = {
+    ...clicked,
+    ...await page.evaluate(() => ({ t: new URLSearchParams(location.search).get('t'), seek: Number(document.querySelector('.transport .seek').value) })),
+  };
+  assert(close(before.seek, 30, 1), `desktop/preserve: the boot position did not reach the transport: ${JSON.stringify(before)}`);
+  assert(after.found && after.checked === false, `desktop/preserve: the Settings checkbox did not go off: ${JSON.stringify(after)}`);
+  assert(after.t === null, `desktop/preserve: the URL still carries a position a reload would restore: ${JSON.stringify(after)}`);
+  assert(close(after.seek, before.seek, 1), `desktop/preserve: unchecking the option moved the audible playhead from ${before.seek} to ${after.seek}`);
+  await page.close();
+}
+
+await unpreservingClearsTheSavedPositionOnly();
+
 
 for (const [label, viewport] of Object.entries(viewports)) {
   const modern = await measure('modern', viewport, label);

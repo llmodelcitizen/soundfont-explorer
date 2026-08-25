@@ -80,15 +80,15 @@ export class TrackPositions {
 /**
  * React to a change of "preserve track position". Turning it off resets every saved position to
  * zero rather than only stopping new ones from being saved: the remembered song → seconds map is
- * dropped, and `rewind` zeroes the one position no map holds yet — the live playhead of the track
- * being listened to (and with it the `t` the URL would otherwise restore on the next reload).
- * Only the true → false transition acts: settings changes arrive for every option, the listened
- * slider included, and none of the others may move the playhead.
+ * dropped, and `forgetUrlPosition` drops the one saved position no map holds — the `t` the URL
+ * would otherwise restore on the next reload. What is currently audible keeps playing where it
+ * is; only positions that would be *restored* are reset. Only the true → false transition acts:
+ * settings changes arrive for every option, the listened slider included.
  */
-export function applyPreservePreference(was: boolean, now: boolean, positions: TrackPositions, rewind: () => void): void {
+export function applyPreservePreference(was: boolean, now: boolean, positions: TrackPositions, forgetUrlPosition: () => void): void {
   if (!was || now) return;
   positions.clear();
-  rewind();
+  forgetUrlPosition();
 }
 
 type Ledger = Record<string, Record<string, number>>;

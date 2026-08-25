@@ -79,29 +79,29 @@ describe('per-track positions', () => {
 });
 
 describe('turning "preserve track position" off', () => {
-  /** a TrackPositions with two visited tracks, plus a rewind spy for the live playhead */
+  /** a TrackPositions with two visited tracks, plus a spy for the URL's saved position */
   const scenario = () => {
     const positions = new TrackPositions();
     positions.remember('one', 12.5);
     positions.remember('two', 47);
-    let rewinds = 0;
-    return { positions, rewind: () => { rewinds += 1; }, rewound: () => rewinds };
+    let forgets = 0;
+    return { positions, forget: () => { forgets += 1; }, forgotten: () => forgets };
   };
 
-  it('zeroes every remembered position and the live playhead, not just future ones', () => {
+  it('zeroes every remembered position, not just future ones, and drops the URL position', () => {
     const s = scenario();
-    applyPreservePreference(true, false, s.positions, s.rewind);
+    applyPreservePreference(true, false, s.positions, s.forget);
     expect(s.positions.recall('one')).toBe(0);
     expect(s.positions.recall('two')).toBe(0);
-    expect(s.rewound()).toBe(1);
+    expect(s.forgotten()).toBe(1);
   });
 
   it('leaves positions alone unless the option actually goes off', () => {
     for (const [was, now] of [[true, true], [false, true], [false, false]] as const) {
       const s = scenario();
-      applyPreservePreference(was, now, s.positions, s.rewind);
+      applyPreservePreference(was, now, s.positions, s.forget);
       expect(s.positions.recall('one')).toBe(12.5);
-      expect(s.rewound()).toBe(0);
+      expect(s.forgotten()).toBe(0);
     }
   });
 });
