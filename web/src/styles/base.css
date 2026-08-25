@@ -1023,12 +1023,18 @@ kbd {
     font-size: 16px;
   }
 }
-.share-copy {
+/* two classes, like the .btn.primary rule it has to beat — one class alone never applied */
+.btn.share-copy {
   flex: 0 0 auto;
   padding: 4px 16px;
 }
 .share-opt {
   display: block;
+}
+/* the same reason as the option's title, for a touch screen that never shows one */
+.share-why:not(:empty) {
+  display: block;
+  margin-top: 2px;
 }
 /* at the top of the track both links are the same string: the option is there but has nothing to do */
 .share-opt.off {
@@ -1144,7 +1150,9 @@ kbd {
 @media (max-width: 720px) {
   .top {
     flex-wrap: wrap;
-    gap: 6px;
+    /* 4px between controls, not 6: with share alongside settings/debug that is what keeps the
+       row unwrapped down to the same widths as before the button existed (#30) */
+    gap: 6px 4px;
   }
   .top .title {
     font-size: 1.25em;
@@ -1154,8 +1162,8 @@ kbd {
   .top .spacer {
     display: none;
   }
-  /* one control row, always: with share alongside settings/debug the icon gadgets have to give
-     their side padding back, or the volume slider wraps onto a line of its own at 390 px (#30) */
+  /* one control row, always: below 360 px the icon gadgets give some side padding back, or the
+     volume slider wraps onto a line of its own (#30) */
   .top .btn.icon {
     padding: 4px 5px;
   }
@@ -1286,6 +1294,12 @@ kbd {
   }
   .row .label {
     font-size: 0.95em;
+  }
+}
+/* every phone from 360 px up (the narrowest common one is 360) keeps the full tap target */
+@media (min-width: 360px) and (max-width: 720px) {
+  .top .btn.icon {
+    padding: 4px 8px;
   }
 }
 /* phone portrait: Now Playing height is draggable (handle above it) */
