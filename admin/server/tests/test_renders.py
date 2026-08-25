@@ -311,9 +311,12 @@ def write_repo(root: str) -> None:
                  "facets": {"completeness": "full_gm"}} for i in range(4)]
     variants += [{"id": "adl-b0", "engine": "adlmidi", "publish": True,
                   "facets": {"completeness": "full_gm"}}]
+    variants += [{"id": "sc55-1", "engine": "sc55", "publish": True, "requires_rom": True,
+                  "facets": {"completeness": "full_gm"}}]
     (p / "catalog" / "variants.json").write_text(json.dumps({"variants": variants}))
     (p / "render" / "engines.json").write_text(json.dumps({"engines": {
-        "fluidsynth": {"version": "2"}, "adlmidi": {"version": "1"}}}))
+        "fluidsynth": {"version": "2"}, "adlmidi": {"version": "1"},
+        "sc55": {"version": "1"}}}))
 
 
 class PlanTests(unittest.TestCase):
@@ -332,11 +335,22 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(len(est["shards"]), 2)
         self.assertEqual(est["cpu_h"], round(10 * planner.CPU_S_PER_JOB / 3600, 1))
 
-    def test_engine_subset_and_limit_shrink_the_estimate(self):
+    def test_engine_subset_shrinks_the_estimate(self):
         self.assertEqual(self.m.plan(["a", "b"], 1, engines=["adlmidi"])["jobs"], 2)
-        self.assertEqual(self.m.plan(["a", "b"], 1, limit=3)["jobs"], 6)
-        self.assertEqual(self.m.plan(["a"], 1, engines=["fluidsynth"], limit=3)["jobs"], 3)
+        self.assertEqual(self.m.plan(["a"], 1, engines=["fluidsynth"])["jobs"], 4)
         self.assertEqual(self.m.plan(["a"], 1, engines=["fluidsynth", "adlmidi"])["jobs"], 5)
+
+    def test_limit_is_counted_per_shard_not_per_song(self):
+        # shard.py passes --limit to ONE `sfr render` per shard and sfr truncates the
+        # shard's flat job list once, so 2 songs in 1 shard at --limit 3 is 3 jobs, not 6
+        one = self.m.plan(["a", "b"], 1, limit=3)
+        self.assertEqual(len(one["shards"]), 1)
+        self.assertEqual(one["jobs"], 3)
+        two = self.m.plan(["a", "b"], 2, limit=3)          # one song per shard: 3 + 3
+        self.assertEqual(len(two["shards"]), 2)
+        self.assertEqual(two["jobs"], 6)
+        self.assertEqual(self.m.plan(["a"], 1, engines=["fluidsynth"], limit=3)["jobs"], 3)
+        self.assertEqual(one["cpu_h"], round(3 * planner.CPU_S_PER_JOB / 3600, 1))
 
     def test_explicit_variants_override_still_capped_by_limit(self):
         self.assertEqual(self.m.plan(["a"], 1, variants=40)["jobs"], 40)
@@ -347,6 +361,14 @@ class PlanTests(unittest.TestCase):
             self.m.plan(["a"], 1, engines=["adlmid"])
         with self.assertRaises(ValueError):
             self.m.plan(["a", "zzz"], 1)
+
+    def test_a_rom_engine_is_refused_with_the_real_reason(self):
+        # sc55 is a real, pinned engine, but roms/ is empty on the fleet: "unknown engine"
+        # sent the operator looking for a typo (#19)
+        with self.assertRaises(ValueError) as cm:
+            self.m.plan(["a"], 1, engines=["sc55"])
+        self.assertIn("cannot run on the fleet", str(cm.exception))
+        self.assertIn("roms/", str(cm.exception))
 
 
 if __name__ == "__main__":

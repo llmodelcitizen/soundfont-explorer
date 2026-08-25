@@ -168,11 +168,14 @@ class RunManager:
             raise ValueError(f"not in songs.json (run canon first): {unknown[:5]}"
                              + ("…" if len(unknown) > 5 else ""))
         plan = planner.plan_shards(songs, shards, durations)
-        per_song = planner.variants_per_song(planner.variant_counts(repo), engines, limit)
+        counts, unavailable = planner.engine_availability(repo)
+        per_song = planner.variants_per_song(counts, engines, limit, unavailable)
         if variants:
             per_song = min(variants, limit) if limit else variants
-        cpu_h, usd = planner.estimate(plan, per_song)
-        return {"shards": plan, "jobs": len(songs) * per_song, "variants_per_song": per_song,
+        # --limit is per shard, not per song: the job count is summed over the shards (#19)
+        cpu_h, usd = planner.estimate(plan, per_song, limit)
+        return {"shards": plan, "jobs": planner.job_count(plan, per_song, limit),
+                "variants_per_song": per_song,
                 "cpu_h": round(cpu_h, 1), "usd": round(usd, 2)}
 
     def submit(self, songs: list[str], shards: int, max_usd: float,

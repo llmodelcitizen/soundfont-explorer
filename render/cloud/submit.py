@@ -12,7 +12,8 @@ from __future__ import annotations
 import argparse, json, os, pathlib, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from planner import estimate, plan_shards, song_durations, variant_counts, variants_per_song  # noqa: E402
+from planner import (estimate, job_count, plan_shards, song_durations,  # noqa: E402
+                     variant_counts, variants_per_song)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
@@ -69,7 +70,7 @@ def main() -> int:
     for i, s in enumerate(shards):
         print(f"   shard {i}: {len(s['songs']):>2} songs, D={s['duration_total_s']:>5}s  "
               f"{' '.join(s['songs'])}")
-    print(f"[submit] estimate: {len(songs) * variants} jobs ({variants}/song), {cpu_h:.0f} CPU-h, "
+    print(f"[submit] estimate: {job_count(shards, variants)} jobs ({variants}/song), {cpu_h:.0f} CPU-h, "
           f"~${usd:.2f} of spot (ceiling ${args.max_usd:.2f})")
     if usd > args.max_usd:
         sys.exit(f"[submit] REFUSING: estimate ${usd:.2f} exceeds --max-usd ${args.max_usd:.2f}")
