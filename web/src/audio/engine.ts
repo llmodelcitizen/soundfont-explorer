@@ -4,7 +4,9 @@
  *
  * Invariants carried over from the MVP:
  *  - the audible chain is never released before its successor is scheduled
- *  - commit only when the target's buffer is decoded; on timeout keep playing the old one
+ *  - commit only when the target's buffer is decoded; on timeout keep playing the old one —
+ *    and when there is no old one to keep (play from pause/ended, seek), hold the playhead
+ *    (buffering) until the target decodes instead of letting it run on in silence
  *  - last select() wins (seq token); superseded selects are dropped, never queued
  */
 import { AUDIO, POLICY } from '../config';
@@ -85,6 +87,12 @@ export class Engine {
   private muted = false;
   /** true after the song ran to its end by itself (not a user pause): the next select() restarts it */
   private endedNaturally = false;
+  /**
+   * Buffering: play was asked for, but nothing is decoded at the playhead and nothing else is
+   * sounding, so the timeline is held (paused) there until the pending target commits.
+   * `playing` stays true — it reports the user's intent, not the timeline's state.
+   */
+  private buffering = false;
   readonly metrics = { switchLatencyMs: [] as number[] };
   private order: string[] = [];
   private cursorIndex = 0;
@@ -164,11 +172,11 @@ export class Engine {
   }
 
   get playing(): boolean {
-    return this.timeline.playing;
+    return this.timeline.playing || this.buffering;
   }
 
   play(): void {
-    if (this.timeline.playing) return;
+    if (this.playing) return;
     this.endedNaturally = false;
     this.timeline.play(); // from the end this restarts at 0
     this.restartAudible(AUDIO.SEAM_XFADE);
@@ -176,10 +184,11 @@ export class Engine {
 
   /** explicit user pause: selections made while paused stay silent until play() */
   pause(): void {
-    if (!this.timeline.playing) return;
+    if (!this.playing) return;
     this.endedNaturally = false;
     const now = this.ctx.currentTime;
-    this.timeline.pause(now);
+    this.timeline.pause(now); // no-op while buffering (already held)
+    this.buffering = false;
     this.audibleChain?.release(now, AUDIO.SWITCH_XFADE);
     this.audibleChain = null;
     if (this.pending) {
@@ -196,6 +205,7 @@ export class Engine {
     const now = this.ctx.currentTime;
     this.timeline.pause(now);
     this.timeline.seek(0, now);
+    this.buffering = false;
     this.audibleChain?.release(now, AUDIO.SWITCH_XFADE);
     this.audibleChain = null;
     if (this.pending) {
@@ -207,14 +217,14 @@ export class Engine {
   }
 
   toggle(): void {
-    if (this.timeline.playing) this.pause();
+    if (this.playing) this.pause();
     else this.play();
   }
 
   seek(pos: number): void {
     const now = this.ctx.currentTime;
     this.timeline.seek(pos, now);
-    if (this.timeline.playing) this.restartAudible(AUDIO.SEAM_XFADE);
+    if (this.playing) this.restartAudible(AUDIO.SEAM_XFADE);
   }
 
   setLoop(on: boolean): void {
@@ -279,7 +289,7 @@ export class Engine {
   private tryCommit(): void {
     const p = this.pending;
     if (!p || p.token !== this.seq) return;
-    if (!this.timeline.playing) {
+    if (!this.playing) {
       // paused: just redesignate; chains are rebuilt on play()
       this.setAudible(p.variant, null);
       this.pending = null;
@@ -288,10 +298,17 @@ export class Engine {
     const now = this.ctx.currentTime;
     const lead = Math.max(AUDIO.COMMIT_LEAD, this.startLead());
     const t0 = now + lead;
-    const u0 = this.timeline.unwrapped(t0);
+    const u0 = this.timeline.unwrapped(t0); // while held: the held position
     if (!this.timeline.loop && u0 >= this.set.duration_s) {
+      // past the end: nothing to schedule; tick() reports the end (and lifts a hold)
       this.pending = null;
       return;
+    }
+    if (this.buffering && this.decodedAt(p.variant, u0)) {
+      // held here waiting for exactly this: let the timeline run again so u0 plays at t0 —
+      // before the chain is built, since a chain binds to the timeline generation
+      this.timeline.play(t0);
+      this.buffering = false;
     }
     const old = this.audibleChain;
     const chain = new Chain(this.ctx, p.variant, this.set, this.store, this.timeline, this.master, 'l');
@@ -299,6 +316,15 @@ export class Engine {
       chain.destroy();
       const seg = segmentAt(this.set, 's', u0);
       this.store.request({ v: p.variant, tier: 's', i: seg.i }, PRIO.URGENT).catch(() => undefined);
+      if (!this.hasFallback()) {
+        // nothing sounds (play from pause/ended, or the chain a seek left stale): hold the playhead
+        // here until the target decodes. Letting it run on would chase a moving position, and a
+        // dropped target would leave nothing to re-arm the commit when the bytes finally land.
+        if (this.timeline.playing) this.timeline.pause(now);
+        this.buffering = true;
+        this.setStatus('loading', 'buffering', p.variant);
+        return;
+      }
       const waited = this.nowMs() - p.sinceMs;
       if (waited > AUDIO.SWITCH_TIMEOUT_MS) {
         this.pending = null;
@@ -322,6 +348,17 @@ export class Engine {
     this.setAudible(p.variant, chain.currentTier(t0 + 0.001));
     this.setStatus('playing');
     chain.fill(now);
+  }
+
+  /** a chain that is (and will keep) sounding at the current position if the target never loads */
+  private hasFallback(): boolean {
+    const c = this.audibleChain;
+    return !!c && !c.stale && !c.releasing;
+  }
+
+  /** a decoded buffer of either tier covers unwrapped position u for `variant` (what Chain.start() needs) */
+  private decodedAt(variant: string, u: number): boolean {
+    return (['l', 's'] as const).some((tier) => this.store.decoded.has(keyStr({ v: variant, tier, i: segmentAt(this.set, tier, u).i })));
   }
 
   private setAudible(v: string, tier: Tier | null): void {
@@ -378,12 +415,13 @@ export class Engine {
     this.tickN++;
     this.pool.reap(now);
     if (this.hysteresis && this.hysteresis.untilMs <= nowMs) this.dropHysteresis();
-    if (this.timeline.playing) {
+    if (this.playing) {
       if (this.timeline.loop) {
-        const n = this.timeline.rebase(now);
+        const n = this.timeline.rebase(now); // 0 while held
         if (n > 0) for (const c of this.pool.chains) c.shift(-n * this.set.duration_s);
-      } else if (this.timeline.ended(now)) {
+      } else if (this.timeline.ended(now) || (this.buffering && this.position() >= this.set.duration_s)) {
         this.timeline.pause(now);
+        this.buffering = false;
         this.audibleChain?.release(now, AUDIO.SWITCH_XFADE);
         this.audibleChain = null;
         this.endedNaturally = true;

@@ -128,6 +128,82 @@ describe('Engine', () => {
     expect(h.engine.status.kind).toBe('playing');
   });
 
+  it('play from pause into an undecoded position: nothing to fall back to → buffers (playhead held) past the timeout, then sounds from the held position', async () => {
+    const h = harness(30, 20);
+    h.engine.select('v0');
+    h.engine.play();
+    await h.run(300);
+    h.engine.pause();
+    const pos = h.engine.position();
+    h.ff.latencyMs = 12000; // the network stalls
+    h.engine.select('v25'); // group 1, none of whose packs are fetched yet; paused → designated only
+    await h.run(100);
+    h.engine.play();
+    await h.run(AUDIO.SWITCH_TIMEOUT_MS + 500);
+    // nothing is audible: "won't load — still on v25" would be a lie and would drop the target for good;
+    // the engine buffers instead — play intent kept, playhead held, target still pending
+    expect(h.engine.playing).toBe(true);
+    expect(h.liveSources().length).toBe(0);
+    expect(h.engine.position()).toBeCloseTo(pos, 3);
+    expect(h.engine.status.kind).toBe('loading');
+    expect(h.engine.status.target).toBe('v25');
+    await h.run(4500); // the stalled pack lands at ~12.4 s
+    expect(h.engine.status.kind).toBe('playing');
+    expect(h.engine.audible).toBe('v25');
+    expect(h.audibleTags().some((t) => t.startsWith('v25/'))).toBe(true);
+    // resumed from where it was held, not from wherever a free-running playhead would have got to
+    expect(h.engine.position()).toBeGreaterThan(pos);
+    expect(h.engine.position()).toBeLessThan(pos + 2);
+  });
+
+  it('seek into an undecoded position: the chain the seek left stale is no fallback → buffers at the seek target, then sounds from there', async () => {
+    const h = harness(30, 40);
+    for (let k = 0; k < 4; k++) h.ff.failUrls.add(`/a/test/l/rh-v0/00${k}.opus`); // scrub tier only
+    h.engine.select('v0');
+    h.engine.play();
+    await h.run(300);
+    h.ff.latencyMs = 12000;
+    h.engine.seek(15); // slice 7: prefetch only covers the current/next slices, so it is not decoded
+    await h.run(AUDIO.SWITCH_TIMEOUT_MS + 500);
+    expect(h.engine.playing).toBe(true);
+    expect(h.liveSources().length).toBe(0); // the pre-seek chain ran dry (stale chains never refill)
+    expect(h.engine.position()).toBeCloseTo(15, 6);
+    expect(h.engine.status.kind).toBe('loading');
+    await h.run(4100); // the stalled pack lands at ~12.3 s; slice 7 (14–16 s) is sounding (its successor is still 12 s out in this fake)
+    expect(h.engine.status.kind).toBe('playing');
+    expect(h.engine.pool.chains.filter((c) => !c.releasing).length).toBe(1);
+    expect(h.audibleTags()).toContain('v0/s/7');
+    expect(h.engine.position()).toBeGreaterThan(15);
+    expect(h.engine.position()).toBeLessThan(16);
+  });
+
+  it('while buffering: pause holds the target silently, and a seek past the end ends the song instead of sticking', async () => {
+    const h = harness(30, 20);
+    h.engine.select('v0');
+    h.engine.play();
+    await h.run(300);
+    h.engine.pause();
+    h.ff.latencyMs = 12000;
+    h.engine.select('v25');
+    h.engine.play();
+    await h.run(500);
+    expect(h.engine.playing).toBe(true);
+    expect(h.engine.status.kind).toBe('loading');
+    h.engine.pause();
+    await h.run(100);
+    expect(h.engine.playing).toBe(false);
+    expect(h.engine.status.kind).toBe('paused');
+    expect(h.engine.audible).toBe('v25');
+    h.engine.play();
+    await h.run(500);
+    expect(h.engine.playing).toBe(true);
+    expect(h.engine.status.kind).toBe('loading');
+    h.engine.seek(20);
+    await h.run(200);
+    expect(h.engine.playing).toBe(false);
+    expect(h.engine.status.kind).toBe('ended');
+  });
+
   it('last select wins: a burst of selects commits only the final one (no queueing)', async () => {
     const h = harness(30, 8, { decodeMs: 150 });
     h.engine.select('v0');
