@@ -61,5 +61,64 @@ class FollowTests(unittest.TestCase):
         os.remove(preview.cache_path(SHA))
 
 
+class OpenStreamTests(unittest.TestCase):
+    """open_stream(): the route must learn about a failed render before it commits to 200."""
+
+    def test_failed_before_output_raises_with_the_reason(self):
+        job = preview.Job(SHA)
+        job.error = "render failed (fluidsynth=1, ffmpeg=0)"
+        job.done.set()
+        with self.assertRaises(RuntimeError) as cm:
+            preview.open_stream(job)
+        self.assertIn("fluidsynth=1", str(cm.exception))
+
+    def test_failed_after_opening_an_empty_file_raises(self):
+        job = preview.Job(SHA)
+
+        def writer():
+            open(job.tmp, "wb").close()          # got a slot, then the pipeline died
+            time.sleep(0.2)
+            job.error = "boom"
+            os.remove(job.tmp)
+            job.done.set()
+
+        t = threading.Thread(target=writer)
+        t.start()
+        with self.assertRaises(RuntimeError) as cm:
+            preview.open_stream(job)
+        t.join()
+        self.assertEqual(str(cm.exception), "boom")
+
+    def test_success_streams_everything(self):
+        job = preview.Job(SHA)
+
+        def writer():
+            with open(job.tmp, "wb") as fh:
+                for part in (b"aa", b"bb"):
+                    fh.write(part)
+                    fh.flush()
+                    time.sleep(0.05)
+            os.replace(job.tmp, preview.cache_path(SHA))
+            job.done.set()
+
+        t = threading.Thread(target=writer)
+        t.start()
+        stream = preview.open_stream(job)      # returns once the first bytes exist
+        self.assertEqual(b"".join(stream), b"aabb")
+        t.join()
+        os.remove(preview.cache_path(SHA))
+
+    def test_close_reaches_follow(self):
+        job = preview.Job(SHA)
+        with open(job.tmp, "wb") as fh:
+            fh.write(b"x" * (64 * 1024 + 1))
+        stream = preview.open_stream(job)
+        stream.close()                          # client went away mid-stream
+        os.replace(job.tmp, preview.cache_path(SHA))
+        job.done.set()
+        self.assertEqual(b"".join(stream), b"")  # closed generators yield nothing more
+        os.remove(preview.cache_path(SHA))
+
+
 if __name__ == "__main__":
     unittest.main()

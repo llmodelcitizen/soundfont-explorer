@@ -151,7 +151,11 @@ def preview_mp3(sid: str):
         raise HTTPException(503, str(e)) from e
     if job is None:  # cached between the check and ensure()
         return FileResponse(preview.cached(entry["sha256"]), media_type="audio/mpeg")
-    return StreamingResponse(preview.follow(job), media_type="audio/mpeg")
+    try:
+        stream = preview.open_stream(job)
+    except RuntimeError as e:  # fluidsynth/ffmpeg failed before producing anything
+        raise HTTPException(500, f"preview render failed: {e}") from e
+    return StreamingResponse(stream, media_type="audio/mpeg")
 
 
 @router.get("/api/library.zip")

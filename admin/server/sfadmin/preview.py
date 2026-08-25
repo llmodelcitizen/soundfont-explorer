@@ -13,6 +13,7 @@ capped at 500 MB.
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -20,6 +21,8 @@ import threading
 import time
 
 from .config import get_config
+
+log = logging.getLogger("sfadmin.preview")
 
 CACHE_MAX_BYTES = 500 * 1024 * 1024
 RENDER_TIMEOUT_S = 600
@@ -107,6 +110,7 @@ def _render(job: Job, midi_path: str) -> None:
         _sweep()
     except Exception as e:
         job.error = str(e)
+        log.warning("preview %s failed: %s", job.sha256[:12], e)
         try:
             os.remove(job.tmp)
         except FileNotFoundError:
@@ -147,6 +151,25 @@ def follow(job: Job):
     finally:
         if fh is not None:
             fh.close()
+
+
+def open_stream(job: Job):
+    """follow(job) primed with its first chunk. Blocks until the render has produced bytes
+    and raises RuntimeError(job.error) if it failed before producing any, so the route can
+    answer an error status instead of a 200 with an empty body — which is what a failed
+    preview used to look like, with job.error never read (#19). A failure after the first
+    bytes still ends as a truncated stream; the status line is gone by then."""
+    gen = follow(job)
+    try:
+        first = next(gen)
+    except StopIteration:
+        raise RuntimeError(job.error or "render produced no output") from None
+    return _chain(first, gen)
+
+
+def _chain(first: bytes, gen):
+    yield first
+    yield from gen  # close() on this generator reaches follow()'s finally through yield from
 
 
 def doctor() -> dict:
