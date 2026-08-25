@@ -33,13 +33,21 @@ POLL_S = 30
 # describe_jobs answers `jobs: []` for a job Batch no longer knows — it forgets jobs some
 # days after they end, e.g. a run whose terminal state was never recorded because the
 # server was down. Retrying that forever kept the run live and every submit/prune 409'd
-# (#19). Ten polls (5 min) also covers describe_jobs lagging a fresh submit_job.
+# (#19). Ten CONSECUTIVE empties — ten calls with nine POLL_S sleeps between them, ~4.5 min
+# — also covers describe_jobs lagging a fresh submit_job.
 # An empty list is also the correct answer for a job id from ANOTHER region, so a box whose
 # region moved would call a live run failed here. Not guarded: the region comes from one
 # place (bundle.env, via config) for both submit and poll, and requiring an earlier
 # successful poll would bring back the forever-live run — the first poll after a restart,
 # which is exactly the case above, is the one that finds the job gone.
 MISSING_JOB_POLLS = 10
+# The same escape hatch for the other way describe_jobs can stop answering: revoked
+# credentials, a job queue/region that no longer exists, sustained throttling. Retrying
+# that forever leaves the run non-terminal, so active() stays truthy and every submit and
+# publish 409s until someone finds the manual Terminate button (#19). Deliberately much
+# larger than MISSING_JOB_POLLS (~30 min of CONSECUTIVE failures): unlike a forgotten job,
+# an API error says nothing about the run, and calling a live run failed parks the fleet.
+POLL_ERROR_POLLS = 60
 STAGE_EXCLUDES = ["--exclude", "import/*", "--exclude", "*__pycache__/*", "--exclude", "*.pyc"]
 # how long the background finisher waits for the publish mutex before recording an error:
 # long enough to sit out a Published-tab rebuild, short enough that a wedged writer cannot
@@ -50,8 +58,11 @@ FINISH_LOCK_WAIT_S = 1800
 # heuristic and blocks every later submit (#19)
 STAGE_TIMEOUT_S = 1800
 # backstop for that exemption: after this a submit still holding a record with no job id is
-# treated as crashed even if this process thinks its thread is alive
-SUBMIT_EXEMPT_S = 3600
+# treated as crashed even if this process thinks its thread is alive. _stage runs TWO syncs,
+# so a slow-but-healthy submit can legitimately reach 2 * STAGE_TIMEOUT_S; at exactly that
+# the reconciler would fail a live submit, park the fleet under it and leave the record
+# with a finished_at in the past (which empties the run's Logs box for ever) (#19).
+SUBMIT_EXEMPT_S = 2 * STAGE_TIMEOUT_S + 600
 
 
 def _now() -> str:
@@ -63,25 +74,57 @@ def _ms(iso: str) -> int:
 
 
 LOG_END_SLACK_MS = 60_000  # a terminated shard still logs for a few seconds after finished_at
-# A finished run's window is bounded by finished_at, but a live one's would grow with the
-# run — and the SPA re-reads every open log box every 5 s, so the walk has to stay O(1) in
-# run length. Half an hour of shard output is far more than the 100 events shown (#19).
-LIVE_TAIL_MS = 30 * 60_000
+# logs() walks every page of the window and keeps the last 100, and the SPA re-reads every
+# open log box every 5 s from a sync route (which pins an anyio worker for the whole
+# uncancellable walk) — so the window has to stay O(1) in run length at BOTH ends. A live
+# run's would otherwise grow with the run, and a finished multi-hour run was re-walked in
+# full on every request. Half an hour of shard output is far more than the 100 shown (#19).
+TAIL_WINDOW_MS = 30 * 60_000
 
 
 def _log_query(rec: dict, log_group: str, now_ms: int | None = None) -> dict:
-    """filter_log_events window for one run: from submit (or the last LIVE_TAIL_MS of a run
-    still going) to, once finished, shortly after the end — so a later run's shards never
-    show up in this run's tail. The log group is shared by every run."""
-    start = _ms(rec["submitted_at"])
+    """filter_log_events window for one run: the last TAIL_WINDOW_MS before now (still
+    going) or before finished_at, never reaching back past submit — so a later run's shards
+    never show up in this run's tail. The log group is shared by every run."""
     q = {"logGroupName": log_group}
     if rec.get("finished_at"):
-        q["endTime"] = _ms(rec["finished_at"]) + LOG_END_SLACK_MS
+        end = _ms(rec["finished_at"])
+        q["endTime"] = end + LOG_END_SLACK_MS
     else:
-        now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
-        start = max(start, now_ms - LIVE_TAIL_MS)
-    q["startTime"] = start
+        end = now_ms if now_ms is not None else int(time.time() * 1000)
+    q["startTime"] = max(_ms(rec["submitted_at"]), end - TAIL_WINDOW_MS)
     return q
+
+
+def _note_verdict(rec: dict, note: str) -> None:
+    """Record why the run ended the way it did — a job Batch has forgotten, describe_jobs
+    that stopped answering, a failed instance-type restore, a submit the reconciler gave up
+    on. Kept in `verdict`, its own field, for two reasons (#19):
+
+    * finish() has to be able to re-read it on every retry. Recovering it from
+      finisher.error instead meant guessing, from `ran_at`, whether that string was a
+      verdict or the last finisher's own failure — so the verdict was erased by exactly the
+      retry it explains (finisher fails ⇒ ran_at set ⇒ the click that fixes it clears it).
+    * notes accumulate. Assigning finisher.error wholesale meant a failed instance-type
+      restore overwrote the poll's verdict before finish() ever read it.
+
+    finisher.error mirrors it until the finisher runs, so the SPA (which shows only that
+    field) says something as soon as the run ends."""
+    notes = [n for n in (rec.get("verdict") or "").split("; ") if n]
+    if note not in notes:
+        notes.append(note)
+    rec["verdict"] = "; ".join(notes)
+    fin = rec.setdefault("finisher", {"ran_at": None, "songs_json_published": False,
+                                      "error": None})
+    if not fin.get("ran_at"):
+        fin["error"] = rec["verdict"]
+
+
+def _prior_verdict(rec: dict) -> str | None:
+    """What finish() carries into finisher.error. Records written before `verdict` existed
+    kept the verdict in finisher.error, and only an un-run finisher proves it is one."""
+    fin = rec.get("finisher") or {}
+    return rec.get("verdict") or (None if fin.get("ran_at") else fin.get("error")) or None
 
 
 def _tail_events(pages, limit: int) -> list[dict]:
@@ -153,14 +196,22 @@ class RunManager:
                 raise KeyError(rid)
             return self.runs[rid]
 
-    def active(self) -> dict | None:
-        """The run holding the single-writer resources: a live one, or a terminal one whose
-        finisher is still rebuilding songs.json — a new submit, a Published-tab remove/prune
-        or rebuild must wait for that too, or two writers race on songs.json (#19)."""
+    def active_phase(self) -> tuple[dict, bool] | None:
+        """The run holding the single-writer resources and whether it is in its finisher: a
+        live one, or a terminal one whose finisher is still rebuilding songs.json — a new
+        submit, a Published-tab remove/prune or rebuild must wait for that too, or two
+        writers race on songs.json (#19). Both facts come from one snapshot; asking
+        active() and then finishing() could see a finisher that completed in between and
+        report "a render run is live" for a run that is terminal and done."""
         with self.lock:  # one snapshot: a finish() starting between the two reads was missed
             finishing = set(self._finishing)
-            return next((r for r in self.list()
-                         if r["state"] not in TERMINAL or r["run_id"] in finishing), None)
+            rec = next((r for r in self.list()
+                        if r["state"] not in TERMINAL or r["run_id"] in finishing), None)
+            return None if rec is None else (rec, rec["run_id"] in finishing)
+
+    def active(self) -> dict | None:
+        phase = self.active_phase()
+        return phase[0] if phase else None
 
     def finishing(self, rid: str) -> bool:
         with self.lock:
@@ -171,8 +222,11 @@ class RunManager:
     def plan(self, songs: list[str], shards: int, variants: int | None = None,
              engines: list[str] | None = None, limit: int | None = None) -> dict:
         """Shards + cost estimate under the run's knobs. The per-song job count comes from
-        catalog/variants.json narrowed by `engines` and capped by `limit`; `variants` is
-        an explicit override of that count (the old --variants knob)."""
+        catalog/variants.json narrowed by `engines`; `variants` is an explicit override of
+        that count (the old --variants knob). `limit` does NOT narrow it — it is a
+        per-SHARD cap the fleet applies to the shard's flat job list, so folding it in here
+        made the record claim "5 variants per song" for a run that still plans all of
+        them (#19). It reaches the counts through job_count/estimate instead."""
         planner = _planner()
         import pathlib
         repo = pathlib.Path(self.cfg.repo)
@@ -183,9 +237,9 @@ class RunManager:
                              + ("…" if len(unknown) > 5 else ""))
         plan = planner.plan_shards(songs, shards, durations)
         counts, unavailable = planner.engine_availability(repo)
-        per_song = planner.variants_per_song(counts, engines, limit, unavailable)
+        per_song = planner.variants_per_song(counts, engines, None, unavailable)
         if variants:
-            per_song = min(variants, limit) if limit else variants
+            per_song = variants
         # --limit is per shard, not per song: the job count is summed over the shards (#19)
         cpu_h, usd = planner.estimate(plan, per_song, limit)
         return {"shards": plan, "jobs": planner.job_count(plan, per_song, limit),
@@ -199,10 +253,11 @@ class RunManager:
                variants: int | None = None) -> dict:
         if not self.cfg.render_enabled:
             raise RuntimeError("render fleet is not deployed (empty render config)")
-        cur = self.active()
+        cur = self.active_phase()
         if cur:
-            phase = "finishing (indexing what it published)" if cur["state"] in TERMINAL else cur["state"]
-            raise RuntimeError(f"run {cur['run_id']} is still {phase}")
+            rec_, is_finishing = cur
+            phase = "finishing (indexing what it published)" if is_finishing else rec_["state"]
+            raise RuntimeError(f"run {rec_['run_id']} is still {phase}")
         est = self.plan(songs, shards, variants, engines, limit)
         if est["usd"] > max_usd:
             raise ValueError(f"estimate ${est['usd']:.2f} exceeds max ${max_usd:.2f} — raise it deliberately")
@@ -225,6 +280,7 @@ class RunManager:
             "batch_job_id": None, "submitted_at": _now(), "finished_at": None,
             "status_summary": {}, "published_sets": {},
             "instance_types_before": None, "instance_types_restored": True,
+            "verdict": None,
             "finisher": {"ran_at": None, "songs_json_published": False, "error": None},
         }
         with self.lock:
@@ -260,10 +316,17 @@ class RunManager:
                 kwargs["containerOverrides"] = {"resourceRequirements": overrides}
             rec["batch_job_id"] = batch.submit_job(**kwargs)["jobId"]
             rec["state"] = "running"
+            # the reconciler may have declared this submit wedged while it was staging
+            # (SUBMIT_EXEMPT_S). The job is real, so the record goes back to live: a
+            # leftover finished_at puts the run's log window in the past and empties its
+            # Logs box for ever, and the leftover verdict describes a run that did start.
+            rec["finished_at"] = None
+            rec["verdict"] = None
+            rec["finisher"]["error"] = None
             self._put(rec)
         except Exception as e:
             rec["state"] = "failed"
-            rec["finisher"]["error"] = f"submit failed: {e}"
+            _note_verdict(rec, f"submit failed: {e}")
             rec["finished_at"] = _now()
             self._put(rec)
             self._sleep_fleet(rec)
@@ -316,14 +379,29 @@ class RunManager:
 
     def _poll(self, rec: dict, batch, sleep=time.sleep) -> None:
         """Follow the Batch job until the run is terminal — Batch says so, terminate() did,
-        or Batch has stopped knowing the job at all (MISSING_JOB_POLLS)."""
-        missing = 0
+        Batch has stopped knowing the job at all (MISSING_JOB_POLLS consecutive empty
+        answers) or describe_jobs has stopped answering (POLL_ERROR_POLLS)."""
+        missing = errors = 0
         while rec["state"] not in TERMINAL:
             try:
                 jobs = batch.describe_jobs(jobs=[rec["batch_job_id"]])["jobs"]
-            except Exception:  # transient API error
-                sleep(POLL_S)
-                continue
+            except Exception as e:  # transient API error
+                errors += 1
+                # both counters are CONSECUTIVE runs, so an error must clear `missing`:
+                # without this, empties spread over hours by intermittent throttling added
+                # up to the grace count and failed a live run (#19)
+                missing = 0
+                if errors < POLL_ERROR_POLLS:
+                    sleep(POLL_S)
+                    continue
+                rec["state"] = "failed"
+                rec["status_summary"] = {"UNKNOWN": 1}
+                _note_verdict(rec, f"describe_jobs failed {errors} polls in a row ({e}); "
+                                   "the job may still be running — check Batch")
+                rec["finished_at"] = _now()
+                self._put(rec)
+                return
+            errors = 0
             if not jobs:
                 missing += 1
                 if missing < MISSING_JOB_POLLS:
@@ -331,9 +409,9 @@ class RunManager:
                     continue
                 rec["state"] = "failed"
                 rec["status_summary"] = {"UNKNOWN": 1}
-                rec["finisher"]["error"] = (f"Batch job {rec['batch_job_id']} is unknown to "
-                                            f"describe_jobs ({missing} polls): expired or never ran; "
-                                            "outcome unknown")
+                _note_verdict(rec, f"Batch job {rec['batch_job_id']} is unknown to "
+                                   f"describe_jobs ({missing} polls): expired or never ran; "
+                                   "outcome unknown")
                 rec["finished_at"] = _now()
                 self._put(rec)
                 return
@@ -376,7 +454,9 @@ class RunManager:
                 rec["instance_types_restored"] = True
                 self._put(rec)
         except Exception as e:
-            rec["finisher"]["error"] = f"instance-type restore failed: {e}"
+            # appended, not assigned: this runs one line after _poll, and overwriting the
+            # dict dropped the poll's verdict before finish() could carry it over (#19)
+            _note_verdict(rec, f"instance-type restore failed: {e}")
             self._put(rec)
         try:
             batch.update_compute_environment(computeEnvironment=self.cfg.compute_env, state="DISABLED")
@@ -414,10 +494,9 @@ class RunManager:
                 # crashed between record write and submit-job; nothing is running
                 if age > 300:
                     rec["state"] = "failed"
-                    rec["finisher"]["error"] = (
-                        f"submit was still staging after {int(age)}s — wedged"
-                        if rec["run_id"] in submitting else
-                        "no Batch job was ever submitted (crash during submit)")
+                    _note_verdict(rec, f"submit was still staging after {int(age)}s — wedged"
+                                  if rec["run_id"] in submitting else
+                                  "no Batch job was ever submitted (crash during submit)")
                     rec["finished_at"] = _now()
                     self._put(rec)
                     self._sleep_fleet(rec)
@@ -452,12 +531,11 @@ class RunManager:
                 raise RuntimeError(f"the finisher for run {rid} is already running")
             self._finishing.add(rid)
         try:
-            # a verdict recorded before the finisher ever ran (a job Batch forgot, a failed
-            # instance-type restore) is the operator's only explanation of the run, and
-            # replacing the whole dict here dropped it (#19). A previous finisher's own
-            # error is not carried over: a retry that works clears it.
-            fin = rec.get("finisher") or {}
-            prior = None if fin.get("ran_at") else fin.get("error")
+            # the verdict (a job Batch forgot, a failed instance-type restore, …) is the
+            # operator's only explanation of the run, and replacing the whole dict here
+            # dropped it (#19). A previous finisher's own error is NOT carried over: a
+            # retry that works clears it, and only it.
+            prior = _prior_verdict(rec)
             try:
                 with publocks.exclusive(f"finisher for run {rid}", timeout=lock_wait):
                     publishops.sync_down()

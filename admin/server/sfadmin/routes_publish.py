@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 from . import bootstrapstate, publishops, publocks
 from .config import get_config
-from .renders import TERMINAL, get_manager
+from .renders import get_manager
 
 router = APIRouter()
 
@@ -20,13 +20,18 @@ def _guard():
 def _no_active_run() -> None:
     """UX guard: a live run's shards are publishing sets this rebuild would index halfway.
     It is check-then-act (the run can go terminal, or its finisher can start, right after
-    this returns), so it is not what keeps two writers off songs.json — publocks is (#19)."""
+    this returns), so it is not what keeps two writers off songs.json — publocks is (#19).
+
+    The phase comes back with the run from one snapshot: re-asking finishing() afterwards
+    could miss a finisher that completed in between and answer "a render run is live" for a
+    run that is terminal and done (#19)."""
     if not get_config().render_enabled:
         return
-    cur = get_manager().active()
-    if not cur:
+    phase = get_manager().active_phase()
+    if not phase:
         return
-    if cur["state"] in TERMINAL and get_manager().finishing(cur["run_id"]):
+    cur, is_finishing = phase
+    if is_finishing:
         raise HTTPException(409, f"run {cur['run_id']} is finishing — it is indexing what it "
                                  "published; try again in a moment")
     raise HTTPException(409, "a render run is live — shards are publishing; try after it finishes")
