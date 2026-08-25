@@ -20,12 +20,22 @@ import planner  # noqa: E402,F401  (pre-imported so renders._planner() resolves 
 from sfadmin import renders  # noqa: E402
 
 
+class FakeS3:
+    def __init__(self):
+        self.puts: list = []
+
+    def put_object(self, **kw):
+        self.puts.append(kw)
+
+
 class FakeCfg:
     def __init__(self, repo: str):
         self.repo = repo
         self.render_enabled = True
         self.log_group = "/aws/batch/test"
         self.compute_env = "ce"
+        self.fonts_bucket = "fonts"
+        self.s3 = FakeS3()
 
 
 class FakeManager(renders.RunManager):
@@ -175,6 +185,26 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(self.m.runs["r1"]["state"], "failed")
         self.assertIn("crash during submit", self.m.runs["r1"]["finisher"]["error"])
         self.assertEqual(self.m.slept, ["r1"])
+
+    def test_a_wedged_submit_stops_being_exempt(self):
+        """The exemption is bounded: a submit whose staging never returns used to keep the
+        run live for ever, which blocks every later submit and parks no compute (#19)."""
+        self.m._submitting.add("r1")
+        with unittest.mock.patch.dict(sys.modules, {"boto3": unittest.mock.MagicMock()}):
+            self.m._reconcile_once(now=self.t0 + renders.SUBMIT_EXEMPT_S - 60)
+            self.assertEqual(self.m.runs["r1"]["state"], "staged")
+            self.m._reconcile_once(now=self.t0 + renders.SUBMIT_EXEMPT_S + 60)
+        self.assertEqual(self.m.runs["r1"]["state"], "failed")
+        self.assertIn("wedged", self.m.runs["r1"]["finisher"]["error"])
+        self.assertIsNone(self.m.active())          # and submits are possible again
+
+    def test_staging_syncs_have_a_timeout(self):
+        # subprocess.run(check=True) with no timeout is what wedges a submit
+        with unittest.mock.patch.object(renders.subprocess, "run") as run:
+            self.m._stage([{"songs": ["a"]}])
+        self.assertTrue(run.call_args_list)
+        for call in run.call_args_list:
+            self.assertEqual(call.kwargs.get("timeout"), renders.STAGE_TIMEOUT_S)
 
     def test_live_run_is_readopted(self):
         self.m.runs["r1"]["batch_job_id"] = "job-9"

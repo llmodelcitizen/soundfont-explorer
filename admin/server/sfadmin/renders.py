@@ -265,9 +265,12 @@ class RunManager:
         cfg.s3.put_object(Bucket=cfg.fonts_bucket, Key="shards.json",
                           Body=json.dumps(plan, indent=1).encode(), ContentType="application/json")
         for sub in ("songs", "catalog"):
+            # a timeout, so a wedged sync fails the submit instead of leaving the run
+            # "submitting" for ever (which exempts it from the crash heuristic) (#19)
             subprocess.run(["aws", "s3", "sync", os.path.join(cfg.repo, sub),
                             f"s3://{cfg.fonts_bucket}/{sub}/", "--delete",
-                            "--only-show-errors", *STAGE_EXCLUDES], check=True)
+                            "--only-show-errors", *STAGE_EXCLUDES],
+                           check=True, timeout=STAGE_TIMEOUT_S)
 
     # ------------------------------------------------------------ watch + reconcile
 
@@ -385,16 +388,22 @@ class RunManager:
             if rec["state"] in TERMINAL:
                 continue
             if not rec["batch_job_id"]:
-                if rec["run_id"] in submitting:
+                age = (now if now is not None else time.time()) - _ms(rec["submitted_at"]) / 1000
+                if rec["run_id"] in submitting and age <= SUBMIT_EXEMPT_S:
                     # submit() is still staging in this process; it may already have ENABLED
-                    # the CE, so this counts as live (a crash empties the set: restart case)
+                    # the CE, so this counts as live (a crash empties the set: restart case).
+                    # The exemption is bounded: _stage's sync has a timeout, so a submit
+                    # still in flight an hour on is wedged, and letting it keep the run
+                    # "live" would block every later submit and park no compute (#19).
                     live = True
                     continue
                 # crashed between record write and submit-job; nothing is running
-                age = (now if now is not None else time.time()) - _ms(rec["submitted_at"]) / 1000
                 if age > 300:
                     rec["state"] = "failed"
-                    rec["finisher"]["error"] = "no Batch job was ever submitted (crash during submit)"
+                    rec["finisher"]["error"] = (
+                        f"submit was still staging after {int(age)}s — wedged"
+                        if rec["run_id"] in submitting else
+                        "no Batch job was ever submitted (crash during submit)")
                     rec["finished_at"] = _now()
                     self._put(rec)
                     self._sleep_fleet(rec)
