@@ -105,6 +105,9 @@ export class App {
       }
     },
     onResetTrack: () => {
+      // read at click time on purpose: `this.song` is whatever loadSong() last installed, so the
+      // button resets the track the user is on now — playing or stopped — not the one that was
+      // on when they opened Settings
       this.ledger.resetSong(this.song.id);
       this.refreshListened();
     },
@@ -118,7 +121,6 @@ export class App {
       this.syncFontCycler();
       if (this.tracks) this.tracks.refit();
     },
-    trackTitle: () => this.song?.title ?? '',
     onClose: () => this.focusList(),
   });
   private lastListenTick = 0;

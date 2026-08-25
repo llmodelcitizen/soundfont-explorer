@@ -1032,8 +1032,16 @@ kbd {
 }
 
 /* settings */
+/* The widest of the overlay boxes, and the only one that needs to be: the column checkboxes are a
+   three-column grid, and each of the three rows under them is a button beside its own explanation
+   with no room to wrap (.colfoot is `nowrap`). At the 480px the other dialogs share, all three of
+   those explanations ran to two lines. Raising the cap to 600px gives every one of them a single
+   line, which is 26px of window height that no longer has to fit on a short viewport.
+   min-width stays as it was: on a phone the overlay's own padding is the real limit, and 92vw is
+   already narrower than either cap, so nothing about the phone layout changes. */
 .settings {
   min-width: min(440px, 92vw);
+  max-width: 600px;
 }
 .settings .setting {
   margin: 10px 0 14px;
@@ -1049,8 +1057,13 @@ kbd {
   padding: 2px 6px;
   border-radius: var(--radius);
 }
+/* The 'listened after' slider is the one control that sets its own width. Chromium's UA sheet
+   gives a range 2px of side margin, so `width: 100%` lands 4px wider than the box it sits in —
+   enough for a horizontal scrollbar, and (the scroller's height being its content's) a vertical
+   one behind it. Take the side margins off; the width rule already places it. */
 .settings input[type='range'] {
   width: 100%;
+  margin-inline: 0;
   accent-color: var(--accent);
 }
 .settings .btnrow {

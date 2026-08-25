@@ -10,10 +10,15 @@ import { activeElement, restoreFocus, trapTab } from './focus';
 
 export interface SettingsCallbacks {
   onChange(p: Prefs): void;
+  /**
+   * Forget the listened marks of the track that is current *at the moment of the click* — playing
+   * or stopped. The dialog deliberately holds no track of its own: it used to name one below the
+   * button, which froze at the moment the dialog opened and then lied as soon as the track
+   * changed underneath it (the window keymap steps tracks with [ and ] through an open dialog).
+   */
   onResetTrack(): void;
   onResetAll(): void;
   onResetFont(): void;
-  trackTitle(): string;
   /** where focus goes when the dialog closes and the control that opened it is gone */
   onClose?(): void;
 }
@@ -128,7 +133,9 @@ export class SettingsModal {
       });
       return h('label', { class: 'preserve', title }, box, ` ${label}`);
     };
-    const resetTrack = h('button', { class: 'btn', type: 'button' }, `reset for this track`);
+    // "this track" is resolved by the click, not by the render: the dialog does not know (or
+    // cache) which track that is, so it stays right while tracks change underneath it.
+    const resetTrack = h('button', { class: 'btn', type: 'button', title: 'Forget which variants you have listened to on the track that is current now' }, 'reset for this track');
     resetTrack.addEventListener('click', () => this.cb.onResetTrack());
     const resetAll = h('button', { class: 'btn', type: 'button' }, 'reset for all tracks');
     resetAll.addEventListener('click', () => {
@@ -171,7 +178,6 @@ export class SettingsModal {
           h('label', null, 'Mark a variant as listened (', h('span', { class: 'listened-glyph' }, '●'), ') after ', input, ' s of playback'),
           range,
           h('div', { class: 'btnrow' }, resetTrack, resetAll),
-          h('p', { class: 'muted small' }, `current track: ${this.cb.trackTitle()}`),
         ),
         h(
           'section',

@@ -357,7 +357,7 @@ describe('ShareDialog (#30)', () => {
 });
 
 describe('SettingsModal full screen (#34)', () => {
-  const callbacks = (onClose = vi.fn()) => ({ onChange: vi.fn(), onResetTrack: vi.fn(), onResetAll: vi.fn(), onResetFont: vi.fn(), trackTitle: () => 'a track', onClose });
+  const callbacks = (onClose = vi.fn()) => ({ onChange: vi.fn(), onResetTrack: vi.fn(), onResetAll: vi.fn(), onResetFont: vi.fn(), onClose });
   const settingsModal = (onClose = vi.fn()) => {
     const settings = new SettingsModal({ ...DEFAULT_PREFS }, callbacks(onClose));
     document.body.append(settings.el);
@@ -488,6 +488,50 @@ describe('SettingsModal full screen (#34)', () => {
     expect(document.activeElement).toBe(first);
     expect(a.ab).not.toHaveBeenCalled();
     uninstall();
+  });
+});
+
+describe('SettingsModal "reset for this track"', () => {
+  const open = (onResetTrack: () => void = vi.fn()) => {
+    const settings = new SettingsModal({ ...DEFAULT_PREFS }, { onChange: vi.fn(), onResetTrack, onResetAll: vi.fn(), onResetFont: vi.fn() });
+    document.body.append(settings.el);
+    settings.toggle(true);
+    return settings;
+  };
+  const resetButton = (settings: SettingsModal) =>
+    Array.from(settings.el.querySelectorAll('.settings .btn')).find((b) => b.textContent?.trim() === 'reset for this track') as HTMLButtonElement;
+
+  it('resets the track that is current when it is clicked, not the one that was current when the dialog opened', () => {
+    // stands in for the app's `this.song`: the track the button really means, read at click time
+    let current = 'the track we opened on';
+    const reset: string[] = [];
+    const settings = open(() => void reset.push(current));
+
+    current = 'the track that is on now';
+    resetButton(settings).click();
+
+    expect(reset).toEqual(['the track that is on now']);
+  });
+
+  it('cannot assume the track stood still: [ and ] step tracks through an open dialog', () => {
+    const settings = open();
+    const a = actions();
+    const uninstall = installKeyboard(window as unknown as Window, a);
+
+    // the dialog stops only Escape, so the window keymap still steps tracks underneath it — which
+    // is why the dialog must not remember a track of its own
+    press(settings.el.querySelector('.close-settings')!, ']');
+
+    expect(a.song).toHaveBeenCalledWith(1);
+    uninstall();
+  });
+
+  it('names no track, so there is nothing in the dialog that can go stale', () => {
+    const settings = open();
+
+    expect(settings.el.textContent).not.toMatch(/current track/i);
+    // the button still says what it acts on; its tooltip says when it decides which track that is
+    expect(resetButton(settings).title).toMatch(/now/);
   });
 });
 
