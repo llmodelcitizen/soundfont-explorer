@@ -293,6 +293,8 @@ const shard = (over: Record<string, unknown> = {}) => ({
   stage_s: 80,
   render_rc: null,
   render_s: null,
+  excluded: null,
+  excluded_detail: null,
   published: [],
   problems: [],
   phases: null,
@@ -395,6 +397,24 @@ describe('RunsView logs', () => {
     button(v, '← all shards').click();
     await until(() => !!v.root.querySelector('.srow'));
     expect(v.root.querySelector('.rawtail')).toBeNull();
+  });
+
+  it('shows excluded variants as an outcome, not as a problem', async () => {
+    const ff = api()
+      .on('GET', '/api/runs', () => ({ runs: [run({ state: 'running' })] }))
+      .on('GET', '/api/runs/r1/logs', () => logdoc([shard({
+        excluded: 12,
+        excluded_detail: '11 peak-unsafe (worst -1.310 dBTP vs -1.5 ceiling), 1 silent',
+      })]));
+    const v = mount(ff);
+    await v.load();
+    button(v, 'Logs').click();
+    await until(() => !!v.root.querySelector('.srow'));
+    expect(v.root.querySelector('.srow')!.textContent).toContain('12 excluded');
+    expect(v.root.querySelector('.srow-detail')!.textContent).toContain('11 peak-unsafe');
+    // not a problem: no red box, no problem count in the header
+    expect(v.root.querySelector('.sproblem')).toBeNull();
+    expect(v.root.querySelector('.loghead')!.classList.contains('bad')).toBe(false);
   });
 
   it('surfaces a shard’s !! lines instead of burying them in the tail', async () => {

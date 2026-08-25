@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+from sfr import manifest
 from sfr.config import Paths
 from sfr.jobs import Job, write_meta
 from sfr import validate as validate_mod
@@ -375,3 +376,85 @@ class TestManifest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConcurrentManifestTests(unittest.TestCase):
+    """Cloud shards publish several songs at once (#25), so several `sfr manifest` processes
+    share one out/public. The shared /c document is where they collide.
+
+    Live symptom (shard 5, 2026-08-25): FileNotFoundError renaming
+    '/scratch/out/public/c/3293b7261900.json.tmp' -> '.../3293b7261900.json', and
+    misc-slayer-criminally-insane did not publish at all.
+    """
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.addCleanup(self.td.cleanup)
+        self.c = Path(self.td.name) / "public" / "c"
+        self.c.mkdir(parents=True)
+
+    def test_a_sweep_does_not_delete_another_writer_s_in_flight_temp(self):
+        """_sweep removes stale documents; a temp about to be renamed is not one."""
+        inflight = self.c / f"abc.json.999.deadbeef{manifest.TMP_SUFFIX}"
+        inflight.write_bytes(b"{}")
+        (self.c / "stale.json").write_bytes(b"{}")
+        manifest._sweep(self.c, {"keep.json"})
+        self.assertTrue(inflight.exists(), "an in-flight temp was swept away mid-rename")
+        self.assertFalse((self.c / "stale.json").exists())
+
+    def test_two_writers_do_not_share_a_temp_path(self):
+        seen = set()
+        real = Path.write_bytes
+
+        def spy(self_, data):
+            if manifest.TMP_SUFFIX in self_.name:
+                seen.add(self_.name)
+            return real(self_, data)
+
+        with mock.patch.object(Path, "write_bytes", spy):
+            for i in range(4):
+                manifest._write(self.c / "same.json", f'{{"n":{i}}}'.encode())
+        self.assertEqual(len(seen), 4, f"temp names collided: {seen}")
+
+    def test_concurrent_writes_to_one_document_all_succeed(self):
+        """The exact failure: several writers, one content-addressed path, sweeps in between."""
+        errors: list[BaseException] = []
+        start = threading.Barrier(6)
+
+        def writer(n: int):
+            try:
+                start.wait(timeout=5)
+                for _ in range(15):
+                    manifest._write(self.c / "cat.json", b'{"catalog":1}')
+                    manifest._sweep(self.c, {"cat.json"})
+            except BaseException as e:      # noqa: BLE001 — the test IS whether this happens
+                errors.append(e)
+
+        ts = [threading.Thread(target=writer, args=(i,)) for i in range(6)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join(timeout=30)
+        self.assertEqual(errors, [], f"concurrent publish raised: {errors[:2]}")
+        self.assertTrue((self.c / "cat.json").exists())
+        leftover = [p.name for p in self.c.iterdir() if manifest.TMP_SUFFIX in p.name]
+        self.assertEqual(leftover, [], f"temps left behind: {leftover}")
+
+    def test_the_catalog_lock_serialises_the_shared_write(self):
+        """Unique names stop a path collision; the lock stops a DIRECTORY collision, which is
+        what happens when two publishes compute different catalog hashes."""
+        paths = Paths(work=Path(self.td.name) / "work", out=Path(self.td.name) / "out")
+        order: list[str] = []
+        with manifest._catalog_lock(paths):
+            order.append("outer-in")
+
+            def other():
+                with manifest._catalog_lock(paths):
+                    order.append("inner")
+            t = threading.Thread(target=other)
+            t.start()
+            t.join(timeout=0.3)
+            self.assertTrue(t.is_alive(), "the second holder was not blocked")
+            order.append("outer-out")
+        t.join(timeout=5)
+        self.assertEqual(order, ["outer-in", "outer-out", "inner"])

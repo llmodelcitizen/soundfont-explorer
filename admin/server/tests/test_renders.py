@@ -457,6 +457,15 @@ class ShardStateTests(unittest.TestCase):
         got = self.fold([ev(1, "Traceback (most recent call last):")])[None]
         self.assertEqual(len(got["problems"]), 1)
 
+    def test_excluded_variants_are_kept_apart_from_problems(self):
+        """Silent fonts and #27's peak ceiling are outcomes, not faults — but they explain
+        why a song published 550 of 566, so they must be visible."""
+        got = self.fold([ev(1, "[shard 2] excluded 12 variant(s): 11 peak-unsafe "
+                              "(worst -1.310 dBTP vs -1.5 ceiling), 1 silent")])[2]
+        self.assertEqual(got["excluded"], 12)
+        self.assertIn("11 peak-unsafe", got["excluded_detail"])
+        self.assertEqual(got["problems"], [])
+
     def test_the_phases_summary_is_parsed_as_json(self):
         blob = '{"shard": 5, "wall_s": 1000.0, "tail_fraction": 0.26}'
         got = self.fold([ev(1, f"[shard 5] phases {blob}")])[5]

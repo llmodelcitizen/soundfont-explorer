@@ -159,6 +159,7 @@ _STAGED = re.compile(r"^staged (?P<fonts>\d+) fonts \((?P<gib>[\d.]+) GiB\).*?(?
 _PUBLISHED = re.compile(r"^published (?P<song>\S+): (?P<variants>\d+) variants")
 _RENDER_DONE = re.compile(r"^render finished rc=(?P<rc>-?\d+) in (?P<secs>\d+)s")
 _PHASES = re.compile(r"^phases (?P<blob>\{.*\})", re.S)
+_EXCLUDED = re.compile(r"^excluded (?P<n>\d+) variant\(s\): (?P<detail>.+)", re.S)
 
 
 def _int(m, key: str):
@@ -171,6 +172,7 @@ def _blank_shard(stream: str) -> dict:
             "done": None, "total": None, "failed": None, "skipped": None, "running": None,
             "workers": None, "eta_s": None, "elapsed_s": None, "mem_free": None,
             "staged_fonts": None, "staged_gib": None, "stage_s": None, "render_rc": None,
+            "excluded": None, "excluded_detail": None,
             "render_s": None, "published": [], "problems": [], "phases": None,
             "updated_at": None, "last": None}
 
@@ -232,6 +234,13 @@ def shard_states(events: list[dict]) -> list[dict]:
         if sub:
             st["published"].append({"song": sub.group("song"),
                                     "variants": int(sub.group("variants"))})
+            continue
+        sub = _EXCLUDED.match(rest)
+        if sub:
+            # excluded variants are an outcome, not a fault: silent fonts and #27's peak
+            # ceiling. Shown because "550 of 566 published" is otherwise unexplained.
+            st["excluded"] = int(sub.group("n"))
+            st["excluded_detail"] = sub.group("detail").strip()
             continue
         sub = _RENDER_DONE.match(rest)
         if sub:

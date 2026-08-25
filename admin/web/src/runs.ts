@@ -59,6 +59,8 @@ interface ShardState {
   stage_s: number | null;
   render_rc: number | null;
   render_s: number | null;
+  excluded: number | null;
+  excluded_detail: string | null;
   published: { song: string; variants: number }[];
   problems: string[];
   phases: Record<string, number> | null;
@@ -385,8 +387,12 @@ export class RunsView {
     if (s.stage_s !== null && s.phase !== 'staging') facts.push(`staged in ${dur(s.stage_s)}`);
     if (s.render_s !== null) facts.push(`rendered in ${dur(s.render_s)}`);
     if (s.published.length) facts.push(`${s.published.length} published`);
+    // an outcome, not a fault: silent fonts and the #27 peak ceiling. Without it, "550 of 566
+    // published" looks like something went wrong and nothing says what.
+    if (s.excluded) facts.push(`${s.excluded} excluded`);
     const tail = el('div', { class: 'srow-detail' },
-      el('span', { class: 'dimtext' }, s.songs.join(', ') || (s.last ?? '')));
+      el('span', { class: 'dimtext' },
+        s.excluded_detail ? `excluded: ${s.excluded_detail}` : (s.songs.join(', ') || (s.last ?? ''))));
     if (s.stream) {
       const rawBtn = el('button', { class: 'linky' }, 'raw');
       rawBtn.onclick = async () => { this.rawStream.set(rid, s.stream); await this.refreshLogs(rid); };

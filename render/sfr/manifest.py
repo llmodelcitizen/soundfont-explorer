@@ -5,11 +5,14 @@ and writes the three documents. Content-addressed documents never contain timest
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
 import shutil
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -31,27 +34,67 @@ def _content_hash(blob: bytes, n: int = 12) -> str:
     return hashlib.sha256(blob).hexdigest()[:n]
 
 
+# In-flight temporaries are marked so _sweep() can recognise a CONCURRENT writer's file and
+# leave it alone. Cloud shards publish several songs at once (#25), which means several
+# `sfr manifest` processes share one out/public.
+TMP_SUFFIX = ".inflight-tmp"
+
+
 def _write(path: Path, blob: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.read_bytes() == blob:
         return
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_bytes(blob)
-    tmp.replace(path)
+    # The temp name must be unique per writer. With a fixed "<name>.tmp", two concurrent
+    # manifests writing the same content-addressed document raced on one path, and _sweep()
+    # below deleted the loser's temp before its own rename could run — FileNotFoundError, and
+    # the song did not publish at all (shard 5 of the 2026-08-25 run lost
+    # misc-slayer-criminally-insane to exactly this).
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}{TMP_SUFFIX}")
+    try:
+        tmp.write_bytes(blob)
+        tmp.replace(path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
 
 
 def _sweep(dirpath: Path, keep: set[str], *, dirs: bool = False) -> None:
     """Remove stale content-addressed siblings (files, or directories with dirs=True) so out/public
-    mirrors the current state."""
+    mirrors the current state.
+
+    Never removes another writer's in-flight temporary: deleting one breaks the rename it is
+    about to become, which is not a stale document but a publish in progress."""
     if not dirpath.exists():
         return
     for p in dirpath.iterdir():
-        if p.name in keep:
+        if p.name in keep or p.name.endswith(TMP_SUFFIX):
             continue
         if dirs and p.is_dir():
             shutil.rmtree(p)
         elif not dirs and p.is_file():
             p.unlink()
+
+
+@contextlib.contextmanager
+def _catalog_lock(paths: Paths):
+    """Serialise the shared /c write across concurrent `sfr manifest` processes.
+
+    /s/<song>/ is song-scoped and safe to write in parallel, but /c is one document shared by
+    every song, so two publishes racing there can each sweep away the other's work. Unique temp
+    names (above) stop them colliding on a path; this stops them colliding on the DIRECTORY,
+    which matters when their catalogs differ and each sweep would delete the other's document.
+    The lock is held only for the catalog write, not for the minutes of validation and packing
+    that the publish pool exists to overlap.
+
+    The lockfile lives under work/, never under out/public: everything in public is uploaded."""
+    paths.work.mkdir(parents=True, exist_ok=True)
+    with open(paths.work / ".catalog.lock", "w") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
 
 
 FACET_KEYS = ("engine", "chip", "type", "completeness", "bank_map", "size", "lineage", "decade", "quality")
@@ -175,8 +218,9 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
     catalog = build_catalog(variants, engines_json)
     cblob = _dump(catalog)
     chash = _content_hash(cblob)
-    _write(public / "c" / f"{chash}.json", cblob)
-    _sweep(public / "c", {f"{chash}.json"})
+    with _catalog_lock(paths):
+        _write(public / "c" / f"{chash}.json", cblob)
+        _sweep(public / "c", {f"{chash}.json"})
 
     vmap = {v["id"]: v for v in variants}
     song_entries = []

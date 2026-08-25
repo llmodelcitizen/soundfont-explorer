@@ -14,7 +14,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 # the image puts render/sfr and render/cloud side by side under /opt and sets PYTHONPATH=/opt, so
 # the shard reads the publish header table instead of carrying a copy that could drift (#14)
+from sfr.config import RenderSettings
 from sfr.publish import IMMUTABLE, OBJECT_KINDS
+
+TP_CEILING_DBTP = RenderSettings().tp_ceiling_dbtp
 
 FONTS_BUCKET = os.environ["SFR_FONTS_BUCKET"]
 SITE_BUCKET = os.environ["SFR_SITE_BUCKET"]
@@ -310,14 +313,29 @@ def publisher(songs: list[str], sel: list[str], done: threading.Event, state: di
         pool.shutdown(wait=True)
 
 
-def unexpected_failures(songs: list[str]) -> list[tuple]:
-    """Failed jobs whose reason is not `silent`.
+# A failed job with one of these reasons did not break anything: that VARIANT is excluded and
+# the song publishes without it. They are outcomes of the pipeline working, not faults.
+#
+#   silent       a font with no sound for this song (41 across the 12 songs of the first run)
+#   peak-unsafe  #27's true-peak ceiling refusing a master that would clip. Dropping the variant
+#                is the entire point of the gate; publishing it would be the bug.
+#
+# `sfr render` exits 1 if ANY job failed, so the shard judges its own outcome from the metas
+# instead — otherwise every child is FAILED and the retry budget re-runs finished work. When
+# peak-unsafe was missing from this list it did exactly that: 5 of the 8 shards on the
+# 2026-08-25 run reported FAILED to Batch after publishing every song they were given.
+EXCLUSIONS = ("silent", "peak-unsafe")
 
-    `sfr render` exits 1 if any job failed at all, and `silent` failures are normal (a font with
-    no sound for this song — 41 of them across these 12 songs). Propagating that would mark every
-    Batch shard FAILED and burn the retry budget re-running finished work, so the shard judges its
-    own outcome from the metas instead."""
-    bad = []
+
+def failure_report(songs: list[str]) -> tuple[list[tuple], dict[str, list]]:
+    """(failures that mean the shard is broken, per-reason lists of excluded variants).
+
+    Excluded variants are returned rather than counted so main() can report HOW FAR over the
+    ceiling a peak-unsafe master landed. That number is the difference between "the limiter
+    overshot by a hundredth of a dB and the tolerance is too tight" and "this render is 30 dB
+    hot", and without it the log says only that some variants did not publish."""
+    bad: list[tuple] = []
+    excluded: dict[str, list] = {}
     for song in songs:
         d = WORK / "renders" / song
         for m in sorted(d.glob("*/meta.json")) if d.exists() else []:
@@ -325,9 +343,25 @@ def unexpected_failures(songs: list[str]) -> list[tuple]:
                 j = json.loads(m.read_text())
             except (OSError, ValueError):
                 continue
-            if j.get("status") == "failed" and j.get("reason") != "silent":
-                bad.append((song, j.get("variant"), j.get("reason")))
-    return bad
+            if j.get("status") != "failed":
+                continue
+            reason = j.get("reason")
+            if reason in EXCLUSIONS:
+                excluded.setdefault(reason, []).append((song, j.get("variant"), j.get("output_tp")))
+            else:
+                bad.append((song, j.get("variant"), reason))
+    return bad, excluded
+
+
+def excluded_line(excluded: dict[str, list]) -> str:
+    """One line naming every exclusion, with the worst peak overshoot spelled out."""
+    parts = []
+    for reason in sorted(excluded):
+        rows = excluded[reason]
+        tps = [tp for _, _, tp in rows if isinstance(tp, (int, float))]
+        detail = f" (worst {max(tps):.3f} dBTP vs {TP_CEILING_DBTP} ceiling)" if tps else ""
+        parts.append(f"{len(rows)} {reason}{detail}")
+    return ", ".join(parts)
 
 
 def main() -> int:
@@ -368,9 +402,12 @@ def main() -> int:
     # what they are measured from (tail fraction, per-phase wall time, concurrency actually used)
     log("phases " + json.dumps(PHASES.summary(published, len(failed))))
 
-    bad = unexpected_failures(songs)
+    bad, excluded = failure_report(songs)
+    if excluded:
+        # not a failure: say so plainly, with the numbers, every run
+        log(f"excluded {sum(len(v) for v in excluded.values())} variant(s): {excluded_line(excluded)}")
     if bad:
-        log(f"!! {len(bad)} unexpected render failures (not `silent`):")
+        log(f"!! {len(bad)} unexpected render failures (not {'/'.join(EXCLUSIONS)}):")
         for song, var, reason in bad[:40]:
             log(f"     {song}/{var}: {reason}")
         errs = WORK / "errors.log"
@@ -382,7 +419,7 @@ def main() -> int:
         return 1
     if bad:
         return 1
-    log(f"shard complete (render rc={rc}; only expected `silent` failures)")
+    log(f"shard complete (render rc={rc}; only expected exclusions)")
     return 0
 
 

@@ -4,6 +4,7 @@ The behaviour this pins is the 2026-08-25 tail: one song at a time, each one re-
 whole accumulated a/ and s/ trees, on a host with 96 idle cores. It must also keep #12's
 guarantee that no song can go unpublished without landing in `failed`.
 """
+import json
 import os
 import pathlib
 import sys
@@ -188,6 +189,66 @@ class PublisherPoolTests(unittest.TestCase):
         state = self.run_publisher(["a", "b", "c"])
         self.assertEqual(sorted(finished), ["a", "b", "c"])
         self.assertEqual(state["failed"], [])
+
+
+class FailureClassificationTests(unittest.TestCase):
+    """A shard's exit code is its verdict on itself. `sfr render` exits 1 if any single job
+    failed, so the shard re-judges from the metas — and it has to know which failures are
+    ordinary exclusions.
+
+    The live symptom: 5 of the 8 shards on the 2026-08-25 run reported FAILED to Batch after
+    publishing every song they were given, because #27's new `peak-unsafe` reason was not on
+    the list and 9-24 variants per shard hit it."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.addCleanup(self.td.cleanup)
+        self._work, shard.WORK = shard.WORK, pathlib.Path(self.td.name)
+        self.addCleanup(lambda: setattr(shard, "WORK", self._work))
+
+    def meta(self, song, variant, **kw):
+        d = shard.WORK / "renders" / song / variant
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "meta.json").write_text(json.dumps({"variant": variant, **kw}))
+
+    def test_a_peak_unsafe_variant_is_an_exclusion_not_a_broken_shard(self):
+        self.meta("s1", "adl-b11-opl2", status="failed", reason="peak-unsafe", output_tp=-1.31)
+        bad, excluded = shard.failure_report(["s1"])
+        self.assertEqual(bad, [])
+        self.assertEqual([r[1] for r in excluded["peak-unsafe"]], ["adl-b11-opl2"])
+
+    def test_silent_is_still_an_exclusion(self):
+        self.meta("s1", "sf2-aaa", status="failed", reason="silent")
+        bad, excluded = shard.failure_report(["s1"])
+        self.assertEqual(bad, [])
+        self.assertEqual(len(excluded["silent"]), 1)
+
+    def test_a_real_failure_still_fails_the_shard(self):
+        self.meta("s1", "sf2-bbb", status="failed", reason="exit")
+        self.meta("s1", "sf2-ccc", status="failed", reason="timeout")
+        bad, excluded = shard.failure_report(["s1"])
+        self.assertEqual(sorted(r[2] for r in bad), ["exit", "timeout"])
+        self.assertEqual(excluded, {})
+
+    def test_successful_renders_are_not_reported_at_all(self):
+        self.meta("s1", "sf2-ok", status="ok")
+        self.assertEqual(shard.failure_report(["s1"]), ([], {}))
+
+    def test_the_worst_overshoot_is_spelled_out(self):
+        """Whether the ceiling is a hair tight or a render is 30 dB hot is the whole question,
+        and the log has to answer it without a re-run."""
+        for i, tp in enumerate((-1.49, -1.31, -1.402)):
+            self.meta("s1", f"adl-{i}", status="failed", reason="peak-unsafe", output_tp=tp)
+        self.meta("s1", "sf2-q", status="failed", reason="silent")
+        line = shard.excluded_line(shard.failure_report(["s1"])[1])
+        self.assertIn("3 peak-unsafe", line)
+        self.assertIn("worst -1.310 dBTP", line)
+        self.assertIn(f"{shard.TP_CEILING_DBTP} ceiling", line)
+        self.assertIn("1 silent", line)
+
+    def test_an_exclusion_with_no_measurement_still_counts(self):
+        self.meta("s1", "sf2-q", status="failed", reason="silent")
+        self.assertEqual(shard.excluded_line(shard.failure_report(["s1"])[1]), "1 silent")
 
 
 class PhaseTests(unittest.TestCase):
