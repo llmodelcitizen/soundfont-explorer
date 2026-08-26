@@ -436,12 +436,15 @@ def resolve_import(spec: dict) -> dict:
 def load_specs() -> List[dict]:
     """Every song spec, from songs/corpus-imports.json (fragment.py's view of the library).
 
-    A checkout without that file has no corpus at all: the sources live in the library's
-    file store, and the repository ships the tools, not the music."""
+    No fragment is not an empty corpus, it is a tree that has never been told what the corpus
+    IS — the sources live in the library's file store and the repository ships the tools, not
+    the music. Refuse: a workstation that has synced songs.json down for a render run would
+    otherwise have it blanked by a stray canon.py. A fragment listing no songs is different —
+    that is a library with nothing visible in it, and writing it out is correct."""
     fpath = os.path.join(SONGS_DIR, "corpus-imports.json")
     if not os.path.exists(fpath):
-        print("no songs/corpus-imports.json — run songs/tools/fragment.py --library <library.json>")
-        return []
+        raise SystemExit("no songs/corpus-imports.json — build it first:\n"
+                         "  python3 songs/tools/fragment.py --library <library.json>")
     with open(fpath, encoding="utf-8") as fh:
         return json.load(fh)["songs"]
 

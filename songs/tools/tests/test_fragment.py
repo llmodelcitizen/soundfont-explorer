@@ -147,11 +147,21 @@ class CanonBridgeTests(unittest.TestCase):
 
     def test_the_fragment_is_the_only_source_of_songs(self):
         """canon.py reads corpus-imports.json and nothing else — there is no committed corpus
-        to fall back on, so a tree without a fragment simply has no songs."""
-        self.assertEqual(canon.load_specs(), [])
+        to fall back on."""
         with open(os.path.join(self.tmp, "corpus-imports.json"), "w") as fh:
             json.dump({"schema": 1, "songs": [self.good()]}, fh)
         self.assertEqual([s["id"] for s in canon.load_specs()], ["game-good"])
+
+    def test_no_fragment_at_all_refuses_rather_than_emptying_songs_json(self):
+        """A workstation syncs songs.json down from the box to render; a stray canon.py there
+        must not overwrite it with a corpus of nothing. A fragment that lists no songs is a
+        different thing — an empty library — and is written out."""
+        with self.assertRaises(SystemExit) as cm:
+            canon.load_specs()
+        self.assertIn("fragment.py", str(cm.exception))
+        with open(os.path.join(self.tmp, "corpus-imports.json"), "w") as fh:
+            json.dump({"schema": 1, "songs": []}, fh)
+        self.assertEqual(canon.load_specs(), [])
 
     def test_a_song_that_is_not_a_library_file_is_refused(self):
         with self.assertRaises(SystemExit):
