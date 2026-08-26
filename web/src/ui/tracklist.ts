@@ -3,7 +3,8 @@
  * Tracks are folded into one collapsible folder per directory `path` (top-level tracks
  * first, unfoldered — every pre-`path` songs.json renders exactly as before). Folder
  * open/closed state persists in localStorage; stepping with [ ] follows this displayed
- * logical order, and selecting a track inside a closed folder opens it.
+ * logical order, and selecting a track inside a closed folder opens it. The caption's collapse
+ * gadget shuts every open folder at once, store and all.
  */
 import type { StatusKind } from '../audio/engine';
 import { songTitle, type SongEntry } from '../contracts/songs';
@@ -14,6 +15,23 @@ const OPEN_KEY = 'sfp.folders.v1';
 
 export const AUTO_NEXT_TIP = 'This is only useful when the LOOP button is not activated.';
 export const PRESERVE_TIP = 'When checked, each track resumes from its own previous position. When unchecked, tracks start from the beginning.';
+const COLLAPSE_ALL_LABEL = 'collapse all folders';
+
+/**
+ * The collapse-all gadget's drawing: two solid triangles folding onto a rule — everything closing
+ * down to one line — in the same solid language as the ▾/▸ twists it shuts, and in the 16px box
+ * and 24 viewBox the transport glyphs use (src/ui/icons.ts) so the two weigh the same. One asset
+ * serves all three themes because it is filled with `currentColor`: it takes Modern's ink, the
+ * Win95 caption bar's white and Workbench's black off the caption it sits in, with nothing
+ * per-theme to keep in step. Filled, not stroked like the header gadgets — at 16px their 2px
+ * stroke lands on 1.3 device pixels, and the two chevrons that would draw this blur into an X in
+ * the very themes whose whole look is crisp pixels. The drawing is aria-hidden; the button around
+ * it carries the name.
+ */
+const COLLAPSE_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" fill="currentColor">' +
+  // inwards, onto the rule: the same two triangles pointing outwards is the drawing for "expand"
+  '<path d="M4.5 2.5h15L12 9.5z"/><rect x="4.5" y="11" width="15" height="2"/><path d="M4.5 21.5h15L12 14.5z"/></svg>';
 
 function groupedTracks(songs: SongEntry[]): { root: SongEntry[]; folders: [string, SongEntry[]][] } {
   const root = songs.filter((s) => !s.path);
@@ -93,6 +111,7 @@ export class TrackList {
 
   readonly autoNextBox: HTMLInputElement;
   readonly preserveBox: HTMLInputElement;
+  readonly collapseBtn: HTMLButtonElement;
 
   constructor(
     songs: SongEntry[],
@@ -107,10 +126,12 @@ export class TrackList {
     this.body = h('div', { class: 'track-rows', role: 'listbox', 'aria-label': 'tracks' });
     this.autoNextBox = this.toggle('auto-next-track', toggles.autoNext);
     this.preserveBox = this.toggle('preserve-pos', toggles.preserve);
+    this.collapseBtn = this.collapseAll();
     this.head = h(
       'div',
       { class: 'np-head' },
       h('span', { class: 'np-title' }, `${songs.length} tracks`),
+      this.collapseBtn,
       h('span', { class: 'muted small' }, '· [ ] to step'),
       h('span', { class: 'spacer' }),
       // Settings carries the same two options at every window size; here they only fit sometimes.
@@ -126,6 +147,33 @@ export class TrackList {
     this.setSongs(songs, current);
   }
 
+  /**
+   * Shut every open folder in one click.
+   *
+   * Disabled — not hidden — while there is nothing open, which covers both empty cases: a
+   * catalogue with no folders at all (any pre-`path` songs.json) and folders that are all closed
+   * already. Hiding it would take the gadget in and out of the caption every time a folder is
+   * opened, and the caption is a measured fit (see fitCaption): its content width must not change
+   * under it for reasons that have nothing to do with the pane. `disabled` also says out loud what
+   * a silent no-op only implies — a screen reader reads the button as unavailable, and the pointer
+   * gets no click at all — while the handler still refuses the work, since a programmatic click
+   * ignores the attribute.
+   */
+  private collapseAll(): HTMLButtonElement {
+    const btn = h('button', { class: 'collapse-all', type: 'button', title: COLLAPSE_ALL_LABEL, 'aria-label': COLLAPSE_ALL_LABEL }) as HTMLButtonElement;
+    btn.innerHTML = COLLAPSE_ICON;
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return; // the handler refuses exactly what the attribute refuses
+      this.open.clear();
+      // save before rendering: the pane and `sfp.folders.v1` must never disagree, or a reload
+      // re-opens folders the user just watched close
+      this.saveOpen();
+      this.render();
+      btn.blur(); // as the caption's checkboxes do — the window keymap owns the keyboard again
+    });
+    return btn;
+  }
+
   private toggle(id: string, toggle: TrackToggle): HTMLInputElement {
     const box = h('input', { type: 'checkbox', id }) as HTMLInputElement;
     box.checked = toggle.value;
@@ -137,11 +185,18 @@ export class TrackList {
   }
 
   /**
-   * Fit the caption to its pane in three steps: full labels, short labels, then no toggles at all
-   * (a dragged-in split, a small window, iOS mobile-landscape — Settings still has both). The
-   * middle step is what keeps them on show at ordinary laptop widths: the full wording needs
-   * ~490 px of caption in the Modern face and ~585 px in Topaz, where the default split gives
-   * about 410 px at 1280×800, so all-or-nothing would hide them for most desktop users.
+   * Fit the caption to its pane in four steps: full labels, short labels, no collapse gadget, then
+   * no toggles at all (a dragged-in split, a small window, iOS mobile-landscape — Settings still
+   * has both). The second step is what keeps them on show at ordinary laptop widths: the full
+   * wording needs ~490 px of caption in the Modern face and ~585 px in Topaz, where the default
+   * split gives about 410 px at 1280×800, so all-or-nothing would hide them for most desktop users.
+   *
+   * The gadget goes before either option does because it is the one control here with a way round
+   * it — folders still close one at a time — where the two options exist nowhere else on the
+   * screen, and because Topaz has only about 6 px to spare at that same default split, so a gadget
+   * that refused to move would cost Amiga users both toggles. Once the toggles have gone the
+   * caption has ~200 px back and the gadget returns (the stylesheet's `.cramped` rule): it was
+   * never what was squeezing the row.
    *
    * Measuring beats a breakpoint: the pane width is the user's, not the viewport's. Neither step
    * can change the caption's own box — it is a fixed-height row stretched to the pane, and
@@ -151,9 +206,11 @@ export class TrackList {
    */
   private fitCaption(): void {
     if (this.disposed) return;
-    this.head.classList.remove('short', 'cramped');
+    this.head.classList.remove('short', 'tight', 'cramped');
     if (!this.head.clientWidth || !this.overflowing()) return;
     this.head.classList.add('short');
+    if (!this.overflowing()) return;
+    this.head.classList.add('tight');
     if (this.overflowing()) this.head.classList.add('cramped');
   }
 
@@ -245,6 +302,10 @@ export class TrackList {
     this.rows.clear();
     this.rowOrder = [];
     const { root, folders } = groupedTracks(this.songs);
+    // live only while a folder that is actually on screen is open: `this.open` can still name a
+    // folder this catalogue no longer has (the store outlives a songs.json), and a gadget offering
+    // to close what nobody can see is a lie. Clicking it does clear those stale names too.
+    this.collapseBtn.disabled = !folders.some(([path]) => this.open.has(path));
     for (const s of root) this.body.appendChild(this.row(s));
     for (const [path, files] of folders) {
       const isOpen = this.open.has(path);

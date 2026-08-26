@@ -793,6 +793,48 @@ select:focus-visible {
 .np-head.cramped .track-toggles {
   display: none;
 }
+/* Collapse-all: a caption gadget, not a chromed button. The strip is a fixed 26px box holding
+   19px of content in Modern, which no `.btn.icon` fits, and a raised gadget on the Win95 navy or
+   the Workbench white strip would read as a title-bar control (close / shade) rather than as
+   something belonging to the list below. So it is the 16px drawing and nothing else, inheriting
+   the caption's own ink in all three themes, held down a notch so it sits with the dimmed hint
+   beside it rather than shouting over the title. */
+.np-head .collapse-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  opacity: 0.75;
+  cursor: pointer;
+}
+.np-head .collapse-all svg {
+  display: block;
+}
+.np-head .collapse-all:hover:not(:disabled),
+.np-head .collapse-all:focus-visible {
+  opacity: 1;
+}
+/* the ring the other controls get, drawn tight to the glyph: the caption clips its own overflow,
+   and the established `outline-offset: 1px` would lose its top edge to that in Modern */
+.np-head .collapse-all:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+/* nothing is open (or the catalogue has no folders): still there, visibly not offering anything */
+.np-head .collapse-all:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+/* The third rung of the caption fit (see fitCaption): the gadget goes before either option does,
+   and comes back once they are gone, because by then the row has ~200px to spare. */
+.np-head.tight:not(.cramped) .collapse-all {
+  display: none;
+}
 .preserve input {
   accent-color: var(--accent);
   margin: 0;
