@@ -1,6 +1,9 @@
-"""remove_track()/prune() against a fake site bucket (issue #15). Stdlib only — boto3 and the
-aws CLI are absent in CI, so publishops' S3/shell primitives are stubbed while the ordering,
-the drop guard and the keep/delete decisions run for real."""
+"""remove_track()/prune()/overview() against a fake site bucket (issues #15, #46). Stdlib only
+— boto3 and the aws CLI are absent in CI, so publishops' S3/shell primitives are stubbed while
+the ordering, the drop guard and the keep/delete decisions run for real. The stubs also record
+which prefixes each operation lists and how, because which listing a caller is entitled to is
+itself the contract: the read-only overview may only ask a/ for its child prefixes, while
+anything that deletes must keep walking objects one by one."""
 import io
 import json
 import os
@@ -53,6 +56,11 @@ class FakeSite:
         self.corpus = set(corpus)
         self.objects: dict[str, bytes] = {}
         self.events: list[str] = []
+        # #46 is about listing cost, so the two listing shapes are recorded separately:
+        # `listed` is every prefix walked object-by-object, `delimited` every prefix asked
+        # only which children it has.
+        self.listed: list[str] = []
+        self.delimited: list[str] = []
 
     @property
     def public(self):
@@ -84,7 +92,19 @@ class FakeSite:
 
     # -- publishops primitives
     def _list(self, prefix):
+        self.listed.append(prefix)
         return [{"Key": k, "Size": len(self.objects[k])} for k in self.keys(prefix)]
+
+    def _list_delimited(self, prefix):
+        """S3's Delimiter="/" behaviour: everything under `prefix` rolled up to its first
+        remaining "/" (a CommonPrefix), except keys sitting at that level with no "/" left,
+        which come back whole in Contents."""
+        self.delimited.append(prefix)
+        out = set()
+        for k in self.keys(prefix):
+            rest = k[len(prefix):]
+            out.add(prefix + rest.split("/")[0] + "/" if "/" in rest else k)
+        return sorted(out)
 
     def _get_json(self, key):
         return json.loads(self.objects[key]) if key in self.objects else None
@@ -136,7 +156,7 @@ class PublishOpsTests(unittest.TestCase):
         self.site.add_song("beta")
         self.site.put_songs_json([self.site.entry("alpha"), self.site.entry("beta")])
         stubs = {"get_config": lambda: FakeCfg(td.name), "_expected_absent": lambda: set()}
-        for name in ("_list", "_get_json", "_delete_keys", "sync_down",
+        for name in ("_list", "_list_delimited", "_get_json", "_delete_keys", "sync_down",
                      "_run_manifest", "_publish_songs_json"):
             stubs[name] = getattr(self.site, name)
         for name, fn in stubs.items():
@@ -255,6 +275,14 @@ class PublishOpsTests(unittest.TestCase):
         self.assertEqual(r["deleted_objects"], 4)
         self.assertEqual(self.site.keys("a/alpha/") + self.site.keys("s/alpha/"), [])
 
+    def test_remove_lists_the_track_prefixes_object_by_object(self):
+        """A remove deletes, so it may not take the overview's delimited shortcut (#46):
+        that answers only "a/alpha/ exists", never which keys are under it. The exact list
+        is the delete set."""
+        publishops.remove_track("alpha")
+        self.assertEqual(self.site.listed, ["a/alpha/", "s/alpha/"])
+        self.assertEqual(self.site.delimited, [])
+
     def test_remove_says_the_publish_took_when_only_the_delete_fails(self):
         """songs.json is already live without the track: "remove failed" would send the
         operator looking for a track that is gone — only its objects are left, for prune."""
@@ -310,6 +338,54 @@ class PublishOpsTests(unittest.TestCase):
 
     # -- overview
 
+    def test_overview_answers_presence_without_walking_the_audio_prefix(self):
+        """The defect of #46. Reporting each song's object count and byte total meant listing
+        every object under a/ — ~8-16k per song across 188 songs, ~2.4M objects and ~2,400
+        sequential pages, 4-12 minutes on EVERY load — so the Published tab never finished
+        painting and its Republish songs.json button (the only manual rebuild there is) could
+        not be reached. Which songs have audio is one delimited listing; nothing here may
+        descend into a/ to answer it."""
+        ov = publishops.overview()
+        self.assertEqual(self.site.delimited, ["a/"])
+        self.assertEqual(self.site.listed, ["s/"])
+        self.assertEqual([t["id"] for t in ov["tracks"]], ["alpha", "beta"])
+        self.assertTrue(all(t["has_audio"] and t["set_docs"] == 1 for t in ov["tracks"]))
+        self.assertEqual(ov["discrepancies"], [])
+
+    def test_overview_cost_does_not_grow_with_a_songs_render_count(self):
+        """The old walk scaled with renders, not songs, and renders only accumulate — one
+        36-song run added 20,376 variants on its own. Ten thousand more objects inside a
+        single song must not cost one extra listing call."""
+        for i in range(10_000):
+            self.site.objects[f"a/alpha/l/r{i}/0.ogg"] = b"x"
+        publishops.overview()
+        self.assertEqual((self.site.delimited, self.site.listed), (["a/"], ["s/"]))
+
+    def test_overview_still_finds_both_kinds_of_discrepancy(self):
+        """Presence off the delimited listing has to reach the verdicts the full walk did:
+        a live track whose audio is gone, and a complete track songs.json never mentions.
+        That report is what an operator drives Remove and Prune from."""
+        for k in self.site.keys("a/alpha/"):
+            del self.site.objects[k]                        # live, but its audio is gone
+        self.site.objects["a/gamma/l/r1/0.ogg"] = b"x"      # complete, but unpublished
+        self.site.objects["s/gamma/h1.json"] = b"{}"
+        ov = publishops.overview()
+        by_id = {t["id"]: t for t in ov["tracks"]}
+        self.assertEqual(sorted(by_id), ["alpha", "beta", "gamma"])
+        self.assertEqual((by_id["alpha"]["has_audio"], by_id["alpha"]["in_songs_json"]),
+                         (False, True))
+        self.assertEqual((by_id["gamma"]["has_audio"], by_id["gamma"]["in_songs_json"]),
+                         (True, False))
+        self.assertEqual(ov["discrepancies"], ["alpha", "gamma"])
+        self.assertEqual(self.site.listed, ["s/"])
+
+    def test_overview_ignores_a_bare_directory_marker_under_a(self):
+        """A zero-byte "a/" object (what the S3 console leaves behind) has no delimiter left
+        after the prefix, so it comes back as a key rather than a child prefix. Its first
+        segment is empty: calling that a song would put a nameless phantom row in the table."""
+        self.site.objects["a/"] = b""
+        self.assertEqual([t["id"] for t in publishops.overview()["tracks"]], ["alpha", "beta"])
+
     def test_overview_reports_a_fresh_site_but_not_a_read_failure(self):
         """With no songs.json the listings are the whole story. A transient S3 error is NOT
         that: reporting an empty live set would chip every track "discrepancy" and invite a
@@ -324,7 +400,43 @@ class PublishOpsTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "SlowDown"):
                 publishops.overview()
 
+    # -- audio_usage
+
+    def test_audio_usage_measures_one_song_exactly(self):
+        """What overview() stopped reporting, fetched for the single row the operator opened.
+        One prefix, listed for real: the figure shown is measured when it is asked for, so
+        nothing has to caveat how old it is."""
+        self.site.objects["a/alpha/l/r1/1.ogg"] = b"xxxx"
+        u = publishops.audio_usage("alpha")
+        self.assertEqual(self.site.listed, ["a/alpha/"])   # not a/, and not beta's objects
+        self.assertEqual((u["id"], u["objects"], u["bytes"]), ("alpha", 3, 6))
+        self.assertTrue(u["measured_at"])
+
+    def test_audio_usage_reports_zero_for_a_track_whose_audio_is_gone(self):
+        for k in self.site.keys("a/alpha/"):
+            del self.site.objects[k]
+        u = publishops.audio_usage("alpha")
+        self.assertEqual((u["objects"], u["bytes"]), (0, 0))
+
+    def test_audio_usage_refuses_a_path_like_id(self):
+        """Same guard as the removal path: the id arrives straight off the URL."""
+        for bad in ("", ".", "..", "a/b", "..\\x"):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                publishops.audio_usage(bad)
+        self.assertEqual(self.site.listed, [])
+
     # -- prune
+
+    def test_prune_still_walks_a_and_s_object_by_object(self):
+        """Prune deletes, so it may not take the overview's shortcut (#46). A delimited
+        listing says only "alpha has audio": every superseded render sitting inside a song
+        that also has current ones would either survive forever or go with the song."""
+        self.site.objects["a/alpha/l/stale/0.ogg"] = b"x"
+        r = publishops.prune(dry_run=False)
+        self.assertEqual(self.site.listed, ["a/", "s/"])
+        self.assertEqual(self.site.delimited, [])
+        self.assertEqual(r["deleted"], 1)
+        self.assertNotIn("a/alpha/l/stale/0.ogg", self.site.objects)
 
     def test_prune_keeps_what_the_live_sets_name(self):
         self.site.objects["a/alpha/l/stale/0.ogg"] = b"x"     # superseded render

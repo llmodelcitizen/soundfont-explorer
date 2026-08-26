@@ -43,6 +43,26 @@ def published() -> dict:
     return publishops.overview()
 
 
+@router.get("/api/published/{sid}/audio")
+def audio(sid: str) -> dict:
+    """Exact object count + byte total under a/<id>/, listed on demand for one song.
+
+    The overview deliberately no longer carries these (#46) — measuring all 188 songs meant
+    walking ~2.4M objects and the tab never loaded. One song is a couple of seconds, so the
+    UI asks for the row the operator opened, and for the track they are about to Remove so
+    the confirmation can state what it really deletes.
+
+    Read-only, so no publock and no active-run guard: a run publishing more variants just
+    makes the answer bigger, and nothing here decides what to delete."""
+    _guard()
+    try:
+        return publishops.audio_usage(sid)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e   # a malformed id is the caller's fault
+    except Exception as e:
+        raise HTTPException(500, f"listing audio for {sid} failed: {e}") from e
+
+
 @router.delete("/api/published/{sid}")
 def remove(sid: str) -> dict:
     _guard()
