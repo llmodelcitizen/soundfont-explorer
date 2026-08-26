@@ -9,6 +9,13 @@ Prune keeps exactly what the live songs.json references: each song's current set
 the listen (render_hash) and scrub (group hash) prefixes that doc names. It refuses to run
 while a render run is live (shards publish new sets mid-run) and only touches a/ and s/ —
 catalog docs are a few KB and stay.
+
+overview() is the only read-only view here and the only caller allowed a cheap listing: it
+asks S3 for the child prefixes of a/ (one delimited call, one result per song) rather than
+walking the millions of objects underneath them (#46). prune() and remove_track() delete,
+so they keep listing in full and must: a delimited listing cannot see a superseded render
+sitting inside a song that also has current ones, and a delete decided from one would
+either miss it or take the whole song with it.
 """
 from __future__ import annotations
 
@@ -50,6 +57,28 @@ def _list(prefix: str) -> list[dict]:
     for page in cfg.s3.get_paginator("list_objects_v2").paginate(
             Bucket=cfg.site_bucket, Prefix=prefix):
         out += page.get("Contents", [])
+    return out
+
+
+def _list_delimited(prefix: str) -> list[str]:
+    """What sits immediately under `prefix`: the child prefixes ("a/<id>/"), plus any stray
+    key at that level.
+
+    One delimited list_objects_v2 — S3 rolls each song up into a single CommonPrefix instead
+    of returning its contents, so "which songs have audio at all" costs ~0.6s for 188 songs
+    where descending into them was ~2.4M objects and minutes (#46).
+
+    Read-only callers only; presence is all this can answer. A key sitting directly under
+    `prefix` has no delimiter after it and so never becomes a CommonPrefix — it comes back in
+    Contents on the same page, and is kept here so the id set matches exactly what the full
+    walk used to derive.
+    """
+    cfg = get_config()
+    out: list[str] = []
+    for page in cfg.s3.get_paginator("list_objects_v2").paginate(
+            Bucket=cfg.site_bucket, Prefix=prefix, Delimiter="/"):
+        out += [c["Prefix"] for c in page.get("CommonPrefixes", [])]
+        out += [o["Key"] for o in page.get("Contents", [])]
     return out
 
 
@@ -195,8 +224,26 @@ def resync_and_publish() -> dict:
 
 # ---------------------------------------------------------------- overview
 
+def _checked_id(sid: str) -> str:
+    """A track id straight off a URL path segment, for everything that turns one into a
+    filesystem path or an S3 prefix (_local_set_dir's result gets rmtree'd), so anything but
+    a single path component is refused."""
+    if not sid or sid in (".", "..") or "/" in sid or "\\" in sid:
+        raise ValueError(f"bad track id {sid!r}")
+    return sid
+
+
 def overview() -> dict:
-    """Live songs.json ⨝ S3 listings, with a discrepancy report."""
+    """Live songs.json ⨝ S3 listings, with a discrepancy report.
+
+    Presence, not weight: this asks which song prefixes exist under a/, never what is inside
+    them. Per-song object counts and byte totals are deliberately NOT here — audio_usage()
+    measures one song when the UI asks. Computing them for every song is what made the tab
+    unusable (#46): ~8-16k objects per song across 188 songs is ~2.4M objects, ~2,400
+    sequential list pages, 4-12 minutes on every single load — so the tab never finished
+    painting and its Republish songs.json button, the only manual rebuild there is, could
+    not be reached. s/ stays a full walk: it is one object per published set doc, one page.
+    """
     try:
         live = live_songs_json()
     except NoSongsJson:
@@ -204,18 +251,14 @@ def overview() -> dict:
     # Any other read failure propagates: "songs.json says nothing is published" would flag
     # every track as a discrepancy and invite a Remove that deletes live audio.
     by_id = {s["id"]: s for s in live.get("songs", [])}
-    audio: dict[str, dict] = {}
-    for o in _list("a/"):
-        sid = o["Key"].split("/")[1]
-        a = audio.setdefault(sid, {"objects": 0, "bytes": 0})
-        a["objects"] += 1
-        a["bytes"] += o["Size"]
+    # "a/<id>/" -> "<id>"; a bare "a/" directory marker yields "" and is not a song.
+    audio = {p.split("/")[1] for p in _list_delimited("a/")} - {""}
     sets: dict[str, int] = {}
     for o in _list("s/"):
         sid = o["Key"].split("/")[1]
         sets[sid] = sets.get(sid, 0) + 1
     tracks = []
-    for sid in sorted(set(by_id) | set(audio) | set(sets)):
+    for sid in sorted(set(by_id) | audio | set(sets)):
         e = by_id.get(sid)
         tracks.append({
             "id": sid,
@@ -223,24 +266,38 @@ def overview() -> dict:
             "path": (e or {}).get("path"),
             "variant_count": e["variant_count"] if e else None,
             "duration_s": e["duration_s"] if e else None,
-            "audio_objects": audio.get(sid, {}).get("objects", 0),
-            "audio_bytes": audio.get(sid, {}).get("bytes", 0),
+            "has_audio": sid in audio,
             "set_docs": sets.get(sid, 0),
             "in_songs_json": e is not None,
         })
     problems = [t["id"] for t in tracks
-                if t["in_songs_json"] != (t["audio_objects"] > 0 and t["set_docs"] > 0)]
+                if t["in_songs_json"] != (t["has_audio"] and t["set_docs"] > 0)]
     return {"generated_at": live.get("generated_at"), "tracks": tracks, "discrepancies": problems}
+
+
+def audio_usage(sid: str) -> dict:
+    """What one song's audio actually costs: every object under a/<id>/, counted for real.
+
+    Split out of overview() (#46). A single song is ~8-16k objects and a couple of seconds —
+    fine on demand for the one row the operator opened, or the track they are about to
+    Remove — where all 188 at once is minutes.
+
+    Deliberately not cached. There is no cheaper way to refresh this than the same walk, so a
+    cache would only ever serve a figure of unknown age, and every caller would then have to
+    say how old it is or risk passing it off as live (the Remove confirmation quotes it).
+    Measuring when asked keeps that question from existing; `measured_at` records when.
+    """
+    sid = _checked_id(sid)
+    objects = _list(f"a/{sid}/")
+    return {"id": sid, "objects": len(objects),
+            "bytes": sum(o["Size"] for o in objects), "measured_at": now_iso()}
 
 
 # ---------------------------------------------------------------- remove + prune
 
 def _local_set_dir(sid: str) -> str:
-    """out/public/s/<id> in the snapshot. The id comes straight from the URL and the
-    directory gets rmtree'd, so anything but a single path component is refused."""
-    if not sid or sid in (".", "..") or "/" in sid or "\\" in sid:
-        raise ValueError(f"bad track id {sid!r}")
-    return os.path.join(get_config().repo, "out", "public", "s", sid)
+    """out/public/s/<id> in the snapshot, for an id that has passed _checked_id."""
+    return os.path.join(get_config().repo, "out", "public", "s", _checked_id(sid))
 
 
 def remove_track(sid: str) -> dict:

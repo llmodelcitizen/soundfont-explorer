@@ -1,6 +1,13 @@
 // Published view: what the site bucket actually serves (live songs.json ⨝ S3 listings),
 // per-track removal, and S3-listing-based prune with a mandatory dry-run first.
-import { del, get, post } from './api';
+//
+// The overview says which songs HAVE audio, never how much (#46): counting bytes meant the
+// server walking every object under a/ — ~2.4M of them — so this tab took minutes and in
+// practice never finished, which also put Republish songs.json out of reach. A song's real
+// weight is listed one song at a time, when someone asks for it: see the audio column and
+// the Remove confirmation, both of which quote a figure measured seconds earlier rather
+// than a remembered one that would have to be captioned with its age to be honest.
+import { del, get, isSessionExpired, post } from './api';
 import { el, note, statusLine } from './dom';
 
 interface Track {
@@ -9,8 +16,8 @@ interface Track {
   path: string | null;
   variant_count: number | null;
   duration_s: number | null;
-  audio_objects: number;
-  audio_bytes: number;
+  /** Whether a/<id>/ exists at all — a delimited listing, not a count. */
+  has_audio: boolean;
   set_docs: number;
   in_songs_json: boolean;
 }
@@ -19,6 +26,14 @@ interface Overview {
   generated_at: string | null;
   tracks: Track[];
   discrepancies: string[];
+}
+
+/** GET /api/published/<id>/audio: one song's prefix, listed exactly, at `measured_at`. */
+interface AudioUsage {
+  id: string;
+  objects: number;
+  bytes: number;
+  measured_at: string;
 }
 
 interface PruneReport {
@@ -38,6 +53,13 @@ const gaps = (r: PruneReport) =>
 
 const fmtMB = (n: number) => `${(n / (1 << 20)).toFixed(1)} MB`;
 
+const HEADERS: [string, string][] = [
+  ['title', ''], ['path', ''], ['id', ''], ['variants', ''],
+  ['audio', 'objects under a/<id>/ — the overview only checks that the prefix exists; '
+    + 'measure lists that one song'],
+  ['sets', ''], ['', ''], ['', ''],
+];
+
 export class PublishedView {
   root = el('div', { class: 'published' });
   private status = statusLine();
@@ -53,6 +75,44 @@ export class PublishedView {
       return;
     }
     this.render(ov);
+  }
+
+  /** One song's object count + size, or null if the listing failed (reported on the status
+   *  line, unless the session expired — the page is already leaving for /auth/login). */
+  private async measure(sid: string): Promise<AudioUsage | null> {
+    try {
+      return await get<AudioUsage>(`/api/published/${sid}/audio`);
+    } catch (e) {
+      if (!isSessionExpired(e)) note(this.status, (e as Error).message, true);
+      return null;
+    }
+  }
+
+  /** The audio cell: an offer to go and list the song, replaced by what came back. Nothing
+   *  is shown before that — a number nobody measured, or one measured minutes ago and shown
+   *  bare, would read as the live figure it is not. */
+  private audioCell(t: Track): HTMLElement {
+    const td = el('td', {});
+    if (!t.has_audio) {
+      td.append(el('span', { class: 'count', title: `nothing under a/${t.id}/` }, 'none'));
+      return td;
+    }
+    const measure = el('button', {}, 'measure');
+    measure.onclick = async () => {
+      measure.disabled = true;
+      measure.textContent = 'listing…';
+      const u = await this.measure(t.id);
+      if (!u) {
+        measure.disabled = false;
+        measure.textContent = 'measure';
+        return;
+      }
+      // stamped: a live run publishes more variants under this very prefix as we look at it
+      td.replaceChildren(el('span', { title: `listed at ${u.measured_at}` },
+        `${u.objects} objs · ${fmtMB(u.bytes)}`));
+    };
+    td.append(measure);
+    return td;
   }
 
   private render(ov: Overview): void {
@@ -105,8 +165,20 @@ export class PublishedView {
       const bad = ov.discrepancies.includes(t.id);
       const rm = el('button', { class: 'danger' }, 'Remove');
       rm.onclick = async () => {
-        if (!confirm(`Remove ${t.id} from the site? Deletes ${t.audio_objects} audio objects `
-          + `(${fmtMB(t.audio_bytes)}) + set docs and republishes songs.json. Renders are gone for good.`)) return;
+        // The overview carries no counts any more (#46) and this destroys renders for good,
+        // so list the track's audio now: the confirmation names what was there a second ago
+        // instead of a number of unknown age. A failed listing must not block the removal —
+        // the wording just goes vague, and measure() has already said why on the status line.
+        rm.disabled = true;
+        note(this.status, `listing ${t.id}'s audio…`);
+        const u = await this.measure(t.id);
+        rm.disabled = false;
+        const cost = u ? `${u.objects} audio objects (${fmtMB(u.bytes)})` : 'its audio objects';
+        if (!confirm(`Remove ${t.id} from the site? Deletes ${cost} `
+          + '+ set docs and republishes songs.json. Renders are gone for good.')) {
+          if (u) note(this.status, ''); // drop the "listing…" note, but not a failure's reason
+          return;
+        }
         note(this.status, `removing ${t.id}…`);
         try {
           await del(`/api/published/${t.id}`);
@@ -121,8 +193,7 @@ export class PublishedView {
         el('td', { class: 'count' }, t.path ?? ''),
         el('td', { class: 'count' }, t.id),
         el('td', {}, t.variant_count != null ? String(t.variant_count) : '—'),
-        el('td', {}, String(t.audio_objects)),
-        el('td', {}, fmtMB(t.audio_bytes)),
+        this.audioCell(t),
         el('td', {}, String(t.set_docs)),
         el('td', {}, bad ? el('span', { class: 'chip c-failed' }, 'discrepancy') : ''),
         el('td', {}, rm));
@@ -135,8 +206,7 @@ export class PublishedView {
       pruneOut,
       el('table', { class: 'pubtable' },
         el('thead', {}, el('tr', {},
-          ...['title', 'path', 'id', 'variants', 'audio objs', 'audio size', 'sets', '', '']
-            .map((h) => el('th', {}, h)))),
+          ...HEADERS.map(([h, tip]) => el('th', tip ? { title: tip } : {}, h)))),
         el('tbody', {}, ...rows)));
   }
 }
