@@ -427,13 +427,13 @@ def main(argv) -> int:
     if not actions and not filled:
         print("nothing to do")
         return 0
+    # The only other writer is the admin server, which holds library.json's ETag and would
+    # clobber this on its next mutation. Checked before anything is uploaded, so a conflict
+    # costs nothing rather than leaving file bodies in the bucket with no entries naming them.
+    if not args.library and store.read_doc().get("updated_at") != before:
+        raise SystemExit("library.json changed while this ran (the admin server?) — nothing "
+                         "written; stop sfadmin and re-run")
     seed(store, doc, actions)
-    if not args.library:
-        # a second writer would be the admin server itself; it keeps library.json's ETag and
-        # would clobber this on its next mutation, so fail before writing rather than after
-        if store.read_doc().get("updated_at") != before:
-            raise SystemExit("library.json changed while this ran (the admin server?) — "
-                             "nothing written; stop sfadmin and re-run")
     store.write_doc(doc)
     print(f"wrote library.json ({len(doc['entries'])} entries)")
     if not args.library:
