@@ -830,9 +830,15 @@ select:focus-visible {
   opacity: 0.3;
   cursor: default;
 }
-/* The third rung of the caption fit (see fitCaption): the gadget goes before either option does,
-   and comes back once they are gone, because by then the row has ~200px to spare. */
-.np-head.tight:not(.cramped) .collapse-all {
+/* Rungs three and four of the caption fit (see fitCaption), in the order of what each costs to
+   lose: the hint first, because [ and ] keep stepping whether or not the caption says so and the
+   keymap screen still lists them, and only then the gadget, which is the one way to shut every
+   folder at once. Neither rule applies at `cramped`: once both options have gone the row has
+   ~200px back, and both of these fit in it again. */
+.np-head.nohint:not(.cramped) .hint {
+  display: none;
+}
+.np-head.nogadget:not(.cramped) .collapse-all {
   display: none;
 }
 .preserve input {

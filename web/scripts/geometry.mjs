@@ -642,8 +642,9 @@ async function trackCaptionFollowsThePane() {
   await page.goto(target.href, { waitUntil: 'networkidle' });
   await page.waitForSelector('.rows .row', { timeout: 20000 });
   await page.evaluate(() => document.fonts.ready);
-  /** the three content widths (full labels, short labels, short labels without the collapse
-   *  gadget) whatever classes the caption currently carries */
+  /** the four content widths the ladder chooses between — full labels, short labels, short
+   *  labels without the hint, and those without the collapse gadget either — whatever classes
+   *  the caption currently carries */
   const state = async () => {
     await page.waitForTimeout(80); // one ResizeObserver delivery
     return page.evaluate(() => {
@@ -655,8 +656,10 @@ async function trackCaptionFollowsThePane() {
       const needed = head.scrollWidth;
       head.className = 'np-head short';
       const neededShort = head.scrollWidth;
-      head.className = 'np-head short tight';
-      const neededTight = head.scrollWidth;
+      head.className = 'np-head short nohint';
+      const neededNoHint = head.scrollWidth;
+      head.className = 'np-head short nohint nogadget';
+      const neededNoGadget = head.scrollWidth;
       head.className = had;
       const toggles = Array.from(document.querySelectorAll('.tracks .track-toggles input'));
       const shown = (selector) => Array.from(document.querySelectorAll(`.tracks .track-toggles ${selector}`)).some((span) => span.getBoundingClientRect().width > 0);
@@ -665,9 +668,11 @@ async function trackCaptionFollowsThePane() {
         client: head.clientWidth,
         needed,
         neededShort,
-        neededTight,
+        neededNoHint,
+        neededNoGadget,
         short: head.classList.contains('short'),
-        tight: head.classList.contains('tight'),
+        noHint: head.classList.contains('nohint'),
+        noGadget: head.classList.contains('nogadget'),
         cramped: head.classList.contains('cramped'),
         pastPane: head.getBoundingClientRect().right - right.getBoundingClientRect().right,
         appOverflow: app.scrollWidth - app.clientWidth,
@@ -686,20 +691,28 @@ async function trackCaptionFollowsThePane() {
     }, width);
     return state();
   };
-  /** the caption must be wearing the first of the four steps that actually fits its pane */
+  /** the caption must be wearing the first of the five steps that actually fits its pane */
   const consistent = (s) => {
-    if (s.needed <= s.client) return !s.short && !s.tight && !s.cramped;
-    if (s.neededShort <= s.client) return s.short && !s.tight && !s.cramped;
-    if (s.neededTight <= s.client) return s.short && s.tight && !s.cramped;
+    if (s.needed <= s.client) return !s.short && !s.noHint && !s.noGadget && !s.cramped;
+    if (s.neededShort <= s.client) return s.short && !s.noHint && !s.noGadget && !s.cramped;
+    if (s.neededNoHint <= s.client) return s.short && s.noHint && !s.noGadget && !s.cramped;
+    if (s.neededNoGadget <= s.client) return s.short && s.noHint && s.noGadget && !s.cramped;
     return s.cramped;
   };
   const opened = await state();
   assert(opened.pastPane <= 0.5 && opened.appOverflow <= 0.5, `desktop/modern: the Tracks caption runs ${opened.pastPane}px past its pane: ${JSON.stringify(opened)}`);
   assert(consistent(opened), `desktop/modern: the Tracks caption is stale at the default split: ${JSON.stringify(opened)}`);
 
+  // A 300px pane used to be past the point where both options fit. It is not any more, and that
+  // is the reordering paying out: the hint and the gadget are shed first, which buys the options
+  // two more rungs of pane. Pinned here as the new truth, then the old check re-aimed below at a
+  // pane that genuinely cannot hold them.
+  const squeezed = await setPane(300);
+  assert(squeezed.togglesVisible && !squeezed.cramped, `desktop/modern: a 300px Tracks pane drops the caption toggles it now has room for: ${JSON.stringify(squeezed)}`);
+  assert(squeezed.noHint && squeezed.noGadget, `desktop/modern: a 300px Tracks pane keeps its options without shedding the hint and the gadget first: ${JSON.stringify(squeezed)}`);
   // a caption wider than any sensible pane: both toggles go, and nothing spills out of the pane
-  const narrow = await setPane(300);
-  assert(narrow.cramped && !narrow.togglesVisible && narrow.pastPane <= 0.5, `desktop/modern: a 300px Tracks pane does not drop the caption toggles: ${JSON.stringify(narrow)}`);
+  const narrow = await setPane(260);
+  assert(narrow.cramped && !narrow.togglesVisible && narrow.pastPane <= 0.5, `desktop/modern: a 260px Tracks pane does not drop the caption toggles: ${JSON.stringify(narrow)}`);
   // room to spare: both come back, spelled out in full
   const wide = await setPane(900);
   assert(!wide.cramped && wide.togglesVisible && wide.toggles === 2, `desktop/modern: a 900px Tracks pane does not show the caption toggles: ${JSON.stringify(wide)}`);
@@ -743,15 +756,23 @@ async function trackCaptionFollowsThePane() {
     const split = await desk.evaluate(() => {
       const head = document.querySelector('.tracks .np-head');
       const right = document.querySelector('.main > .right');
+      const seen = (selector) => (head.querySelector(selector)?.getBoundingClientRect().width ?? 0) > 0;
       return {
         cramped: head.classList.contains('cramped'),
         short: head.classList.contains('short'),
+        noHint: head.classList.contains('nohint'),
         togglesVisible: Array.from(document.querySelectorAll('.tracks .track-toggles input')).every((box) => box.getBoundingClientRect().width > 0),
+        gadgetVisible: seen('.collapse-all'),
+        hintVisible: seen('.hint'),
         pastPane: head.getBoundingClientRect().right - right.getBoundingClientRect().right,
         appOverflow: document.querySelector('#app').scrollWidth - document.querySelector('#app').clientWidth,
       };
     });
     assert(split.togglesVisible && !split.cramped, `desktop/${theme}: the Tracks caption hides both options at the default split: ${JSON.stringify(split)}`);
+    // What the hint-before-gadget ranking buys: every theme carries the collapse gadget at the
+    // reference desktop size. Topaz pays for it by dropping the hint, which is the trade the
+    // ladder is ordered to make — and is why this is asserted here and not only in the abstract.
+    assert(split.gadgetVisible, `desktop/${theme}: the Tracks caption has no collapse gadget at the default split: ${JSON.stringify(split)}`);
     assert(split.pastPane <= 0.5 && split.appOverflow <= 0.5, `desktop/${theme}: the Tracks caption runs ${split.pastPane}px past its pane: ${JSON.stringify(split)}`);
     await desk.close();
   }
@@ -772,12 +793,18 @@ async function trackCaptionFollowsThePane() {
       return {
         tracksVisible: getComputedStyle(document.querySelector('.tracks')).display !== 'none',
         cramped: head.classList.contains('cramped'),
+        noGadget: head.classList.contains('nogadget'),
         togglesVisible: Array.from(document.querySelectorAll('.tracks .track-toggles input')).some((box) => box.getBoundingClientRect().width > 0),
         pastPane: head.getBoundingClientRect().right - right.getBoundingClientRect().right,
         appOverflow: document.querySelector('#app').scrollWidth - document.querySelector('#app').clientWidth,
       };
     });
-    assert(shown.tracksVisible && shown.cramped && !shown.togglesVisible, `landscape/${theme}: the Tracks caption keeps its toggles at 844x390: ${JSON.stringify(shown)}`);
+    // Every theme has to give something up at this size — the caption reaches at least the rung
+    // where the hint and the gadget have both gone. Whether the two options survive that is the
+    // theme's own arithmetic: Win95's 11px face fits them once it has, Modern and Topaz do not,
+    // and either way what is on screen must match the decision the caption took.
+    assert(shown.tracksVisible && shown.noGadget, `landscape/${theme}: the Tracks caption gives nothing up at 844x390: ${JSON.stringify(shown)}`);
+    assert(shown.cramped === !shown.togglesVisible, `landscape/${theme}: the caption's toggles do not match its own fit decision at 844x390: ${JSON.stringify(shown)}`);
     assert(shown.pastPane <= 0.5 && shown.appOverflow <= 0.5, `landscape/${theme}: the Tracks caption runs ${shown.pastPane}px past its pane: ${JSON.stringify(shown)}`);
     await landscape.close();
   }
@@ -804,14 +831,14 @@ async function collapseGadgetSitsInTheCaption() {
     await page.goto(target.href, { waitUntil: 'networkidle' });
     await page.waitForSelector('.rows .row', { timeout: 20000 });
     await page.evaluate(() => document.fonts.ready);
-    // Topaz has ~6px to spare at the default split, so Amiga wears `tight` there and the gadget is
-    // deliberately gone: a pane with room shows all three the same way.
+    // measure the gadget where every theme is at its first rung, so one set of numbers covers all
+    // three; what each theme wears at the default split is asserted further down.
     await page.evaluate(() => document.querySelector('.main').style.setProperty('--right-w', '900px'));
     await page.waitForTimeout(120);
     const gadget = await page.evaluate(() => {
       const head = document.querySelector('.tracks .np-head');
       const button = head?.querySelector('.collapse-all');
-      const hint = head?.querySelector('.muted');
+      const hint = head?.querySelector('.hint');
       const title = head?.querySelector('.np-title');
       if (!head || !button || !hint || !title) return null;
       const box = (element) => {
@@ -819,17 +846,19 @@ async function collapseGadgetSitsInTheCaption() {
         return { x: r.x, w: r.width, h: r.height, right: r.right, cy: r.y + r.height / 2 };
       };
       const svg = button.querySelector('svg');
-      // the ladder is the stylesheet's, so it can be read off the classes without resizing anything
+      // The ladder's paint is the stylesheet's, so it can be read off the classes without resizing
+      // anything: at each rung, is the gadget still drawn, and is the hint?
       const worn = head.className;
-      const visible = (className) => {
+      const shown = (className) => {
         head.className = className;
-        return button.getBoundingClientRect().width > 0;
+        return { gadget: button.getBoundingClientRect().width > 0, hint: hint.getBoundingClientRect().width > 0 };
       };
       const rungs = {
-        full: visible('np-head'),
-        short: visible('np-head short'),
-        tight: visible('np-head short tight'),
-        cramped: visible('np-head short tight cramped'),
+        full: shown('np-head'),
+        short: shown('np-head short'),
+        noHint: shown('np-head short nohint'),
+        noGadget: shown('np-head short nohint nogadget'),
+        cramped: shown('np-head short nohint nogadget cramped'),
       };
       head.className = worn;
       return {
@@ -856,8 +885,15 @@ async function collapseGadgetSitsInTheCaption() {
       // immediately left of the hint, one caption gap away, with the title on its other side
       assert(gadget.button.right <= gadget.hint.x && gadget.title.right <= gadget.button.x, `desktop/${theme}: the collapse gadget is not between the title and the hint: ${JSON.stringify(gadget)}`);
       assert(close(gadget.hint.x - gadget.button.right, parseFloat(gadget.gap), 0.5), `desktop/${theme}: the collapse gadget does not keep the caption's own ${gadget.gap} gap to the hint: ${JSON.stringify(gadget)}`);
-      // #28's ladder: the gadget goes before either option does, and comes back once they are gone
-      assert(gadget.rungs.full && gadget.rungs.short && !gadget.rungs.tight && gadget.rungs.cramped, `desktop/${theme}: the collapse gadget does not follow the caption's fit ladder: ${JSON.stringify(gadget.rungs)}`);
+      // The ranking, which is the decision most likely to be reverted by accident: a caption with
+      // no room for everything sheds the hint — a shortcut that works whether or not it is
+      // advertised — before it sheds the only control that closes every folder at once. Both are
+      // drawn again at `cramped`, where dropping the two options has given the row ~200px back.
+      const { full, short, noHint, noGadget, cramped } = gadget.rungs;
+      assert(full.gadget && full.hint && short.gadget && short.hint, `desktop/${theme}: the caption drops the gadget or the hint before it has to: ${JSON.stringify(gadget.rungs)}`);
+      assert(noHint.gadget && !noHint.hint, `desktop/${theme}: the caption does not shed the hint before the collapse gadget: ${JSON.stringify(gadget.rungs)}`);
+      assert(!noGadget.gadget && !noGadget.hint, `desktop/${theme}: the caption's fourth rung still draws the collapse gadget: ${JSON.stringify(gadget.rungs)}`);
+      assert(cramped.gadget && cramped.hint, `desktop/${theme}: the hint and the gadget do not come back once both options are gone: ${JSON.stringify(gadget.rungs)}`);
       // the fixture catalogue has no folders: the gadget stays, offering nothing
       assert(gadget.disabled, `desktop/${theme}: the collapse gadget is live on a catalogue with no folders: ${JSON.stringify(gadget)}`);
     }
@@ -886,13 +922,15 @@ async function trackCaptionSurvivesALateWebfont() {
   await page.waitForSelector('.rows .row', { timeout: 20000 });
   const caption = () => page.evaluate(() => {
     const head = document.querySelector('.tracks .np-head');
-    const had = { short: head.classList.contains('short'), cramped: head.classList.contains('cramped') };
-    head.classList.remove('short', 'cramped');
+    // measure the whole caption, whatever it is currently wearing: every rung it can be on hides
+    // something, and a `needed` taken through one of them understates the pane it wants
+    const worn = head.className;
+    head.className = 'np-head';
     const needed = head.scrollWidth;
-    if (had.short) head.classList.add('short');
-    if (had.cramped) head.classList.add('cramped');
+    head.className = worn;
     return {
-      ...had,
+      short: worn.includes('short'),
+      cramped: worn.includes('cramped'),
       needed,
       client: head.clientWidth,
       topaz: getComputedStyle(head).fontFamily,

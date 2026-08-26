@@ -132,7 +132,7 @@ export class TrackList {
       { class: 'np-head' },
       h('span', { class: 'np-title' }, `${songs.length} tracks`),
       this.collapseBtn,
-      h('span', { class: 'muted small' }, '· [ ] to step'),
+      h('span', { class: 'muted small hint' }, '· [ ] to step'),
       h('span', { class: 'spacer' }),
       // Settings carries the same two options at every window size; here they only fit sometimes.
       h(
@@ -185,18 +185,24 @@ export class TrackList {
   }
 
   /**
-   * Fit the caption to its pane in four steps: full labels, short labels, no collapse gadget, then
-   * no toggles at all (a dragged-in split, a small window, iOS mobile-landscape — Settings still
-   * has both). The second step is what keeps them on show at ordinary laptop widths: the full
-   * wording needs ~490 px of caption in the Modern face and ~585 px in Topaz, where the default
-   * split gives about 410 px at 1280×800, so all-or-nothing would hide them for most desktop users.
+   * Fit the caption to its pane in five steps: full labels, short labels, no "[ ] to step" hint,
+   * no collapse gadget, then no toggles at all (a dragged-in split, a small window, iOS
+   * mobile-landscape — Settings still has both). The second step is what keeps the options on show
+   * at ordinary laptop widths: the full wording needs ~490 px of caption in the Modern face and
+   * ~585 px in Topaz, where the default split gives about 410 px at 1280×800, so all-or-nothing
+   * would hide them for most desktop users.
    *
-   * The gadget goes before either option does because it is the one control here with a way round
-   * it — folders still close one at a time — where the two options exist nowhere else on the
-   * screen, and because Topaz has only about 6 px to spare at that same default split, so a gadget
-   * that refused to move would cost Amiga users both toggles. Once the toggles have gone the
-   * caption has ~200 px back and the gadget returns (the stylesheet's `.cramped` rule): it was
-   * never what was squeezing the row.
+   * The ranking under that is what each thing costs to lose. The hint goes first because it is the
+   * only item here that is not a control: [ and ] go on stepping whether or not the caption says
+   * so, and the keymap screen still lists them. The gadget goes next but not before the hint — it
+   * is the one and only way to shut every folder at once, where the two options are also in
+   * Settings at every size. That ordering is what buys Topaz its gadget: Amiga has ~6 px to spare
+   * at the default split and the gadget costs ~26 px, but the hint it now sheds first is ~101 px
+   * of Topaz, so all three themes carry the gadget at 1280×800 rather than only two.
+   *
+   * `cramped` is not a further step of shedding: with both options gone the row has ~200 px back,
+   * so the hint and the gadget come with it (the stylesheet's `:not(.cramped)`). Only the options
+   * are actually missing there, which is the state issue #28 describes.
    *
    * Measuring beats a breakpoint: the pane width is the user's, not the viewport's. Neither step
    * can change the caption's own box — it is a fixed-height row stretched to the pane, and
@@ -206,11 +212,13 @@ export class TrackList {
    */
   private fitCaption(): void {
     if (this.disposed) return;
-    this.head.classList.remove('short', 'tight', 'cramped');
+    this.head.classList.remove('short', 'nohint', 'nogadget', 'cramped');
     if (!this.head.clientWidth || !this.overflowing()) return;
     this.head.classList.add('short');
     if (!this.overflowing()) return;
-    this.head.classList.add('tight');
+    this.head.classList.add('nohint');
+    if (!this.overflowing()) return;
+    this.head.classList.add('nogadget');
     if (this.overflowing()) this.head.classList.add('cramped');
   }
 

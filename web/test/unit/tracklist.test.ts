@@ -177,3 +177,59 @@ describe('collapsing every folder at once', () => {
     expect(stored()).toBeNull();
   });
 });
+
+describe('a caption with less room than it has things to say', () => {
+  const list = (): TrackList =>
+    new TrackList([song('root', null), song('doom-1', 'games/doom')], 'root', () => {}, {
+      autoNext: { value: false, onChange: () => {} },
+      preserve: { value: false, onChange: () => {} },
+    });
+
+  /**
+   * The fit is a measurement, and happy-dom lays nothing out: stand in for the browser with a
+   * caption whose content width depends on which rung it is wearing, then ask it to re-fit. The
+   * numbers are a Modern-ish caption — the hint is worth ~100px of it, the gadget ~26px.
+   */
+  const rungs = { full: 500, short: 430, noHint: 330, noGadget: 304, cramped: 150 };
+  const fitTo = (pane: number): string => {
+    const track = list();
+    const head = track.el.querySelector('.np-head')!;
+    Object.defineProperty(head, 'clientWidth', { configurable: true, get: () => pane });
+    Object.defineProperty(head, 'scrollWidth', {
+      configurable: true,
+      get: () => {
+        const worn = head.className;
+        if (worn.includes('cramped')) return rungs.cramped;
+        if (worn.includes('nogadget')) return rungs.noGadget;
+        if (worn.includes('nohint')) return rungs.noHint;
+        if (worn.includes('short')) return rungs.short;
+        return rungs.full;
+      },
+    });
+    track.refit();
+    return head.className;
+  };
+
+  it('spells both options out when the pane can hold everything', () => {
+    expect(fitTo(520)).toBe('np-head');
+  });
+
+  it('shortens the option wording first: the controls all survive a squeeze', () => {
+    expect(fitTo(440)).toBe('np-head short');
+  });
+
+  // The ranking, stated as the trade it is: [ and ] go on stepping whether or not the caption
+  // says so, but nothing else on the screen closes every folder at once.
+  it('drops the [ ] hint before the collapse gadget when only one of them fits', () => {
+    expect(fitTo(340)).toBe('np-head short nohint');
+  });
+
+  it('drops the collapse gadget only once losing the hint was not enough', () => {
+    expect(fitTo(310)).toBe('np-head short nohint nogadget');
+  });
+
+  // #28: the two options are the last thing to go, and Settings still carries both
+  it('gives up both options last of all', () => {
+    expect(fitTo(200)).toBe('np-head short nohint nogadget cramped');
+  });
+});
