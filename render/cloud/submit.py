@@ -35,11 +35,8 @@ def outputs() -> dict:
 
 
 def song_ids(args) -> list[str]:
-    ids = []
-    for p in ("songs/songs.json", "songs/private/songs.json"):
-        f = REPO / p
-        if f.exists():
-            ids += [s["id"] for s in json.loads(f.read_text())["songs"]]
+    f = REPO / "songs/songs.json"
+    ids = [s["id"] for s in json.loads(f.read_text())["songs"]] if f.exists() else []
     if args.all:
         return ids
     # a mistyped --song used to vanish from the selection: the run went ahead with the rest
@@ -124,10 +121,10 @@ def main() -> int:
     sf.write_text(json.dumps(shards, indent=1))
     subprocess.run(["aws", "s3", "cp", str(sf), f"s3://{rf['fonts_bucket']}/shards.json"], check=True)
     # songs and catalog ride with the run rather than the image, so adding a song needs no rebuild
-    # and owner-supplied songs/private/ never enters a registry. Both are small (MIDI + JSON).
-    # songs/import/ is a staging area for MIDIs not yet in the corpus (4300 files, 134 MB) and
-    # __pycache__ is build output; neither is an input to a render, and every shard would pull
-    # both on every run.
+    # and owner-supplied music never enters a registry. Both are small (MIDI + JSON).
+    # songs/import/ is the library's file store — the *sources* canon.py reads (4300 files,
+    # 134 MB); a render only ever wants the canonical MIDIs under songs/rendered/. __pycache__
+    # is build output. Neither is an input to a render, and every shard would pull both.
     skip = ["--exclude", "import/*", "--exclude", "*__pycache__/*", "--exclude", "*.pyc"]
     for src, pre in ((REPO / "songs", "songs"), (REPO / "catalog", "catalog")):
         subprocess.run(["aws", "s3", "sync", str(src), f"s3://{rf['fonts_bucket']}/{pre}/",

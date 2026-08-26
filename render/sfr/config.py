@@ -123,21 +123,22 @@ def load_settings(paths: Paths) -> RenderSettings:
 
 
 def load_songs(paths: Paths) -> list[dict[str, Any]]:
-    """songs/songs.json plus songs/private/songs.json (owner-supplied), if present."""
+    """songs/songs.json — the whole corpus. There used to be a second table for
+    songs/private/; owner-supplied files are ordinary library entries now, so there is one."""
     songs: list[dict[str, Any]] = []
-    for p in (paths.songs / "songs.json", paths.songs / "private" / "songs.json"):
-        if p.exists():
-            data = load_json(p)
-            entries = data["songs"] if isinstance(data, dict) else data
-            default_id = data.get("default") if isinstance(data, dict) else None
-            for s in entries:
-                s = dict(s)
-                s["_dir"] = p.parent
-                # `file` (songs/tools/canon.py) is relative to the songs root; default: <id>.mid next to the json
-                s["_path"] = (paths.songs / s["file"]) if s.get("file") else (p.parent / f"{s['id']}.mid")
-                if default_id and s["id"] == default_id:
-                    s["default"] = True
-                songs.append(s)
+    p = paths.songs / "songs.json"
+    if p.exists():
+        data = load_json(p)
+        entries = data["songs"] if isinstance(data, dict) else data
+        default_id = data.get("default") if isinstance(data, dict) else None
+        for s in entries:
+            s = dict(s)
+            s["_dir"] = p.parent
+            # `file` (songs/tools/canon.py) is relative to the songs root; default: <id>.mid next to the json
+            s["_path"] = (paths.songs / s["file"]) if s.get("file") else (p.parent / f"{s['id']}.mid")
+            if default_id and s["id"] == default_id:
+                s["default"] = True
+            songs.append(s)
     seen = set()
     for s in songs:
         if s["id"] in seen:

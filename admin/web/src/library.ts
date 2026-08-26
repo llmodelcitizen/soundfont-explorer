@@ -30,6 +30,9 @@ export interface Entry {
   inject: unknown[] | null;
   trim: unknown | null;
   notes: string | null;
+  /** A key into songs/licenses.json. Optional only because library.json outlives its schema:
+   *  entries written before the field exists read as undefined until the server backfills them. */
+  license?: string | null;
   canon: CanonInfo;
 }
 
@@ -435,6 +438,8 @@ export class LibraryView {
     const fields: [keyof Entry, string][] = [
       ['name', 'display name'], ['composer', 'composer'], ['sequencer', 'sequencer'],
       ['source_url', 'source url'], ['notes', 'notes'],
+      // a key into songs/licenses.json: what canon.py reproduces in the published songs.json
+      ['license', 'license (songs/licenses.json key)'],
     ];
     const inputs = new Map<string, HTMLInputElement>();
     const form = el('div', { class: 'form' });

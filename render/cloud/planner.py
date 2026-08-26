@@ -63,7 +63,7 @@ def overhead_gain(worker_factor: float | None) -> float:
 USD_PER_VCPU_HOUR = 0.019
 DEFAULT_DURATION_S = 180
 # what sfr.jobs.variant_allowed_for_song admits when a song names no include_classes (and
-# what canon.py writes into every song from corpus.json default_include_classes)
+# what canon.py writes into every song from canon.DEFAULT_INCLUDE_CLASSES)
 DEFAULT_INCLUDE_CLASSES = ("full_gm", "melodic_only", "partial")
 
 
@@ -136,14 +136,11 @@ def job_count(shards: list[dict], variants: int, limit: int | None = None) -> in
 
 
 def song_durations(repo: pathlib.Path) -> dict[str, int]:
-    """id -> duration_s from the build-side song tables (public + private when present)."""
-    meta: dict[str, int] = {}
-    for p in ("songs/songs.json", "songs/private/songs.json"):
-        f = repo / p
-        if f.exists():
-            for s in json.loads(f.read_text())["songs"]:
-                meta[s["id"]] = s["duration_s"]
-    return meta
+    """id -> duration_s from the build-side songs.json."""
+    f = repo / "songs/songs.json"
+    if not f.exists():
+        return {}
+    return {s["id"]: s["duration_s"] for s in json.loads(f.read_text())["songs"]}
 
 
 def plan_shards(songs: list[str], n: int, durations: dict[str, int]) -> list[dict]:

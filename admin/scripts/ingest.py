@@ -8,10 +8,11 @@ change it, so existing renders under work/renders/<id>/ and the published /a/<id
 s3://<admin-bucket>/library/FILES/, and uploads the document.
 
 Only MIDI-ish files (.mid/.midi/.rmi, any case) are ingested; the NSF/FRM/mp3 remnants in
-the import tree stay local. Metadata for files that already have corpus.json entries
-(composer, sequencer, inject, trim) is carried over, and the minted ids are cross-checked
-against songs/songs.json before anything is uploaded: an id mismatch would orphan renders,
-so it is a hard error.
+the import tree stay local. Every entry starts with the defaults (owner-supplied licence, no
+metadata) — this is the bulk first pass; per-track metadata is the Library UI's job, and the
+curated tracks are seeded by admin/scripts/migrate_library.py. The minted ids are cross-checked
+against songs/songs.json before anything is uploaded: an id mismatch would orphan renders, so
+it is a hard error.
 
     admin/scripts/ingest.py --dry-run     # census, collisions, id cross-check; no AWS calls
     admin/scripts/ingest.py               # stage + upload (refuses if library.json exists)
@@ -35,7 +36,7 @@ sys.path.insert(0, os.path.join(ROOT, "admin", "server"))
 import canon  # noqa: E402
 import smf as S  # noqa: E402
 from sfadmin.clock import now_iso  # noqa: E402
-from sfadmin.entries import MIDI_EXTS, canon_state  # noqa: E402
+from sfadmin.entries import MIDI_EXTS, canon_state, new_entry  # noqa: E402
 
 FILES = os.path.join(ROOT, "songs", "import", "FILES")
 STAGE = os.path.join(ROOT, "work", "library-stage")
@@ -51,15 +52,14 @@ def admin_bucket() -> str:
         raise SystemExit(f"no admin outputs in {out} — apply with -var enable_admin=true and refresh it")
 
 
-def corpus_import_specs() -> dict:
-    """src (relative to songs/) -> corpus spec, for entries sourced from import/FILES."""
-    corpus = json.load(open(os.path.join(ROOT, "songs", "corpus.json")))
-    return {s["src"]: s for s in corpus["songs"] if s.get("src", "").startswith("import/FILES/")}
-
-
 def published_import_ids() -> dict:
-    """src -> pinned id from the current build-side songs.json (the ids renders are keyed by)."""
-    doc = json.load(open(os.path.join(ROOT, "songs", "songs.json")))
+    """src -> pinned id from the build-side songs.json (the ids renders are keyed by), if there
+    is one: it is generated from the library, so a tree that has never run canon has none and
+    there is nothing yet to contradict."""
+    try:
+        doc = json.load(open(os.path.join(ROOT, "songs", "songs.json")))
+    except FileNotFoundError:
+        return {}
     return {e["src"]: e["id"] for e in doc["songs"] if (e.get("src") or "").startswith("import/FILES/")}
 
 
@@ -77,24 +77,23 @@ def walk_midis() -> list:
     return sorted(rels)
 
 
-def mint(rel: str, spec: dict | None, taken: set) -> tuple:
+def mint(rel: str, taken: set) -> tuple:
     """(id, name, canon_status, canon_reason) for one file, exactly today's derivation.
 
-    canon.import_labels() gives slug(f"{parent}/{name}") where name is the explicit corpus
-    title, the SMF track-0 sequence title, or the filename stem. Files smf.py cannot parse
-    fall back to the stem and are marked unparsed. Collisions get a deterministic -2/-3
-    suffix in sorted-path order, recorded here and never recomputed.
+    canon.import_labels() gives slug(f"{parent}/{name}") where name is the SMF track-0
+    sequence title or the filename stem. Files smf.py cannot parse fall back to the stem and
+    are marked unparsed. Collisions get a deterministic -2/-3 suffix in sorted-path order,
+    recorded here and never recomputed.
     """
     src = "import/FILES/" + rel
-    explicit = (spec or {}).get("title")
     status, reason = "pending", None
     try:
         with open(os.path.join(FILES, rel), "rb") as fh:
             parsed = S.parse(fh.read())
-        sid, title, _ = canon.import_labels(src, parsed, explicit)
+        sid, title, _ = canon.import_labels(src, parsed, None)
     except Exception as e:  # wild files: RIFF-wrapped .rmi, truncated SMF, ...
         status, reason = "unparsed", f"{type(e).__name__}: {e}"
-        sid, title = canon.fallback_labels(rel, explicit)
+        sid, title = canon.fallback_labels(rel)
     base, n = sid, 2
     while sid in taken:
         sid = f"{base}-{n}"
@@ -104,37 +103,19 @@ def mint(rel: str, spec: dict | None, taken: set) -> tuple:
 
 
 def build_library() -> tuple:
-    specs = corpus_import_specs()
     entries: dict = {}
     dup_sha: dict = {}
     suffixed: list = []
     ts = now_iso()
     for rel in walk_midis():
-        src = "import/FILES/" + rel
-        spec = specs.get(src)
         with open(os.path.join(FILES, rel), "rb") as fh:
             blob = fh.read()
         sha = hashlib.sha256(blob).hexdigest()
-        sid, name, status, reason, was_suffixed = mint(rel, spec, set(entries))
+        sid, name, status, reason, was_suffixed = mint(rel, set(entries))
         if was_suffixed:
             suffixed.append(sid)
-        entries[sid] = {
-            "id": sid,
-            "path": rel,
-            "name": name,
-            "sha256": sha,
-            "size": len(blob),
-            "composer": (spec or {}).get("composer"),
-            "sequencer": (spec or {}).get("sequencer"),
-            "source_url": (spec or {}).get("source_url"),
-            "hidden": False,
-            "inject": (spec or {}).get("inject"),
-            "trim": (spec or {}).get("trim"),
-            "notes": None,
-            "added_at": ts,
-            "modified_at": ts,
-            "canon": canon_state(status, reason),
-        }
+        entries[sid] = new_entry(sid, rel, name, sha256=sha, size=len(blob), added_at=ts,
+                                 canon=canon_state(status, reason))
         dup_sha.setdefault(sha, []).append(sid)
     doc = {"schema": SCHEMA, "updated_at": ts, "entries": entries}
     dups = {h: ids for h, ids in dup_sha.items() if len(ids) > 1}
@@ -205,15 +186,14 @@ def main(argv) -> int:
     entries = doc["entries"]
     by_top: dict = {}
     unparsed = [e for e in entries.values() if e["canon"]["status"] == "unparsed"]
-    seeded = [e for e in entries.values() if e["composer"] or e["inject"] or e["trim"]]
     for e in entries.values():
         top = e["path"].split("/")[0] if "/" in e["path"] else "."
         by_top[top] = by_top.get(top, 0) + 1
     print(f"{len(entries)} MIDI files across {len(by_top)} top-level dirs")
     for top, n in sorted(by_top.items()):
         print(f"  {n:5d}  {top}")
-    print(f"{len(seeded)} seeded from corpus.json, {len(unparsed)} unparsed, "
-          f"{len(suffixed)} collision-suffixed ids, {len(dups)} duplicate-content groups")
+    print(f"{len(unparsed)} unparsed, {len(suffixed)} collision-suffixed ids, "
+          f"{len(dups)} duplicate-content groups")
     for e in unparsed[:10]:
         print(f"  unparsed: {e['path']} ({e['canon']['reason']})")
 

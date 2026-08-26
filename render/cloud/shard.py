@@ -31,7 +31,7 @@ FONTS = SCRATCH / "fonts"
 OUT = SCRATCH / "out"
 # songs/ and catalog/ are bind mounts for a local run; in Batch there is nothing to bind, so they
 # are staged from the same bucket as the fonts. Keeping them out of the image means the image does
-# not have to be rebuilt to add a song, and owner-supplied songs/private/ never enters a registry.
+# not have to be rebuilt to add a song, and owner-supplied music never enters a registry.
 SONGS = SCRATCH / "songs"
 CATALOG = SCRATCH / "catalog"
 def _allocated_cpus() -> int:

@@ -3,7 +3,7 @@
 # appears on the site when it is complete (no pack churn) and each song is live as soon as it is.
 #
 #   render/scripts/full-run.sh freedoom-map01 [more song ids…]
-#   render/scripts/full-run.sh --all                  # every song in songs.json (+ songs/private)
+#   render/scripts/full-run.sh --all                  # every song in songs.json
 #   THOROUGH=1 …                                      # opusdec-validate every segment per song (slower)
 #   WORKERS=32 …
 #
@@ -23,12 +23,8 @@ SFR=(docker run --rm --user "$(id -u):$(id -g)"
 
 if [[ "${1:-}" == "--all" ]]; then
   mapfile -t SONGS < <(python3 - <<'PY'
-import json, os
-ids = [s["id"] for s in json.load(open("songs/songs.json"))["songs"]]
-p = "songs/private/songs.json"
-if os.path.exists(p):
-    ids += [s["id"] for s in json.load(open(p))["songs"]]
-print("\n".join(ids))
+import json
+print("\n".join(s["id"] for s in json.load(open("songs/songs.json"))["songs"]))
 PY
 )
 else
