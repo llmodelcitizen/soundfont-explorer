@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "_comment": "The licence table every song's `license` key resolves against (songs/tools/canon.py, license_block). It used to live in songs/corpus.json alongside the song specs; the songs themselves are now the admin library's alone (library.json -> tools/fragment.py -> corpus-imports.json), but the licences must stay in git: they are what the site's credits page and songs.json reproduce, and a compliance obligation cannot depend on a mutable document in a bucket. `notice_file` is read verbatim (relative to songs/); `notice_text` is a template formatted with the song's spec, so {title}, {composer} and {sequencer} always resolve and anything else — {mutopia_id}, {cc0_source} — comes from the entry's `license_fields`.",
+  "licenses": {
+    "freedoom-bsd3": {
+      "id": "BSD-3-Clause",
+      "url": "https://github.com/freedoom/freedoom/blob/d14dbbee3b6fbfb2c11cdb65eb61216e86d4ee85/COPYING.adoc",
+      "notice_file": "LICENSES/freedoom-COPYING.adoc"
+    },
+    "mutopia-pd": {
+      "id": "PD",
+      "url": "https://www.mutopiaproject.org/legal.html",
+      "notice_text": "{title} — typeset by {sequencer} for the Mutopia Project ({mutopia_id}) and dedicated to the public domain by the typesetter (\"The contributor of this music has dedicated their contribution into the public domain\", https://www.mutopiaproject.org/legal.html). The composition itself is public domain."
+    },
+    "cc0": {
+      "id": "CC0-1.0",
+      "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "notice_text": "{title} by {composer} — released under the CC0 1.0 Universal Public Domain Dedication ({cc0_source})."
+    },
+    "owner-supplied": {
+      "id": "owner-supplied",
+      "url": null,
+      "notice_text": "Owner-supplied file imported from songs/import/; not redistributed with the repository."
+    }
+  }
+}

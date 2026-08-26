@@ -75,7 +75,7 @@ export function parseSongs(raw: unknown): SongsDoc {
     catalog: req<string>(d.catalog, isStr, 'catalog'),
     defaults: {
       song: isStr(defaults.song) ? defaults.song : (songs[0]?.id ?? null),
-      variant: isStr(defaults.variant) ? defaults.variant : 'adl-b58',
+      variant: isStr(defaults.variant) ? defaults.variant : 'sf2-2ef5bd3eb3',
     },
     songs,
   };

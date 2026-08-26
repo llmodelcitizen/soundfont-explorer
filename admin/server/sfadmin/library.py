@@ -22,7 +22,7 @@ import threading
 
 from .clock import now_iso
 from .config import get_config
-from .entries import MIDI_EXTS, canon_state
+from .entries import ENTRY_DEFAULTS, MIDI_EXTS, backfill, canon_state, new_entry
 
 _SAFE_SEG = re.compile(r"^[^/\0]+$")
 
@@ -171,14 +171,8 @@ class Library:
                 sid = f"{base}-{n}"
                 n += 1
             ts = now_iso()
-            entry = {
-                "id": sid, "path": rel_path, "name": title.rpartition("/")[2],
-                "sha256": sha, "size": len(blob),
-                "composer": None, "sequencer": None, "source_url": None,
-                "hidden": False, "inject": None, "trim": None, "notes": None,
-                "added_at": ts, "modified_at": ts,
-                "canon": canon_state(status, reason),
-            }
+            entry = new_entry(sid, rel_path, title.rpartition("/")[2], sha256=sha,
+                              size=len(blob), added_at=ts, canon=canon_state(status, reason))
             self.cfg.s3.put_object(Bucket=self.cfg.bucket, Key="library/FILES/" + rel_path,
                                    Body=blob, ContentType="audio/midi")
             self.doc["entries"][sid] = entry
@@ -223,15 +217,35 @@ class Library:
             self._forget_stale_canonical(old_path)
             return entry
 
-    EDITABLE = ("name", "composer", "sequencer", "source_url", "notes", "hidden", "inject", "trim")
+    EDITABLE = ("name", "composer", "sequencer", "source_url", "notes", "hidden", "inject",
+                "trim", "license")
     REBUILD_KEYS = ("inject", "trim")  # changing these changes the canonical bytes → re-render
+
+    def _normalize(self, fields: dict) -> dict:
+        """Copy `fields` with `license` cleaned up: blanked back to the default (the UI sends
+        an empty input as null) and checked against songs/licenses.json here, because canon.py
+        refusing an unknown key shows up as a track silently missing from the site rather than
+        as a rejected edit."""
+        fields = dict(fields)
+        if "license" in fields:
+            fields["license"] = fields["license"] or ENTRY_DEFAULTS["license"]
+            try:
+                known = _canon_modules()[0].load_licenses()
+            except Exception:
+                known = None      # no licences file in this snapshot: let canon.py be the judge
+            if known is not None and fields["license"] not in known:
+                raise ValueError(f"unknown license {fields['license']!r} — songs/licenses.json "
+                                 f"defines {', '.join(sorted(known))}")
+        return fields
 
     def edit(self, sid: str, fields: dict) -> dict:
         bad = set(fields) - set(self.EDITABLE)
         if bad:
             raise ValueError(f"not editable: {sorted(bad)}")
+        fields = self._normalize(fields)
         with self.lock:
             entry = self.get(sid)
+            backfill(entry)   # an entry older than the field being edited still has a `before`
             before = {k: entry[k] for k in fields}
             entry.update(fields)
             if any(entry[k] != before.get(k) for k in self.REBUILD_KEYS if k in fields):
@@ -276,7 +290,9 @@ class Library:
     # would be absurd). All ids are validated up front so a typo fails before any change;
     # per-file S3 work still happens per object, then the doc saves once.
 
-    BULK_EDITABLE = ("composer", "sequencer", "source_url", "notes", "hidden")
+    # `license` is here as much as anywhere: a folder of Freedoom tracks is one licence, and
+    # setting it 30 times by hand is how one gets missed
+    BULK_EDITABLE = ("composer", "sequencer", "source_url", "notes", "hidden", "license")
 
     def _require_all(self, ids: list[str]) -> list[dict]:
         missing = [i for i in ids if i not in self.doc["entries"]]
@@ -288,8 +304,11 @@ class Library:
         bad = set(fields) - set(self.BULK_EDITABLE)
         if bad:
             raise ValueError(f"not bulk-editable: {sorted(bad)}")
+        fields = self._normalize(fields)
         with self.lock:
             entries = self._require_all(ids)
+            for e in entries:
+                backfill(e)
             before = [{k: e[k] for k in fields} for e in entries]
             ts = now_iso()
             for e in entries:

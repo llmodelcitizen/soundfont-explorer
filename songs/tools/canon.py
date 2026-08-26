@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Canonicalize the song corpus: songs/corpus.json -> songs/<id>.mid + songs/songs.json.
+"""Canonicalize the song corpus: songs/corpus-imports.json -> songs/rendered/ + songs/songs.json.
 
-For every entry in corpus.json (and every owner-supplied file in
-songs/private/, see below):
+There is exactly one way a MIDI file becomes a song: it is a file in the admin library.
+library.json (the admin's document, S3) -> tools/fragment.py -> songs/corpus-imports.json
+-> here.  The two older paths — hand-written specs in songs/corpus.json and owner-supplied
+drops in songs/private/ — are gone (2026-08-25); the library did everything they did, with
+pinned ids that survive a rename, and three paths meant three sets of rules for one job.
+
+For every spec in the fragment:
 
   1. parse the source SMF (format 0 or 1);
   2. apply the optional trim (``trim.cut_tick``: drop everything from that tick
@@ -15,18 +20,19 @@ songs/private/, see below):
      change honoured);
   5. append a text meta event ``soundfont-explorer:end`` at ``midi_end + tail_s`` on
      track 0, so every engine keeps rendering through the release tail;
-  6. write songs/<id>.mid (deterministic bytes: sorted events, no running
-     status) and record sha256, ``midi_end_s`` and
-     ``duration_s = D = ceil((midi_end + tail) / slice_s) * slice_s`` in songs.json (slice_s from render/engines.json).
+  6. write songs/rendered/<the source's path under import/FILES/> (deterministic
+     bytes: sorted events, no running status) and record sha256, ``midi_end_s``
+     and ``duration_s = D = ceil((midi_end + tail) / slice_s) * slice_s`` in
+     songs.json (slice_s from render/engines.json).
 
-Private songs: every ``*.mid`` / ``*.MID`` directly inside songs/private/ is
-processed the same way with ``license.id = "owner-supplied"``, id
-``private-<slug>``, output songs/private/canon/<id>.mid and an entry in
-songs/private/songs.json.  Optional per-file metadata (title, composer, trim,
-inject ...) can be given in songs/private/corpus.json keyed by file name.
+Licences come from songs/licenses.json, keyed by the spec's ``license``; that file stays in
+git because the notices it produces are a redistribution obligation, not box state.
 
     python3 songs/tools/canon.py            # regenerate everything
     python3 songs/tools/canon.py --check    # re-run and fail if songs.json would change
+
+A checkout without songs/corpus-imports.json (which is generated, hence gitignored) has no
+corpus: the sources live in the library's file store, not in the repository.
 """
 from __future__ import annotations
 
@@ -52,14 +58,23 @@ ENGINES_JSON = os.path.join(os.path.dirname(SONGS_DIR), "render", "engines.json"
 
 
 def _render_constants() -> Tuple[float, float]:
-    """(slice_s, tail_s) as declared in render/engines.json ``render`` (corpus.json may override tail_s)."""
+    """(slice_s, tail_s) as declared in render/engines.json ``render``."""
     with open(ENGINES_JSON, encoding="utf-8") as fh:
         r = json.load(fh)["render"]
     return r["slice_s"], r["tail_s"]
 
 
-SLICE_S, DEFAULT_TAIL_S = _render_constants()
+SLICE_S, TAIL_S = _render_constants()
 assert float(SLICE_S).is_integer() and SLICE_S > 0, f"render.slice_s must be a whole number of seconds, got {SLICE_S!r}"
+
+# The last two corpus-wide knobs corpus.json used to hold. They belong in git, not in the
+# library document: the default song is the track every share link without an explicit ?song=
+# resolves to and ~14,150 rendered variants are keyed by, so it must not be editable state
+# on the box; and the include-class set is render policy shared with render/cloud/planner.py.
+DEFAULT_SONG_ID = "starwars"
+DEFAULT_INCLUDE_CLASSES = ["full_gm", "melodic_only", "partial"]
+#: What a library entry gets when nobody says otherwise (fragment.py emits the same default).
+DEFAULT_LICENSE = "owner-supplied"
 
 
 # ----------------------------------------------------------------------
@@ -140,7 +155,7 @@ def sequence_title(smf: S.Smf) -> Optional[str]:
     sequence, while the same meta on later tracks names an instrument or staff. So only track 0
     counts — otherwise a file whose first named track is 'Cave Music 1' or 'Lead' would be
     labelled with an instrument name. Real exports still get this wrong (a track 0 called
-    'Honky-Tonk Piano'), which is why an explicit `title` in corpus.json always wins.
+    'Honky-Tonk Piano'), which is why the library entry's own name always wins.
     """
     if not smf.tracks:
         return None
@@ -253,14 +268,16 @@ def canonicalize(smf: S.Smf, spec: dict, tail_s: float) -> Tuple[S.Smf, dict]:
             info["modifications"].append(
                 "program changes already present in the source (" + ", ".join(
                     "ch%d=%d" % (rule["channel"], rule["program"]) for rule in rules) + "), none injected")
-    if spec.get("_imported"):
-        # imports almost never write the drum channel's program. Make the GM default explicit so
-        # every engine picks the same kit; melodic channels still have to be right in the source.
-        drum = IP.default_drum_rules(smf)
-        if drum:
-            IP.apply_rules(smf, drum)
-            info["modifications"].append(
-                "program change injected at tick 0: ch10 = 0 (GM standard kit, implicit in the source)")
+    # Real-world MIDI almost never writes the drum channel's program. Make the GM default
+    # explicit so every engine picks the same kit; melodic channels still have to be right in
+    # the source. (This used to be conditional on the song being an import — now every song
+    # is one. It is a no-op for a file that names its ch10 program, which is why turning it on
+    # for the once-curated tracks did not move a single canonical sha256.)
+    drum = IP.default_drum_rules(smf)
+    if drum:
+        IP.apply_rules(smf, drum)
+        info["modifications"].append(
+            "program change injected at tick 0: ch10 = 0 (GM standard kit, implicit in the source)")
     missing = IP.check_programs(smf)
     if missing:
         raise SystemExit("%s: channels whose first note has no preceding program change: %s"
@@ -281,25 +298,41 @@ def canonicalize(smf: S.Smf, spec: dict, tail_s: float) -> Tuple[S.Smf, dict]:
 # ----------------------------------------------------------------------
 # corpus driver
 # ----------------------------------------------------------------------
-def license_block(corpus: dict, spec: dict) -> dict:
-    lic = dict(corpus["licenses"][spec["license"]])
+def load_licenses() -> dict:
+    """The licence table from songs/licenses.json, keyed the way a spec's ``license`` names it."""
+    with open(os.path.join(SONGS_DIR, "licenses.json"), encoding="utf-8") as fh:
+        return json.load(fh)["licenses"]
+
+
+def license_block(licenses: dict, spec: dict) -> dict:
+    """The published ``license`` object: id, url and the notice text to reproduce.
+
+    A missing key is a hard refusal rather than a silent fallback to owner-supplied: the
+    Freedoom tracks' BSD-3 attribution has to reach songs.json or the site is redistributing
+    them without their notice.
+    """
+    key = spec.get("license") or DEFAULT_LICENSE
+    if key not in licenses:
+        raise SystemExit("%s: unknown license %r (songs/licenses.json defines %s)"
+                         % (spec.get("id"), key, ", ".join(sorted(licenses))))
+    lic = licenses[key]
     out = {"id": lic["id"], "url": lic["url"]}
-    if "license_notice" in spec:
-        out["notice_text"] = spec["license_notice"]
-    elif "notice_file" in lic:
+    if "notice_file" in lic:
         with open(os.path.join(SONGS_DIR, lic["notice_file"]), encoding="utf-8") as fh:
             out["notice_text"] = fh.read().strip()
     else:
-        out["notice_text"] = lic["notice_text"].format(**{**spec, "title": spec["title"]})
+        # the spec's own keys, then the entry's license_fields ({mutopia_id}, {cc0_source}):
+        # placeholders the licence template needs that are not song metadata
+        fields = {**spec, **(spec.get("license_fields") or {}), "title": spec["title"]}
+        try:
+            out["notice_text"] = lic["notice_text"].format(**fields)
+        except KeyError as e:
+            raise SystemExit("%s: license %r has no license_fields[%s] to fill its notice"
+                             % (spec.get("id"), key, e)) from None
     return out
 
 
-def load_source(spec: dict) -> Tuple[S.Smf, Optional[bytes]]:
-    gen = spec.get("generator")
-    if gen == "make_diagnostic":
-        import make_diagnostic
-        m = make_diagnostic.build()
-        return m, S.serialize(m)
+def load_source(spec: dict) -> Tuple[S.Smf, bytes]:
     path = os.path.join(SONGS_DIR, spec["src"])
     with open(path, "rb") as fh:
         blob = fh.read()
@@ -311,48 +344,37 @@ def _signature(smf: S.Smf) -> List[int]:
     return [sum(1 for e in t if not (e.kind == "meta" and e.meta_type == 0x2F)) for t in smf.tracks]
 
 
-def build_entry(corpus: dict, spec: dict, out_dir: str, private: bool = False) -> Tuple[dict, bytes]:
-    tail_s = float(corpus.get("tail_s", DEFAULT_TAIL_S))
+def build_entry(spec: dict, licenses: dict, default_id: str = DEFAULT_SONG_ID) -> Tuple[dict, bytes]:
     smf, src_blob = load_source(spec)
-    smf, info = canonicalize(smf, spec, tail_s)
+    smf, info = canonicalize(smf, spec, TAIL_S)
     blob = S.serialize(smf)
     # round-trip sanity: the canonical bytes must parse back to the same event count
     back = S.parse(blob)
     assert _signature(back) == _signature(smf), "serializer mismatch"
-    out_name = spec["id"] + ".mid"
-    out_path = os.path.join(out_dir, out_name)
-    if spec.get("_out_path"):          # imported: keep the source's directory tree and filename
-        out_path = spec["_out_path"]
-        out_name = os.path.relpath(out_path, SONGS_DIR)
+    # the canonical MIDI mirrors the source's path under import/FILES/ (resolve_import)
+    out_path = spec["_out_path"]
+    out_name = os.path.relpath(out_path, SONGS_DIR)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "wb") as fh:
         fh.write(blob)
-    classes = list(spec.get("include_classes") or corpus.get("default_include_classes", []))
-    classes += [c for c in spec.get("extra_include_classes", []) if c not in classes]
-    if private:
-        lic = {"id": "owner-supplied", "url": None,
-               "notice_text": "Owner-supplied file from songs/private/ (not redistributed with the repository)."}
-        file_rel = "private/canon/" + out_name
-    else:
-        lic = license_block(corpus, spec)
-        # out_name is already relative to songs/ for imports; plain songs live at rendered/<id>.mid
-        file_rel = out_name if out_name.startswith("rendered/") else "rendered/" + out_name
+    classes = list(DEFAULT_INCLUDE_CLASSES)
+    classes += [c for c in spec.get("extra_include_classes") or [] if c not in classes]
     entry = {
         "id": spec["id"],
         "title": spec["title"],
-        "composer": spec.get("composer", "unknown"),
-        "sequencer": spec.get("sequencer", "unknown"),
+        "composer": spec.get("composer") or "unknown",
+        "sequencer": spec.get("sequencer") or "unknown",
         "source_url": spec.get("source_url"),
-        "license": lic,
+        "license": license_block(licenses, spec),
         "modifications": info["modifications"],
         "midi_end_s": info["midi_end_s"],
         "duration_s": info["duration_s"],
         "sha256": sha256_bytes(blob),
         "include_classes": classes,
-        "default": spec["id"] == corpus.get("default"),
-        "file": file_rel,
+        "default": spec["id"] == default_id,
+        "file": out_name,
         "src": spec.get("src"),
-        "src_sha256": sha256_bytes(src_blob) if src_blob is not None else None,
+        "src_sha256": sha256_bytes(src_blob),
         "original_midi_end_s": info["original_midi_end_s"],
         "original_last_event_s": info["original_last_event_s"],
         "end_marker_s": info["end_marker_s"],
@@ -382,57 +404,63 @@ def write_json(path: str, data: dict, check: bool) -> bool:
     return True
 
 
-def stable_header(corpus: dict) -> dict:
+def stable_header() -> dict:
     return {
         "schema": SCHEMA,
         "generated_by": "songs/tools/canon.py",
-        "tail_s": corpus.get("tail_s", DEFAULT_TAIL_S),
+        "tail_s": TAIL_S,
         "canonicalization": ("events re-serialised without running status; text meta 'soundfont-explorer:end' "
                              f"appended on track 0 at midi_end + tail_s; duration_s = ceil((midi_end + tail_s)/{SLICE_S:g})*{SLICE_S:g}"),
     }
 
 
 def resolve_import(spec: dict) -> dict:
-    """Fill in id/title/output path for a spec whose src is under songs/import/FILES/."""
+    """Fill in title/output path for one spec; every song's source is under songs/import/FILES/.
+
+    The id is whatever the fragment pinned (library.json pins it at upload and never changes
+    it again, so a rename or a move never orphans a render). import_labels() is still the
+    fallback for a spec that carries none — the same rule that minted the pinned ids.
+    """
     src = spec.get("src") or ""
     if not src.startswith(IMPORT_ROOT):
-        return spec
+        raise SystemExit("%s: src %r is not under %s — every song is a library file"
+                         % (spec.get("id"), src, IMPORT_ROOT))
     smf, _ = load_source(spec)
     sid, title, out_path = import_labels(src, smf, spec.get("title"))
-    if "path" in spec:
-        # admin fragment (corpus-imports.json): the directory lives in "path" and the title
-        # stays the leaf name — the published entry carries both, instead of a path-prefixed
-        # title. Legacy corpus.json imports (no "path" key) keep the prefixed title.
-        title = spec.get("title") or title.rpartition("/")[2]
-    return {**spec, "id": spec.get("id") or sid, "title": title, "_out_path": out_path,
-            "_imported": True}
+    # the directory lives in "path" and the title stays the leaf name — the published entry
+    # carries both, and the public client builds its folder tree from them
+    title = spec.get("title") or title.rpartition("/")[2]
+    return {**spec, "id": spec.get("id") or sid, "title": title, "_out_path": out_path}
 
 
-def merge_fragment(corpus: dict) -> dict:
-    """songs/corpus-imports.json (generated by fragment.py from the admin library) supersedes
-    every import/FILES entry in corpus.json when it exists. Without it — a plain checkout —
-    canon behaves exactly as before, so the committed corpus.json entries still render."""
+def load_specs() -> List[dict]:
+    """Every song spec, from songs/corpus-imports.json (fragment.py's view of the library).
+
+    No fragment is not an empty corpus, it is a tree that has never been told what the corpus
+    IS — the sources live in the library's file store and the repository ships the tools, not
+    the music. Refuse: a workstation that has synced songs.json down for a render run would
+    otherwise have it blanked by a stray canon.py. A fragment listing no songs is different —
+    that is a library with nothing visible in it, and writing it out is correct."""
     fpath = os.path.join(SONGS_DIR, "corpus-imports.json")
     if not os.path.exists(fpath):
-        return corpus
+        raise SystemExit("no songs/corpus-imports.json — build it first:\n"
+                         "  python3 songs/tools/fragment.py --library <library.json>")
     with open(fpath, encoding="utf-8") as fh:
-        frag = json.load(fh)
-    kept = [s for s in corpus["songs"] if not (s.get("src") or "").startswith(IMPORT_ROOT)]
-    print("corpus-imports.json: %d import entries (superseding %d in corpus.json)"
-          % (len(frag["songs"]), len(corpus["songs"]) - len(kept)))
-    return {**corpus, "songs": kept + frag["songs"]}
+        return json.load(fh)["songs"]
 
 
-def run_public(corpus: dict, check: bool, lenient: bool = False,
-               only: Optional[set] = None) -> Tuple[List[dict], bool, List[dict], List[str]]:
+def run_public(specs: List[dict], check: bool, lenient: bool = False,
+               only: Optional[set] = None,
+               default_id: str = DEFAULT_SONG_ID) -> Tuple[List[dict], bool, List[dict], List[str]]:
     """(entries, songs.json unchanged, per-song refusals, ids dropped from songs.json).
     `dropped` is only ever non-empty for a targeted (--only) run; it rides in
     canon-report.json so the admin UI can show it — the printed version below goes to
     stdout, which the admin inherits into the journal and never shows (#19)."""
+    licenses = load_licenses()
     entries: List[dict] = []
     refused: List[dict] = []
     dropped: List[str] = []
-    for spec in corpus["songs"]:
+    for spec in specs:
         sid = spec.get("id")
         if only is not None and sid is not None and sid not in only:
             continue
@@ -446,7 +474,7 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
         if only is not None and spec["id"] not in only:
             continue
         try:
-            entry, _ = build_entry(corpus, spec, RENDERED_DIR)
+            entry, _ = build_entry(spec, licenses, default_id)
         except (Exception, SystemExit) as e:  # check_programs refusal, trim/inject errors, ...
             if not lenient:
                 raise
@@ -458,9 +486,14 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
             "" if entry["modifications"] == "none" else "(modified)"))
     if only is not None:
         # incremental: replace/append the selected songs in the existing songs.json so an
-        # admin metadata edit does not re-canonicalize the whole library
-        with open(os.path.join(SONGS_DIR, "songs.json"), encoding="utf-8") as fh:
-            existing = json.load(fh)["songs"]
+        # admin metadata edit does not re-canonicalize the whole library. songs.json is
+        # generated (the repository ships no corpus), so a box that has never run canon has
+        # none — then a targeted run is simply the first entry in a new one.
+        try:
+            with open(os.path.join(SONGS_DIR, "songs.json"), encoding="utf-8") as fh:
+                existing = json.load(fh)["songs"]
+        except FileNotFoundError:
+            existing = []
         by_id = {e["id"]: e for e in entries}
         merged: List[dict] = []
         for e in existing:
@@ -484,51 +517,23 @@ def run_public(corpus: dict, check: bool, lenient: bool = False,
     ids = [e["id"] for e in entries]
     if len(set(ids)) != len(ids):
         raise SystemExit("duplicate song ids")
-    if corpus.get("default") not in ids:
-        msg = "default song %r not in corpus" % corpus.get("default")
-        why = next((r for r in refused if r.get("id") == corpus.get("default")), None)
-        if why:  # a lenient run swallowed the real error; surface it (e.g. missing songs/src)
+    if entries and default_id not in ids:
+        # an empty corpus is a checkout with no fragment (nothing to default to); a non-empty
+        # one that lost the default track is a real fault — the site would open on whatever
+        # sorts first, and every share link without ?song= would land somewhere else
+        msg = "default song %r not in corpus" % default_id
+        why = next((r for r in refused if r.get("id") == default_id), None)
+        if why:  # a lenient run swallowed the real error; surface it
             msg += " — it was refused: %s" % why["reason"]
         elif refused:
             msg += " — %d songs were refused (first: %s: %s)" % (
                 len(refused), refused[0]["id"] or refused[0]["src"], refused[0]["reason"])
         raise SystemExit(msg)
-    data = stable_header(corpus)
-    data["default"] = corpus["default"]
+    data = stable_header()
+    data["default"] = default_id
     data["songs"] = entries
     ok = write_json(os.path.join(SONGS_DIR, "songs.json"), data, check)
     return entries, ok, refused, dropped
-
-
-def run_private(corpus: dict, check: bool) -> Tuple[List[dict], bool]:
-    pdir = os.path.join(SONGS_DIR, "private")
-    if not os.path.isdir(pdir):
-        return [], True
-    files = sorted(f for f in os.listdir(pdir)
-                   if f.lower().endswith(".mid") and os.path.isfile(os.path.join(pdir, f)))
-    if not files:
-        return [], True
-    overrides = {}
-    opath = os.path.join(pdir, "corpus.json")
-    if os.path.exists(opath):
-        with open(opath, encoding="utf-8") as fh:
-            overrides = json.load(fh)
-    out_dir = os.path.join(pdir, "canon")
-    os.makedirs(out_dir, exist_ok=True)
-    entries = []
-    for f in files:
-        stem = os.path.splitext(f)[0]
-        spec = {"id": "private-" + slug(stem), "src": "private/" + f, "title": stem,
-                "composer": "unknown", "sequencer": "unknown", "source_url": None}
-        spec.update(overrides.get(f, {}))
-        entry, _ = build_entry(corpus, spec, out_dir, private=True)
-        entries.append(entry)
-        print("  %-22s midi_end=%8.3f s  D=%4d s  sha=%s  (private)" % (
-            entry["id"], entry["midi_end_s"], entry["duration_s"], entry["sha256"][:12]))
-    data = stable_header(corpus)
-    data["songs"] = entries
-    ok = write_json(os.path.join(pdir, "songs.json"), data, check)
-    return entries, ok
 
 
 def main(argv: List[str]) -> int:
@@ -544,14 +549,11 @@ def main(argv: List[str]) -> int:
     args = ap.parse_args(argv)
     if args.only and args.check:
         ap.error("--only cannot be combined with --check")
-    with open(os.path.join(SONGS_DIR, "corpus.json"), encoding="utf-8") as fh:
-        corpus = json.load(fh)
-    corpus = merge_fragment(corpus)
-    print("public corpus:")
-    _, ok1, refused, dropped = run_public(corpus, args.check, lenient=args.lenient,
-                                          only=set(args.only) if args.only else None)
-    print("private songs:")
-    _, ok2 = run_private(corpus, args.check)
+    specs = load_specs()
+    print("corpus: %d songs" % len(specs))
+    _, ok, refused, dropped = run_public(specs, args.check, lenient=args.lenient,
+                                         only=set(args.only) if args.only else None,
+                                         default_id=DEFAULT_SONG_ID)
     if args.lenient:
         # `dropped` is how the admin UI learns what a targeted run cost: the printed
         # version above goes to canon.py's stdout, which library.canon_run inherits
@@ -564,7 +566,7 @@ def main(argv: List[str]) -> int:
             print("%d refused (songs/canon-report.json):" % len(refused))
             for r in refused[:20]:
                 print("  %s: %s" % (r["id"] or r["src"], r["reason"]))
-    if args.check and not (ok1 and ok2):
+    if args.check and not ok:
         print("songs.json is out of date — run canon.py", file=sys.stderr)
         return 1
     return 0

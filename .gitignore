@@ -4,6 +4,8 @@ soundfonts/
 work/
 out/
 songs/import/FILES/
+# songs/private/ and songs/src/ were the two pre-Library ways a MIDI became a song and are
+# gone from the tooling; still ignored so a leftover local copy can never be committed.
 songs/private/
 songs/src/
 songs/src-private/
@@ -43,14 +45,13 @@ infra/live/terraform.tfvars
 infra/live/outputs.json
 web/.env.local
 
-# imported music: sources are gitignored (songs/import/FILES/), so their canonical
-# copies are too — only the freely licensed corpus is committed
-# canonical MIDIs for imports mirror the import tree (subdirs) or land at the rendered/
-# root (imports with no directory). The 13 curated rendered/*.mid are tracked already —
-# gitignore never hides tracked files — but a NEW curated song needs `git add -f`.
-songs/rendered/*/
-songs/rendered/*.mid
+# the corpus: every song is a library file (songs/import/FILES/, ignored above), so
+# everything canon.py derives from it is build output — the canonical MIDIs, the fragment,
+# songs.json, the refusal report. The repository ships the tools and the licence notices,
+# not the music; a box or a workstation restores these from s3://<admin-bucket>/canon/.
+songs/rendered/
 songs/corpus-imports.json
+songs/songs.json
 songs/canon-report.json
 
 # agent worktrees (created by Claude Code workflows; never part of the repo)

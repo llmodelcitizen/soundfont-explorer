@@ -293,7 +293,7 @@ def build_manifests(paths: Paths, songs: list[dict], variants: list[dict], setti
     default_song = defaults.get("song") or next((s["id"] for s in songs if s.get("default")), None) \
         or (song_entries[0]["id"] if song_entries else None)
     songs_json = {"schema": SCHEMA, "generated_at": now_iso(), "catalog": f"/c/{chash}.json",
-                  "defaults": {"song": default_song, "variant": defaults.get("variant", "adl-b58")},
+                  "defaults": {"song": default_song, "variant": defaults.get("variant", "sf2-2ef5bd3eb3")},
                   "songs": song_entries}
     _write(public / "songs.json", json.dumps(songs_json, indent=1, sort_keys=True, ensure_ascii=False).encode())
     report["songs_json"] = str(public / "songs.json")

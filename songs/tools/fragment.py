@@ -2,15 +2,20 @@
 """Generate songs/corpus-imports.json from the admin library document.
 
 The admin library (s3://<admin-bucket>/library/library.json, mirrored locally) is the source
-of truth for every imported MIDI: its pinned id, current path, display name and metadata.
-This tool translates it into a corpus fragment in corpus.json's spec shape; canon.py merges
-the fragment over corpus.json's own import/FILES entries when the file exists (and behaves
-exactly as before when it does not).
+of truth for every MIDI in the corpus — there is no other: its pinned id, current path,
+display name, licence and metadata. This tool translates it into the spec list canon.py
+consumes; canon.py reads nothing else.
 
 Fragment specs always pin "id" (so renames never orphan renders) and carry the directory in
 "path" with the leaf name as "title" — canon passes both through to songs.json, where the
 public client builds its folder tree from them. Hidden library entries are omitted, which is
 how a track leaves the site without touching its renders.
+
+Everything canon.py needs to publish a song therefore has to survive this translation. That
+is why an entry carries `license` (a key into songs/licenses.json) with its `license_fields`
+for the notice template, `extra_include_classes` and `inject_note`: when corpus.json held
+the curated tracks those lived there, and dropping them here would quietly relicense the
+Freedoom tracks as owner-supplied and stop rendering the piano-only variants (2026-08-25).
 
     python3 songs/tools/fragment.py --library <library.json> [--out songs/corpus-imports.json]
 
@@ -27,6 +32,11 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SONGS_DIR = os.path.dirname(HERE)
 SCHEMA = 1
+#: The read-side fallback for an entry written before library.json carried a licence.
+#: sfadmin.entries.ENTRY_DEFAULTS gives a fresh upload the same key, and canon.DEFAULT_LICENSE
+#: is the last resort for a spec that somehow reaches it without one — three roles, one value,
+#: spelled out in each because fragment.py must stay a standalone stdlib script.
+DEFAULT_LICENSE = "owner-supplied"
 
 
 def build_fragment(library: dict) -> dict:
@@ -38,12 +48,15 @@ def build_fragment(library: dict) -> dict:
             "id": e["id"],
             "src": "import/FILES/" + e["path"],
             "title": e["name"],
-            "license": "owner-supplied",
+            # entries predating the licence field (library.json is long-lived state) are
+            # owner-supplied, which is what every upload gets and what they always got
+            "license": e.get("license") or DEFAULT_LICENSE,
         }
         parent = e["path"].rpartition("/")[0]
         if parent:
             spec["path"] = parent
-        for k in ("composer", "sequencer", "source_url", "inject", "trim"):
+        for k in ("composer", "sequencer", "source_url", "inject", "trim",
+                  "license_fields", "extra_include_classes", "inject_note"):
             if e.get(k):
                 spec[k] = e[k]
         songs.append(spec)

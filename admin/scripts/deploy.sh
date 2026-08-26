@@ -38,15 +38,11 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 echo "== bundle (repo @ $GITSHA + dist + wheels)"
 git archive HEAD | tar -x -C "$STAGE"
-# songs/private and songs/src are gitignored but are corpus INPUTS: without private the
-# box's songs.json rebuild drops private songs from the live site (2026-08-24,
-# private-starwars), and without src every curated song fails canon with file-not-found
-# and the run aborts on "default song not in corpus" (same day, same lesson).
-for extra in songs/private songs/src; do
-  if [[ -d "$extra" ]]; then
-    cp -r "$extra" "$STAGE/$extra"
-  fi
-done
+# Nothing local is added to the bundle any more. The bundle used to carry songs/private and
+# songs/src because they were corpus INPUTS the box could not rebuild without — and forgetting
+# them cost a live track twice on 2026-08-24. Every source is a library file now: the box reads
+# them through songs/import/FILES -> the library mirror it syncs from the bucket, so the bundle
+# is exactly the committed tree and a missing source is impossible rather than merely noticed.
 mkdir -p "$STAGE/admin/web/dist" "$STAGE/admin/wheels"
 cp -r admin/web/dist/. "$STAGE/admin/web/dist/"
 # wheels for the box: Debian 13 arm64 = CPython 3.13 on aarch64. Pure wheels always match;

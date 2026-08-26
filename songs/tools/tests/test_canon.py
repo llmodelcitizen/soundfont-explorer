@@ -1,4 +1,5 @@
 """Unit tests for songs/tools: SMF parser/writer, tempo map, midi_end, end marker, trim."""
+import json
 import os
 import shutil
 import struct
@@ -103,12 +104,15 @@ class ParserWriterTests(unittest.TestCase):
                 S.parse(blob)
 
     def test_real_corpus_files_roundtrip(self):
-        # canonical MIDIs live under songs/rendered/, imported ones in sub-directories mirroring
-        # their path under songs/import/FILES/
+        # Canonical MIDIs mirror their source's path under songs/import/FILES/. They are build
+        # output of a corpus that lives in the admin library, so a fresh checkout has none and
+        # there is nothing to check; on a box or a workstation that has run canon, every one of
+        # them must already be in canonical form or its songs.json sha256 is a lie.
         rendered = os.path.join(os.path.dirname(os.path.dirname(HERE)), "rendered")
         files = [os.path.join(dp, f) for dp, _, fs in os.walk(rendered)
                  for f in fs if f.endswith(".mid")]
-        self.assertTrue(files, "no canonical songs present under songs/rendered/")
+        if not files:
+            self.skipTest("no canonical MIDIs here — run canon.py against a library first")
         for f in files:
             with open(f, "rb") as fh:
                 blob = fh.read()
@@ -295,6 +299,9 @@ class StemCollisionTests(unittest.TestCase):
         canon.SONGS_DIR = self.tmp
         canon.RENDERED_DIR = os.path.join(self.tmp, "rendered")
         self.addCleanup(self._restore)
+        with open(os.path.join(self.tmp, "licenses.json"), "w") as fh:
+            json.dump({"licenses": {"owner-supplied": {
+                "id": "owner-supplied", "url": None, "notice_text": "owner"}}}, fh)
         os.makedirs(os.path.join(self.tmp, "import/FILES/game"))
         for name, note in (("x.mid", 60), ("x.MID", 67)):
             with open(os.path.join(self.tmp, "import/FILES/game", name), "wb") as fh:
@@ -305,13 +312,11 @@ class StemCollisionTests(unittest.TestCase):
         canon.SONGS_DIR, canon.RENDERED_DIR = self._dirs
 
     def test_each_entry_matches_its_own_file(self):
-        corpus = {
-            "schema": 1, "tail_s": 1.0, "default": "g-lower",
-            "licenses": {"owner-supplied": {"id": "owner-supplied", "url": None, "notice_text": "owner"}},
-            "songs": [{"id": "g-lower", "src": "import/FILES/game/x.mid", "title": "lower", "license": "owner-supplied"},
-                      {"id": "g-upper", "src": "import/FILES/game/x.MID", "title": "upper", "license": "owner-supplied"}],
-        }
-        entries, _, refused, _dropped = canon.run_public(corpus, check=False)
+        specs = [{"id": "g-lower", "src": "import/FILES/game/x.mid", "title": "lower",
+                  "license": "owner-supplied", "path": "game"},
+                 {"id": "g-upper", "src": "import/FILES/game/x.MID", "title": "upper",
+                  "license": "owner-supplied", "path": "game"}]
+        entries, _, refused, _dropped = canon.run_public(specs, check=False, default_id="g-lower")
         self.assertEqual(refused, [])
         files = []
         for e in entries:
