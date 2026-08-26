@@ -48,12 +48,15 @@ const DEFAULT_SHARDS = '5';
 const DEFAULT_INSTANCE_TYPES = 'c7a.16xlarge,c7i.16xlarge';
 const DEFAULT_SHARD_VCPUS = '60';          // of 64 — the ECS agent needs the remainder
 const DEFAULT_SHARD_MEMORY_MIB = '120000'; // of 131072, same headroom ratio that worked at 8xlarge
-// Workers per shard as a MULTIPLE of its cores. Both 2026-08-25 runs had every worker busy while
-// CPU sat at 37-60%, EBS at 2% of provision and memory admission 7% used — nothing saturated, so
-// the gap is per-job process overhead and more concurrent jobs should fill it. 2x is the middle
-// of what that CPU headroom implies (1.7-2.7x). Set 1 to go back to one worker per core.
-// Deliberately a visible knob and recorded in the run's `knobs`: this is unproven at fleet scale
-// and the run record is how we will tell whether it paid.
+// Workers per shard as a MULTIPLE of its cores. MEASURED on the 48-song run of 2026-08-26: 2x
+// billed 73.3 CPU-h against 102.6 predicted at one worker per core — 29% less — with 128 workers
+// per shard, memory admission never below 117 of 340 units and zero OOM. It works because a job's
+// cost is largely fixed process overhead (engine + ffmpeg + ~150 short-lived opusenc) that extra
+// concurrent jobs overlap; the estimate models it, so the cost shown here already accounts for it.
+//
+// The saving shrinks as songs lengthen (29% at a 42 s mean, ~11% at 237 s) because a longer song
+// is proportionally less overhead. Set 1 to go back to one worker per core. Values past 2 are
+// untested — the estimate deliberately stops crediting a gain there.
 const DEFAULT_WORKER_FACTOR = '2';
 
 function input(value: string, attrs: Record<string, string> = {}): HTMLInputElement {

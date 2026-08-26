@@ -64,11 +64,11 @@ def _allocated_cpus() -> int:
 # an absolute number silently stops meaning "twice the cores" the moment the instance changes.
 # SFR_WORKERS still wins outright when set, for pinning an exact count in an experiment.
 #
-# UNPROVEN at fleet scale: a local A/B could not reproduce the conditions (that box saturates at
-# 62-91% CPU where the shard sat at 37-60%), so this is deliberately a knob whose value the run
-# record keeps, not a silent default. If it does not help, the cost is a slower run, not a broken
-# one — admission still bounds memory, and _mem_units reserves per WORKER, so the reserve scales
-# with the factor rather than being outgrown by it.
+# PROVEN at fleet scale on the 48-song run of 2026-08-26, after a local A/B could not test it (that
+# box saturates at 62-91% CPU where a shard sits at 37-60%): at 2x the run billed 73.3 CPU-h against
+# 102.6 predicted at 1x — 29% less — 27,168 jobs, zero OOM, and memory admission never below 117 of
+# 340 units, because _mem_units reserves per WORKER so the reserve scales with the factor rather
+# than being outgrown by it. planner.overhead_gain() models the saving for the cost estimate.
 WORKER_FACTOR = float(os.environ.get("SFR_WORKER_FACTOR") or 1)
 WORKERS = int(os.environ.get("SFR_WORKERS", "0")) or max(1, int(_allocated_cpus() * WORKER_FACTOR))
 def _allocated_memory() -> int:

@@ -163,6 +163,43 @@ class CostModelTests(unittest.TestCase):
         cpu_h, _ = planner.estimate(shards, 566, limit=3)
         self.assertAlmostEqual(cpu_h, 3 * planner.job_cost_vcpu_s(150) / 3600)
 
+    def test_over_subscription_discounts_only_the_overhead(self):
+        """2x overlaps per-job process overhead, not DSP — which is why the saving shrinks as
+        songs lengthen (29% at a 42 s mean, ~11% at 237 s). A flat discount would misprice
+        long-song runs badly."""
+        for mean_s, one_x, two_x in ((42, 13.62, 9.71), (90, 18.76, 14.85), (237, 34.49, 30.58)):
+            self.assertAlmostEqual(planner.job_cost_vcpu_s(mean_s), one_x, delta=0.06)
+            self.assertAlmostEqual(planner.job_cost_vcpu_s(mean_s, 2), two_x, delta=0.06)
+        short = 1 - planner.job_cost_vcpu_s(42, 2) / planner.job_cost_vcpu_s(42)
+        long = 1 - planner.job_cost_vcpu_s(237, 2) / planner.job_cost_vcpu_s(237)
+        self.assertGreater(short, long)
+
+    def test_the_dsp_term_is_untouched_by_the_factor(self):
+        """The gain must apply to the fixed term alone; if it scaled the whole cost, the
+        saving would be duration-independent and the long-song prediction would be wrong."""
+        d = 1000.0
+        gap = planner.job_cost_vcpu_s(d) - planner.job_cost_vcpu_s(d, 2)
+        self.assertAlmostEqual(gap, planner.VCPU_S_PER_JOB_FIXED
+                               * (1 - 1 / planner.OVERHEAD_GAIN_AT_2X), delta=0.01)
+
+    def test_no_credit_is_taken_beyond_the_measured_2x(self):
+        """Nothing has tested 3x, and guessing upward would UNDER-price a run — the wrong
+        direction for a spend ceiling."""
+        self.assertEqual(planner.overhead_gain(3), planner.overhead_gain(2))
+        self.assertEqual(planner.overhead_gain(10), planner.overhead_gain(2))
+
+    def test_one_worker_per_core_and_absent_are_the_same_thing(self):
+        for f in (None, 0, 1, 0.5):        # a sub-1 factor cannot make a job cheaper
+            self.assertAlmostEqual(planner.overhead_gain(f), 1.0)
+            self.assertAlmostEqual(planner.job_cost_vcpu_s(90, f), planner.job_cost_vcpu_s(90))
+
+    def test_the_estimate_carries_the_factor_through(self):
+        shards = [{"songs": ["a"], "duration_total_s": 42}]
+        base, _ = planner.estimate(shards, 100)
+        over, _ = planner.estimate(shards, 100, worker_factor=2)
+        self.assertLess(over, base)
+        self.assertAlmostEqual(over / base, planner.job_cost_vcpu_s(42, 2) / planner.job_cost_vcpu_s(42))
+
     def test_a_shard_with_no_duration_falls_back_rather_than_dividing_by_zero(self):
         shards = [{"songs": ["a"]}]
         self.assertAlmostEqual(planner.estimate(shards, 2)[0],

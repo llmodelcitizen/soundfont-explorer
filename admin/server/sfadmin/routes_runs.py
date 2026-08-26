@@ -54,7 +54,10 @@ def plan(body: dict) -> dict:
         return _mgr().plan(list(body.get("songs", [])), int(body.get("shards", 8)),
                            variants=_variants(body),
                            engines=body.get("engines") or None,
-                           limit=int(body["limit"]) if body.get("limit") else None)
+                           limit=int(body["limit"]) if body.get("limit") else None,
+                           # priced under the knob the run will actually use: over-subscription
+                           # overlaps per-job overhead, so it changes the bill (#45)
+                           worker_factor=float(body["worker_factor"]) if body.get("worker_factor") else None)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 

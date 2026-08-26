@@ -23,6 +23,31 @@ import pathlib
 # Solving the two simultaneously:
 VCPU_S_PER_JOB_FIXED = 9.1     # engine + ffmpeg + ~150 short-lived opusenc, whatever the length
 VCPU_S_PER_AUDIO_S = 0.107     # the actual DSP, per second of song
+
+# Over-subscribing workers (SFR_WORKER_FACTOR) overlaps the FIXED term and leaves the DSP alone —
+# that is what the knob is for, and modelling it as a gain on `a` rather than a flat discount is
+# what makes it predict the right thing for long songs. Measured on the 48-song run of
+# 2026-08-26 at 2x: 9.71 vCPU-s per job against 13.62 predicted at 1x, i.e. a/1.75 + b*d.
+#
+#      mean song      1x       2x    saving
+#            42s   13.62     9.71       29%
+#            90s   18.76    14.85       21%
+#           237s   34.49    30.58       11%
+#
+# The saving shrinks as songs lengthen because a longer song is proportionally less overhead —
+# which is exactly what was observed, and the reason not to quote one headline percentage.
+#
+# CAVEAT, and a different one from the a/b caveat below: this is ONE data point fitting ONE
+# unknown, and the *structure* (gain applies to overhead only) is a physical argument, not a
+# measurement. It is deliberately NOT extrapolated past the measured 2x — beyond that the gain
+# is held flat, because nothing has tested 3x and guessing upward would under-price a run.
+OVERHEAD_GAIN_AT_2X = 1.75
+
+
+def overhead_gain(worker_factor: float | None) -> float:
+    """How much of the fixed per-job overhead over-subscription overlaps away."""
+    f = max(1.0, float(worker_factor or 1.0))
+    return 1.0 + (OVERHEAD_GAIN_AT_2X - 1.0) * min(f - 1.0, 1.0)
 #
 # The fixed term is 49% of a 90 s song's job cost and 26% of a 237 s song's. That is not a
 # curve-fitting artefact — the same runs showed every worker busy with CPU at 37-60%, EBS at 2%
@@ -133,12 +158,14 @@ def plan_shards(songs: list[str], n: int, durations: dict[str, int]) -> list[dic
     return [{"songs": x["songs"], "duration_total_s": x["d"]} for x in shards if x["songs"]]
 
 
-def job_cost_vcpu_s(mean_duration_s: float) -> float:
+def job_cost_vcpu_s(mean_duration_s: float, worker_factor: float | None = None) -> float:
     """vCPU-seconds one job costs for a song of this length — overhead plus DSP."""
-    return VCPU_S_PER_JOB_FIXED + VCPU_S_PER_AUDIO_S * mean_duration_s
+    return (VCPU_S_PER_JOB_FIXED / overhead_gain(worker_factor)
+            + VCPU_S_PER_AUDIO_S * mean_duration_s)
 
 
-def estimate(shards: list[dict], variants: int, limit: int | None = None) -> tuple[float, float]:
+def estimate(shards: list[dict], variants: int, limit: int | None = None,
+             worker_factor: float | None = None) -> tuple[float, float]:
     """(cpu_hours, usd) for the planned shards at `variants` jobs per song, under the run's
     per-shard `--limit`.
 
@@ -157,6 +184,6 @@ def estimate(shards: list[dict], variants: int, limit: int | None = None) -> tup
             continue
         jobs = min(n * variants, limit) if limit else n * variants
         total_s = shard.get("duration_total_s") or n * DEFAULT_DURATION_S
-        vcpu_s += jobs * job_cost_vcpu_s(total_s / n)
+        vcpu_s += jobs * job_cost_vcpu_s(total_s / n, worker_factor)
     cpu_h = vcpu_s / 3600
     return cpu_h, cpu_h * USD_PER_VCPU_HOUR

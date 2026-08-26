@@ -368,7 +368,8 @@ class RunManager:
     # ------------------------------------------------------------ plan + submit
 
     def plan(self, songs: list[str], shards: int, variants: int | None = None,
-             engines: list[str] | None = None, limit: int | None = None) -> dict:
+             engines: list[str] | None = None, limit: int | None = None,
+             worker_factor: float | None = None) -> dict:
         """Shards + cost estimate under the run's knobs. The per-song job count comes from
         catalog/variants.json narrowed by `engines`; `variants` is an explicit override of
         that count (the old --variants knob). `limit` does NOT narrow it — it is a
@@ -389,7 +390,7 @@ class RunManager:
         if variants:
             per_song = variants
         # --limit is per shard, not per song: the job count is summed over the shards (#19)
-        cpu_h, usd = planner.estimate(plan, per_song, limit)
+        cpu_h, usd = planner.estimate(plan, per_song, limit, worker_factor)
         return {"shards": plan, "jobs": planner.job_count(plan, per_song, limit),
                 "variants_per_song": per_song,
                 "cpu_h": round(cpu_h, 1), "usd": round(usd, 2)}
@@ -433,7 +434,7 @@ class RunManager:
             rec_, is_finishing = cur
             phase = "finishing (indexing what it published)" if is_finishing else rec_["state"]
             raise RuntimeError(f"run {rec_['run_id']} is still {phase}")
-        est = self.plan(songs, shards, variants, engines, limit)
+        est = self.plan(songs, shards, variants, engines, limit, worker_factor)
         if est["usd"] > max_usd:
             raise ValueError(f"estimate ${est['usd']:.2f} exceeds max ${max_usd:.2f} — raise it deliberately")
         plan = est["shards"]
