@@ -33,6 +33,7 @@
   "songs": [
     {
       "id": "freedoom-e1m1",
+      "path": "videogame-music/freedoom",
       "src": "src/freedoom-d_e1m1.mid",
       "title": "Steel and Brass (Freedoom E1M1)",
       "composer": "J.Astartes and Mr795",
@@ -42,6 +43,7 @@
     },
     {
       "id": "freedoom-map20",
+      "path": "videogame-music/freedoom",
       "src": "src/freedoom-d_map20.mid",
       "title": "Wrath of Horizon (Freedoom MAP20)",
       "composer": "J.Astartes",
@@ -51,6 +53,7 @@
     },
     {
       "id": "freedoom-e2m5",
+      "path": "videogame-music/freedoom",
       "src": "src/freedoom-d_e2m5.mid",
       "title": "Reminiscence (Freedoom E2M5)",
       "composer": "Korp",
@@ -60,6 +63,7 @@
     },
     {
       "id": "freedoom-e2m4",
+      "path": "videogame-music/freedoom",
       "src": "src/freedoom-d_e2m4.mid",
       "title": "Diodine (Freedoom E2M4)",
       "composer": "Korp",
@@ -69,6 +73,7 @@
     },
     {
       "id": "freedoom-e3m8",
+      "path": "videogame-music/freedoom",
       "src": "src/freedoom-d_e3m8.mid",
       "title": "The Zenith (Freedoom E3M8)",
       "composer": "Lola \"BlueWorrior\" Harvey",
@@ -78,6 +83,7 @@
     },
     {
       "id": "freedoom-map02",
+      "path": "videogame-music/freedoom",
       "src": "src/freedoom-d_map02.mid",
       "title": "Dark Underworld (Freedoom MAP02)",
       "composer": "Lola \"BlueWorrior\" Harvey",
@@ -87,6 +93,7 @@
     },
     {
       "id": "freedoom-map01",
+      "path": "videogame-music/freedoom",
       "src": "src/freedoom-d_map01.mid",
       "title": "Not My First Rodeo... (Freedoom MAP01)",
       "composer": "Lola \"BlueWorrior\" Harvey",
@@ -96,6 +103,7 @@
     },
     {
       "id": "joplin-maple-leaf",
+      "path": "EricsFavorites",
       "src": "src/mutopia-maple.mid",
       "title": "Maple Leaf Rag",
       "composer": "Scott Joplin",
@@ -123,6 +131,7 @@
     },
     {
       "id": "joplin-entertainer",
+      "path": "miscellaneous",
       "src": "src/mutopia-entertainer.mid",
       "title": "The Entertainer",
       "composer": "Scott Joplin",
