@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+/**
+ * @vitest-environment happy-dom
+ *
+ * The Tracks pane: the display-order rules, which are pure, and the caption's collapse gadget,
+ * which is not — it needs rows to close and a store to write. What it looks like and where it sits
+ * in the caption belong to scripts/geometry.mjs; what it does to the folders is here.
+ */
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { SongEntry } from '../../src/contracts/songs';
-import { adjacentTrackId, autoAdvanceTarget, trackMetadata, trackOrder } from '../../src/ui/tracklist';
+import { TrackList, adjacentTrackId, autoAdvanceTarget, trackMetadata, trackOrder } from '../../src/ui/tracklist';
 
 const song = (id: string, path: string | null): SongEntry => ({ id, path } as SongEntry);
 
@@ -75,5 +82,154 @@ describe('automatic next-track stepping', () => {
   it('stays put when the list does not hold the current track', () => {
     expect(autoAdvanceTarget([], 'solo', 'ended', on)).toBeUndefined();
     expect(autoAdvanceTarget(songs, 'gone', 'ended', on)).toBeUndefined();
+  });
+});
+
+describe('collapsing every folder at once', () => {
+  const OPEN_KEY = 'sfp.folders.v1';
+  const catalog = [
+    song('root-track', null),
+    song('doom-1', 'games/doom'),
+    song('doom-2', 'games/doom'),
+    song('sierra-1', 'games/sierra'),
+  ];
+
+  /** a pane built over `songs` with `open` already in the store, as a reload would find it */
+  const pane = (songs: SongEntry[], open: string[], current = 'root-track'): TrackList => {
+    localStorage.setItem(OPEN_KEY, JSON.stringify(open));
+    return new TrackList(songs, current, () => {}, {
+      autoNext: { value: false, onChange: () => {} },
+      preserve: { value: false, onChange: () => {} },
+    });
+  };
+  const stored = (): string[] => JSON.parse(localStorage.getItem(OPEN_KEY) ?? 'null') as string[];
+  const openFolders = (list: TrackList): string[] =>
+    [...list.el.querySelectorAll('.track-folder')]
+      .filter((folder) => folder.querySelector('.folder-twist')?.textContent === '▾')
+      .map((folder) => folder.getAttribute('title') ?? '');
+  const trackIds = (list: TrackList): (string | null)[] => [...list.el.querySelectorAll('.track')].map((row) => row.getAttribute('data-id'));
+
+  beforeEach(() => localStorage.clear());
+
+  it('closes every open folder, and their tracks go with them', () => {
+    const list = pane(catalog, ['games/doom', 'games/sierra']);
+    expect(openFolders(list)).toEqual(['games/doom', 'games/sierra']);
+    list.collapseBtn.click();
+    expect(openFolders(list)).toEqual([]);
+    // both folder headers stay, closed; the only track left on show is the unfoldered one
+    expect(list.el.querySelectorAll('.track-folder')).toHaveLength(2);
+    expect(trackIds(list)).toEqual(['root-track']);
+  });
+
+  it('leaves the store saying exactly what the pane shows', () => {
+    const list = pane(catalog, ['games/doom', 'games/sierra']);
+    list.collapseBtn.click();
+    expect(stored()).toEqual([]);
+    // and a folder opened afterwards is the only one that comes back
+    list.el.querySelector<HTMLElement>('.track-folder')!.click();
+    expect(stored()).toEqual(['games/doom']);
+    expect(openFolders(list)).toEqual(['games/doom']);
+  });
+
+  it('closes the folder holding the current track too — nothing is exempt', () => {
+    const list = pane(catalog, ['games/doom'], 'doom-2');
+    list.collapseBtn.click();
+    expect(stored()).toEqual([]);
+    // the invariant the pane already had: landing on that track opens its folder again
+    list.setCurrent('doom-2');
+    expect(stored()).toEqual(['games/doom']);
+    expect(openFolders(list)).toEqual(['games/doom']);
+  });
+
+  it('offers nothing when there is nothing to close', () => {
+    expect(pane(catalog, []).collapseBtn.disabled).toBe(true); // folders, all closed already
+    expect(pane([song('a', null), song('b', null)], []).collapseBtn.disabled).toBe(true); // no folders at all
+  });
+
+  it('offers nothing when the store only names folders this catalogue does not have', () => {
+    const list = pane(catalog, ['games/quake']);
+    expect(list.collapseBtn.disabled).toBe(true);
+    expect(stored()).toEqual(['games/quake']); // and the stale name is left alone, not quietly rewritten
+  });
+
+  it('goes dead as the last folder closes and lives again when one opens', () => {
+    const list = pane(catalog, ['games/doom']);
+    expect(list.collapseBtn.disabled).toBe(false);
+    list.collapseBtn.click();
+    expect(list.collapseBtn.disabled).toBe(true);
+    list.el.querySelector<HTMLElement>('.track-folder')!.click();
+    expect(list.collapseBtn.disabled).toBe(false);
+  });
+
+  it('announces what it does rather than shipping a bare drawing', () => {
+    const button = pane(catalog, []).collapseBtn;
+    expect(button.getAttribute('aria-label')).toBe('collapse all folders');
+    expect(button.getAttribute('title')).toBe('collapse all folders');
+    expect(button.textContent).toBe(''); // the glyph is an aria-hidden <svg>, not a text character
+    expect(button.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('writes nothing for a click the disabled attribute cannot refuse', () => {
+    const list = pane(catalog, []);
+    localStorage.removeItem(OPEN_KEY);
+    list.collapseBtn.click(); // a scripted click reaches a disabled button in some engines
+    expect(localStorage.getItem(OPEN_KEY)).toBeNull(); // not even an empty set
+    expect(stored()).toBeNull();
+  });
+});
+
+describe('a caption with less room than it has things to say', () => {
+  const list = (): TrackList =>
+    new TrackList([song('root', null), song('doom-1', 'games/doom')], 'root', () => {}, {
+      autoNext: { value: false, onChange: () => {} },
+      preserve: { value: false, onChange: () => {} },
+    });
+
+  /**
+   * The fit is a measurement, and happy-dom lays nothing out: stand in for the browser with a
+   * caption whose content width depends on which rung it is wearing, then ask it to re-fit. The
+   * numbers are a Modern-ish caption — the hint is worth ~100px of it, the gadget ~26px.
+   */
+  const rungs = { full: 500, short: 430, noHint: 330, noGadget: 304, cramped: 150 };
+  const fitTo = (pane: number): string => {
+    const track = list();
+    const head = track.el.querySelector('.np-head')!;
+    Object.defineProperty(head, 'clientWidth', { configurable: true, get: () => pane });
+    Object.defineProperty(head, 'scrollWidth', {
+      configurable: true,
+      get: () => {
+        const worn = head.className;
+        if (worn.includes('cramped')) return rungs.cramped;
+        if (worn.includes('nogadget')) return rungs.noGadget;
+        if (worn.includes('nohint')) return rungs.noHint;
+        if (worn.includes('short')) return rungs.short;
+        return rungs.full;
+      },
+    });
+    track.refit();
+    return head.className;
+  };
+
+  it('spells both options out when the pane can hold everything', () => {
+    expect(fitTo(520)).toBe('np-head');
+  });
+
+  it('shortens the option wording first: the controls all survive a squeeze', () => {
+    expect(fitTo(440)).toBe('np-head short');
+  });
+
+  // The ranking, stated as the trade it is: [ and ] go on stepping whether or not the caption
+  // says so, but nothing else on the screen closes every folder at once.
+  it('drops the [ ] hint before the collapse gadget when only one of them fits', () => {
+    expect(fitTo(340)).toBe('np-head short nohint');
+  });
+
+  it('drops the collapse gadget only once losing the hint was not enough', () => {
+    expect(fitTo(310)).toBe('np-head short nohint nogadget');
+  });
+
+  // #28: the two options are the last thing to go, and Settings still carries both
+  it('gives up both options last of all', () => {
+    expect(fitTo(200)).toBe('np-head short nohint nogadget cramped');
   });
 });
