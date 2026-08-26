@@ -327,7 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--songs-json-only", action="store_true",
                        help="rebuild songs.json from the sets already in out/public; validate "
                             "and pack nothing (finishes a cloud run)")
-        s.add_argument("--default-song"); s.add_argument("--default-variant", default="adl-b58")
+        s.add_argument("--default-song"); s.add_argument("--default-variant", default="sf2-2ef5bd3eb3")  # 8MbGM_Enhanced18
     s = sub.add_parser("publish", help="aws s3 sync out/public (dry-run first!)"); add_path_args(s)
     s.add_argument("--bucket"); s.add_argument("--distribution")
     s.add_argument("--dry-run", action="store_true"); s.add_argument("--prune", action="store_true")

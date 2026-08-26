@@ -95,8 +95,10 @@ def _run_manifest() -> dict:
     """`sfr manifest --songs-json-only` in the snapshot: rewrites out/public/songs.json from
     the set docs under out/public/s (a song without one is not listed); returns the report."""
     cfg = get_config()
+    # --default-song must match songs/tools/canon.py DEFAULT_SONG_ID; --default-variant is
+    # 8MbGM_Enhanced18 (render/sfr/cli.py's default)
     p = subprocess.run([sys.executable, "-m", "sfr", "manifest", "--songs-json-only",
-                        "--default-song", "freedoom-e1m1", "--default-variant", "adl-b58"],
+                        "--default-song", "starwars", "--default-variant", "sf2-2ef5bd3eb3"],
                        cwd=os.path.join(cfg.repo, "render"), capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(f"manifest --songs-json-only failed: {p.stderr[-1500:]}")

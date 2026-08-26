@@ -68,10 +68,10 @@ SLICE_S, TAIL_S = _render_constants()
 assert float(SLICE_S).is_integer() and SLICE_S > 0, f"render.slice_s must be a whole number of seconds, got {SLICE_S!r}"
 
 # The last two corpus-wide knobs corpus.json used to hold. They belong in git, not in the
-# library document: freedoom-e1m1 is the track every share link without an explicit ?song=
+# library document: the default song is the track every share link without an explicit ?song=
 # resolves to and ~14,150 rendered variants are keyed by, so it must not be editable state
 # on the box; and the include-class set is render policy shared with render/cloud/planner.py.
-DEFAULT_SONG_ID = "freedoom-e1m1"
+DEFAULT_SONG_ID = "starwars"
 DEFAULT_INCLUDE_CLASSES = ["full_gm", "melodic_only", "partial"]
 #: What a library entry gets when nobody says otherwise (fragment.py emits the same default).
 DEFAULT_LICENSE = "owner-supplied"

@@ -169,9 +169,12 @@ CURATED = [
     },
 ]
 
-#: songs/private/, which had exactly one file. No pinned id: the owner chose to let it
-#: renormalise, so it gets the id an upload to this path would mint (canon.import_labels).
-PRIVATE = [{"src": "private/STARWARS.MID", "dest": "EricsFavorites/STARWARS.MID",
+#: songs/private/, which had exactly one file. The owner chose to let this one renormalise —
+#: its private-starwars renders are orphaned on purpose — but chose the id `starwars`, so it is
+#: pinned to that. Left unpinned it would mint `ericsfavorites-starwars`: import_labels slugs
+#: <dir>/<stem>, so the folder name would end up welded to the id, which is neither what was
+#: asked for nor something anyone would want to read in a share link.
+PRIVATE = [{"id": "starwars", "src": "private/STARWARS.MID", "dest": "EricsFavorites/STARWARS.MID",
             "name": "Star Wars (main title)", "composer": "John Williams"}]
 
 ENTRY_FIELDS = ("composer", "sequencer", "source_url", "license", "license_fields",
