@@ -30,8 +30,6 @@ catalog/ variants.json ───────────────┘        �
                                S3 + CloudFront (infra/) ─► web/ player
 ```
 
-Details: [`render/`](render/README.md) for the pipeline, [`web/`](web/README.md) for the player.
-
 | Directory | What |
 |---|---|
 | [`web/`](web/README.md) | TypeScript + Vite client: Web Audio scheduling, adaptive ↑/↓ policy, facets, themes (modern, Windows 95, Amiga Workbench 1.3) |
