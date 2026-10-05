@@ -1,4 +1,4 @@
-# soundfonts.ericq.com
+# Soundfont Explorer
 
 **One MIDI, every synth.** Hear the same piece through nearly 500 SoundFonts and a shelf of emulated
 sound chips — OPL3/OPL2 (libADLMIDI, plus ESFM and CQM clone passes), OPN2/OPNA (libOPNMIDI),
