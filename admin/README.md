@@ -1,11 +1,13 @@
 # admin
 
-A small web app for running the site. It lives on a throwaway EC2 box that you start when you need
-it and stop when you're done. Log in with GitHub to:
+A small, admittedly janky web app that allows the site owner to:
 
 - manage the MIDI library (**Library** tab)
 - start render runs on the cloud fleet (**Renders** tab)
 - remove or republish songs on the live site (**Published** tab)
+
+It lives on a throwaway EC2 box that you start when you need
+it and stop when you're done. Log in with GitHub.
 
 ## Layout
 
