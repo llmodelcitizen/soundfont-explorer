@@ -99,29 +99,6 @@ The catalog keeps per-file provenance (`catalog/collections.json`), and the play
 font's own SF2 metadata and licence notes. Song licences (Freedoom BSD-3, public domain, CC0, or
 owner-supplied) and their notices live in [`songs/`](songs/README.md).
 
-## Keys
-
-`↑/↓` variant (hold to scrub) · `PgUp/PgDn` ±10 · `Home/End` · `Space` play/pause · `←/→` ±5 s
-(`Shift` ±30 s) · `X` stop · `L` loop · `M` mute · `V` favorite/unfavorite · `/` search ·
-`Esc` close/clear · `[` `]` song · `P` pin A, `Tab` A/B · `F` filters · `Shift + F` full screen ·
-`T` theme · `S` settings · `D` debug panel · `?` keymap.
-
-## Run it
-
-All the tests, the same way CI runs them: see [`.github/workflows/`](.github/workflows/README.md).
-To run the player against the three-song fixture site (no audio):
-
-```bash
-python3 web/test/proto/serve.py --root web/test/fixtures/site --port 8000
-```
-
-```bash
-cd web && npm ci && npm run dev    # http://localhost:5173
-```
-
-To deploy your own: link your private overlay with [`scripts/overlay.sh`](scripts/README.md),
-then follow [`infra/`](infra/README.md) and [`admin/`](admin/README.md).
-
 ## Licences
 
 The code is under [`LICENSE`](LICENSE). SoundFonts, ROMs and song MIDIs are not in git and carry
