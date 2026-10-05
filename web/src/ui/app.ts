@@ -518,6 +518,11 @@ export class App {
       settingsBtn,
       dbgBtn,
       helpBtn,
+      h(
+        'a',
+        { class: 'btn icon gh-btn', href: 'https://github.com/llmodelcitizen/soundfont-explorer', target: '_blank', rel: 'noopener', title: 'source on GitHub', 'aria-label': 'source on GitHub' },
+        h('span', { class: 'gh-mark', 'aria-hidden': 'true' }),
+      ),
       h('a', { class: 'btn link', href: '#/credits', title: 'credits, licenses, about' }, 'about'),
       volTop,
     );

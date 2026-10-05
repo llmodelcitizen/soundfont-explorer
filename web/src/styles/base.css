@@ -122,6 +122,16 @@ pre {
 .btn.icon svg {
   display: block;
 }
+/* GitHub's official Invertocat PNG used as a mask, so the mark takes each theme's button colour
+   the way the inline SVG icons do */
+.gh-mark {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: url('../assets/github-invertocat.png') center / contain no-repeat;
+  mask: url('../assets/github-invertocat.png') center / contain no-repeat;
+}
 .btn.primary {
   background: var(--accent);
   color: var(--accent-fg);
@@ -1383,6 +1393,11 @@ kbd {
     flex: 1 1 100%;
   }
   .top .spacer {
+    display: none;
+  }
+  /* the GitHub link takes the debug gadget's slot on a phone, so the row keeps its #30 budget;
+     the panel stays on its D key */
+  .top .dbg-btn {
     display: none;
   }
   /* one control row, always: below 360 px the icon gadgets give some side padding back, or the
