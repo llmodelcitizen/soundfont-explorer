@@ -9,7 +9,7 @@ Runs every 5 minutes (EventBridge). Three independent backstops, strongest first
    included (a run is one array job; see running_job_ids). The longest real job measured is
    402 s, so anything near an hour is wedged.
 3. DISABLE — on any trip, set the compute environment to DISABLED so Batch cannot replace
-   what we just killed, and e-mail. Re-enabling is manual, by design (docs/RENDER.md).
+   what we just killed, and e-mail. Re-enabling is manual, by design: the next run re-enables it (render/README.md "Cloud runs").
 
 Everything is tag-scoped: the IAM policy only permits terminating instances tagged
 project=soundfont-explorer-render, because this account is shared with unrelated projects.
@@ -119,6 +119,6 @@ def handler(event, context):
 
     msg = ("The Soundfont Explorer render fleet watchdog tripped.\n\n" + "\n".join(f"  - {x}" for x in lines) +
            f"\n\nLimits: instance {MAX_INSTANCE_MIN:.0f} min, job {MAX_JOB_MIN:.0f} min."
-           "\nSee docs/RENDER.md 'Cloud runs'.\n")
+           "\nSee infra/README.md 'If the render watchdog trips'.\n")
     sns.publish(TopicArn=TOPIC, Subject="[Soundfont Explorer] render fleet watchdog tripped", Message=msg)
     return {"ok": True, "tripped": True, "actions": lines}

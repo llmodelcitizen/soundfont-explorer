@@ -1,6 +1,6 @@
 """One Batch array child: render a shard of songs, publish each as it completes, exit.
 
-Shape (docs/RENDER.md "Cloud runs"):
+Shape (render/README.md "Cloud runs"):
   - the shard's songs render as ONE queue, not song by song. order_jobs() is already
     font-major/biggest-first, so a single call keeps every SF2 hot across the shard's songs
     and pays the drain-to-zero tail once instead of once per song.
@@ -301,7 +301,8 @@ def publish_song(song: str, partial_ok: bool = False) -> bool:
         return False
     manifest_s = time.monotonic() - t
     # objects under a/ c/ s/ are immutable and content-addressed, so they go straight to the
-    # site bucket; songs.json is written once at the end by submit.py, not per shard.
+    # site bucket; songs.json is rebuilt once after the run by the admin server (the run finisher,
+    # or Republish for a CLI run), not per shard.
     t_up = time.monotonic()
     for cmd in sync_commands(OUT / "public", SITE_BUCKET, song=song, workers=UPLOAD_WORKERS):
         sh(cmd)

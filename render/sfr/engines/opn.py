@@ -1,6 +1,6 @@
 """libOPNMIDI (opnmidiplay, WAVE_ONLY build) — YM2612 OPN2 / YM2608 OPNA.
 
-Facts probed in the image (render/engines.json "opnmidi", docs/RENDER.md):
+Facts probed in the image (render/engines.json "opnmidi"):
   * no -w/-nl: always writes `<input>.wav` next to the input, never loops, 44100 Hz fixed
     -> symlink the song into the job scratch dir and run there (same trick as adl.py);
   * argument order is OPTIONS first, then the bank path, then the MIDI (both positional,

@@ -9,7 +9,7 @@ roms/<romset>/ (`variant["romset"]` == directory name == variant id: mt32, cm32l
 identified by SHA-1, the directory is scanned non-recursively). `variant["model"]` is the
 `-i` machine (mt32 | cm32l, or a pinned control-ROM version such as mt32_1_07).
 
-Load-bearing flags (docs/RENDER.md): `--record-max-start-silence -1` (the default 0 trims
+Load-bearing flags: `--record-max-start-silence -1` (the default 0 trims
 leading silence and would break start calibration) and the LONG `--src-quality` (the short
 `-q` is declared twice by smf2wav). Native rate 32000 Hz with the default analog-output
 mode 0; ffmpeg/soxr resamples.

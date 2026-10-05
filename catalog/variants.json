@@ -225,13 +225,13 @@
    "ids": [
     "edm-psg"
    ],
-   "note": "libEDMIDI has no PSG voice (emu2149 is compiled but never attached); see render/edmidi-render/README.md"
+   "note": "libEDMIDI has no PSG voice (emu2149 is compiled but never attached); see render/README.md 'edmidi-render'"
   },
   "adl_wopl": {
    "ids": [
     "adl-w-<sha256[:10]>"
    ],
-   "note": "extra full-GM .wopl from OPL3BankEditor with a license file (~5); none added yet (render/banks/README.md)"
+   "note": "extra full-GM .wopl from OPL3BankEditor with a license file (~5); none added yet (render/README.md 'Extra FM banks')"
   }
  },
  "aliases": [

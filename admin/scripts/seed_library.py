@@ -218,8 +218,8 @@ def admin_bucket() -> str:
     try:
         return json.load(open(out))["admin"]["value"]["bucket"]
     except (OSError, KeyError, TypeError):
-        raise SystemExit(f"no admin outputs in {out} — apply with -var enable_admin=true "
-                         "and refresh it") from None
+        raise SystemExit(f"no admin outputs in {out} — set enable_admin = true in "
+                         "terraform.tfvars, apply, and refresh it") from None
 
 
 class Store:

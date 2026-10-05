@@ -1,0 +1,43 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.sh'
+      - 'render/scripts/sfr'
+      - 'web/scripts/**'
+      - 'admin/scripts/**'
+      - 'render/Dockerfile'
+      - '.github/workflows/lint.yml'
+      - '!**/*.md'
+  pull_request:
+    paths:
+      - '**/*.sh'
+      - 'render/scripts/sfr'
+      - 'web/scripts/**'
+      - 'admin/scripts/**'
+      - 'render/Dockerfile'
+      - '.github/workflows/lint.yml'
+      - '!**/*.md'
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: shellcheck + hadolint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          sudo apt-get install -y -q shellcheck >/dev/null
+          mapfile -t files < <( { git ls-files '*.sh'; git ls-files render/scripts/sfr web/scripts admin/scripts | xargs -r grep -lE '^#!/(usr/)?bin/(ba)?sh' ; } | grep -v legacy/ | sort -u || true)
+          if [ "${#files[@]}" -gt 0 ]; then shellcheck "${files[@]}"; else echo "no shell scripts"; fi
+      - name: hadolint
+        if: hashFiles('render/Dockerfile') != ''
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: render/Dockerfile
+          ignore: DL3008,DL3003,DL3013,DL3006

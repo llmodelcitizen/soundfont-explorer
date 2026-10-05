@@ -6,7 +6,7 @@
 #   docker build -t sfr-render render/
 #   docker build -t sfr-render --build-arg WITH_ROM_ENGINES=1 render/   # + Nuked-SC55, Munt (owner-supplied ROMs)
 #
-# Run with the repo root as $PWD (see docs/RENDER.md):
+# Run with the repo root as $PWD (see render/README.md):
 #   docker run --rm --user "$(id -u):$(id -g)" \
 #     -v "$PWD/soundfonts:/fonts:ro" -v "$PWD/songs:/songs:ro" -v "$PWD/catalog:/catalog:ro" \
 #     -v "$PWD/roms:/roms:ro" -v "$PWD/work:/work" -v "$PWD/out:/out" \
@@ -89,7 +89,7 @@ RUN git clone --filter=blob:none https://github.com/Wohlstand/libOPNMIDI.git lib
  && install -m644 Tomsoft-readme.txt /opt/banks/wopn/tomsoft.readme.txt
 
 # libEDMIDI (pinned commit) as a static library + our edmidi-render front-end (edmidi-render/).
-# The library has no chip-selection API (modules alternate OPLL/SCC, see edmidi-render/README.md),
+# The library has no chip-selection API (modules alternate OPLL/SCC, see render/README.md "edmidi-render"),
 # so modsel.cpp is compiled against the library's own src/ tree.
 ARG EDMIDI_COMMIT=be48aebad667b0de538e81df8a986c10b76fd365
 COPY edmidi-render/ /src/edmidi-render/
@@ -106,12 +106,12 @@ RUN git clone --filter=blob:none https://github.com/Wohlstand/libEDMIDI.git libE
  && cp libEDMIDI/LICENSE.txt libEDMIDI/AUTHORS /opt/licenses/libEDMIDI/ \
  && git -C libEDMIDI rev-parse HEAD > /opt/licenses/libEDMIDI/COMMIT
 
-# Optional extra banks (with licence files) from the repo — see banks/README.md.
+# Optional extra banks (with licence files) from the repo — see render/README.md "Extra FM banks".
 COPY banks/ /opt/banks/
 
 # ---------------------------------------------------------------------------
 # ROM engines (opt-in: --build-arg WITH_ROM_ENGINES=1). Both need owner-supplied
-# ROM images under roms/<romset>/ at run time (docs/RENDER.md "Engines").
+# ROM images under roms/<romset>/ at run time (render/README.md "Engines").
 # rom-engines-0 is the default no-op stage; rom-engines-1 builds the tools.
 # ---------------------------------------------------------------------------
 FROM builder AS rom-engines-0

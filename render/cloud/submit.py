@@ -29,8 +29,8 @@ def outputs() -> dict:
     o = json.loads((REPO / "infra/live/outputs.json").read_text())
     rf = (o.get("render_fleet") or {}).get("value")
     if not rf:
-        sys.exit("render fleet is not deployed: set enable_render_fleet=true, terraform apply, "
-                 "then terraform -chdir=infra/live output -json > infra/live/outputs.json")
+        sys.exit("render fleet is not deployed: set enable_render_fleet = true in terraform.tfvars, "
+                 "terraform apply, then terraform -chdir=infra/live output -json > infra/live/outputs.json")
     return rf
 
 

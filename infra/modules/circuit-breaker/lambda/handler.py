@@ -5,9 +5,9 @@ Triggered (a) by the CloudWatch alarm "daily BytesDownloaded > DAILY_GB" via SNS
 start of the month and trips if either exceeds its threshold. The alarm only fires on the
 OK→ALARM transition, so (b) is what re-trips a distribution that was re-enabled while still
 over the daily threshold. Tripping = CloudFront UpdateDistribution(Enabled=false) + an SNS
-email. Re-enabling is manual (docs/DEPLOY.md). A trip that cannot disable the distribution
-mails the same topic and re-raises so the invocation fails (retried, then delivered to the
-function's on-failure destination) instead of being dropped silently.
+email. Re-enabling is manual (infra/README.md "If the circuit breaker trips"). A trip that
+cannot disable the distribution mails the same topic and re-raises so the invocation fails
+(retried, then delivered to the function's on-failure destination) instead of being dropped silently.
 """
 import datetime as dt
 import json
@@ -58,10 +58,10 @@ def trip(reason: str) -> dict:
         sns.publish(TopicArn=TOPIC, Subject="[Soundfont Explorer] circuit breaker FAILED to disable CloudFront",
                     Message=(f"Soundfont Explorer circuit breaker tripped ({reason}) but UpdateDistribution on {DIST} "
                              f"failed:\n\n{e!r}\n\nThe distribution is still ENABLED. Disable it by hand "
-                             f"(docs/DEPLOY.md, \"If the circuit breaker trips\") and check the Lambda's logs."))
+                             f"(infra/README.md, \"If the circuit breaker trips\") and check the Lambda's logs."))
         raise
     msg = (f"Soundfont Explorer circuit breaker tripped: {reason}\n\n"
-           f"Distribution {DIST} is DISABLED. To re-enable after investigating, see docs/DEPLOY.md "
+           f"Distribution {DIST} is DISABLED. To re-enable after investigating, see infra/README.md "
            f"(\"If the circuit breaker trips\"). Note: the hourly check trips it again while the trailing "
            f"24 h or month-to-date egress is still over its threshold.")
     sns.publish(TopicArn=TOPIC, Subject="[Soundfont Explorer] CloudFront disabled by circuit breaker", Message=msg)

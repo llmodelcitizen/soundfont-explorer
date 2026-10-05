@@ -133,7 +133,7 @@ aws s3 sync "s3://$SFADMIN_BUCKET/library/FILES/" "$DATA/library/FILES/" --size-
 aws s3 cp "s3://$SFADMIN_BUCKET/library/library.json" "$DATA/library/library.json" \
   || echo "WARN: no library.json in the bucket yet (run admin/scripts/ingest.py)"
 aws s3 cp "s3://$SFADMIN_BUCKET/assets/gm.sf2" "$DATA/gm.sf2" \
-  || echo "WARN: no assets/gm.sf2 in the bucket (previews disabled) — see docs/ADMIN.md"
+  || echo "WARN: no assets/gm.sf2 in the bucket (previews disabled) — see admin/README.md "One-time setup""
 # canon products (songs.json, canonical MIDIs, fragment, report) are derived state the
 # app persists to canon/ after each run; without this restore the render list resets to
 # the bundle's committed 25-song stub on every boot. A restore that fails must fail the

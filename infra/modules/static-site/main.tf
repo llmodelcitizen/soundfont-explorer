@@ -180,7 +180,7 @@ resource "aws_cloudfront_distribution" "site" {
 
   # The circuit breaker (modules/circuit-breaker) disables the distribution out of band. Ignore
   # that drift so a routine `terraform apply` cannot silently reopen the site; re-enabling is the
-  # explicit manual step in docs/DEPLOY.md "If the circuit breaker trips".
+  # explicit manual step in infra/README.md "If the circuit breaker trips".
   lifecycle {
     ignore_changes = [enabled]
   }

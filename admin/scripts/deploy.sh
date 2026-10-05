@@ -17,7 +17,7 @@ import json, sys
 o = json.load(open(sys.argv[1]))
 admin = o.get("admin", {}).get("value")
 if not admin:
-    sys.exit("admin outputs are empty — apply with -var enable_admin=true and refresh outputs.json")
+    sys.exit("admin outputs are empty — set enable_admin = true in terraform.tfvars, apply, and refresh outputs.json")
 rf = o.get("render_fleet", {}).get("value") or {}
 print(admin["bucket"], admin["hostname"], admin["zone_id"],
       o["bucket"]["value"], o["distribution_id"]["value"],

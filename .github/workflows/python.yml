@@ -1,0 +1,65 @@
+name: python
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'catalog/**'
+      - 'songs/**'
+      - 'render/**'
+      - 'admin/server/**'
+      - 'admin/scripts/**'
+      - 'admin/systemd/**'
+      - 'infra/modules/*/lambda/**'
+      - 'web/test/proto/**'
+      - '.github/workflows/python.yml'
+      - '!**/*.md'
+  pull_request:
+    paths:
+      - 'catalog/**'
+      - 'songs/**'
+      - 'render/**'
+      - 'admin/server/**'
+      - 'admin/scripts/**'
+      - 'admin/systemd/**'
+      - 'infra/modules/*/lambda/**'
+      - 'web/test/proto/**'
+      - '.github/workflows/python.yml'
+      - '!**/*.md'
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: python unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: catalog tests
+        if: hashFiles('catalog/tests/**') != ''
+        run: python3 -m unittest discover -s catalog/tests -t . -v
+      - name: songs tools tests
+        if: hashFiles('songs/tools/tests/**') != ''
+        run: python3 -m unittest discover -s songs/tools/tests -t . -v
+      - name: sfr tests
+        if: hashFiles('render/sfr/tests/**') != ''
+        run: python3 -m unittest discover -s render/sfr/tests -t render -v
+      - name: de-risking script tests
+        if: hashFiles('render/scripts/derisk/tests/**') != ''
+        run: python3 -m unittest discover -s render/scripts/derisk/tests -t render/scripts/derisk -v
+      - name: proto pack tests
+        if: hashFiles('web/test/proto/test_mkpack.py') != ''
+        run: python3 -m unittest discover -s web/test/proto -p 'test_*.py' -v
+      - name: admin server tests
+        if: hashFiles('admin/server/tests/**') != ''
+        run: python3 -m unittest discover -s admin/server/tests -t admin/server -v
+      - name: circuit breaker lambda tests
+        if: hashFiles('infra/modules/circuit-breaker/lambda/tests/**') != ''
+        run: python3 -m unittest discover -s infra/modules/circuit-breaker/lambda/tests -t infra/modules/circuit-breaker/lambda -v
+      - name: render fleet watchdog tests
+        if: hashFiles('infra/modules/render-fleet/lambda/tests/**') != ''
+        run: python3 -m unittest discover -s infra/modules/render-fleet/lambda/tests -t infra/modules/render-fleet/lambda -v
