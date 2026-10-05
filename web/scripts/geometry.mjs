@@ -85,7 +85,7 @@ async function measure(theme, viewport, label) {
     const buttonInfo = (selector) => Array.from(document.querySelectorAll(selector)).map((button) => {
       const outer = rect(button);
       if (!outer) return null;
-      const svg = rect(button.querySelector('svg'));
+      const svg = rect(button.querySelector('svg, .gh-mark'));
       // `text` is kept apart from `label`: a gadget that draws its meaning must announce one and
       // render the other, and only the two side by side can tell a drawing from a text glyph.
       return { outer, svg, text: button.textContent?.trim() ?? '', label: button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '' };
@@ -160,9 +160,10 @@ async function measure(theme, viewport, label) {
     const namedRects = {};
     for (const selector of ['#app', '.top', '.main', '.left', '.right', '.filterbar', '.transport', '.row.head']) namedRects[selector] = rect(document.querySelector(selector));
     const headerControls = allRects('.top > .themepick, .top > .btn, .top > .vol-top');
-    // share / settings / debug / keys are one drawn set: same box, same weight, no text glyph
-    // between them. The keys gadget joined it when its '?' became a drawn keycap, and the whole
-    // point of drawing it once is that the numbers below come out the same in all three themes.
+    // share / settings / debug / keys / GitHub are one drawn set: same box, same weight, no text
+    // glyph between them. The keys gadget joined it when its '?' became a drawn keycap, and the
+    // whole point of drawing it once is that the numbers below come out the same in all three
+    // themes. The GitHub mark is GitHub's own PNG drawn as a currentColor mask, not an <svg>.
     const headerGadgets = buttonInfo('.top > .btn.icon');
     const mainButtons = buttonInfo('.transport > .btn');
     const stepButtons = buttonInfo('.transport .steps > .btn');
@@ -1241,10 +1242,12 @@ for (const [label, viewport] of Object.entries(viewports)) {
       }
     }
     if (snapshot.headerCenters.length > 1) assert(Math.max(...snapshot.headerCenters) - Math.min(...snapshot.headerCenters) <= 1, `${label}/${snapshot.theme}: header controls are not vertically centered`);
-    // The header gadgets are one drawn set — share, settings, debug and the keys keycap. Each is
-    // one inline SVG inheriting currentColor, so these numbers must not move between the themes;
-    // a gadget that fell back to a text glyph shows up here as leftover text or a missing <svg>.
-    assert(snapshot.headerGadgets.length === 4, `${label}/${snapshot.theme}: ${snapshot.headerGadgets.length} drawn header gadgets, expected 4: ${JSON.stringify(snapshot.headerGadgets.map((gadget) => gadget.label))}`);
+    // The header gadgets are one drawn set — share, settings, debug, the keys keycap and the
+    // GitHub mark. Each draws in currentColor, so these numbers must not move between the themes;
+    // a gadget that fell back to a text glyph shows up here as leftover text or a missing drawing.
+    // A phone drops the debug gadget to keep the #30 one-row budget.
+    const expectedGadgets = label === 'phone' ? 4 : 5;
+    assert(snapshot.headerGadgets.length === expectedGadgets, `${label}/${snapshot.theme}: ${snapshot.headerGadgets.length} drawn header gadgets, expected ${expectedGadgets}: ${JSON.stringify(snapshot.headerGadgets.map((gadget) => gadget.label))}`);
     for (const gadget of snapshot.headerGadgets) {
       assert(gadget.text === '', `${label}/${snapshot.theme}: the ${gadget.label} gadget still carries the text glyph ${JSON.stringify(gadget.text)}`);
       assert(gadget.svg && close(gadget.svg.w, 18, 0.5) && close(gadget.svg.h, 18, 0.5), `${label}/${snapshot.theme}: the ${gadget.label} gadget draws ${JSON.stringify(gadget.svg)}, not the shared 18px box`);
@@ -1689,7 +1692,7 @@ for (const [theme, width] of Object.entries(ONE_CONTROL_ROW_FROM)) {
       const shown = Array.from(document.querySelector('.top').children).filter((child) => getComputedStyle(child).display !== 'none' && child.getBoundingClientRect().height > 0);
       // the track name and the song dropdown each take a line of their own on a phone by design
       const controls = shown.filter((child) => !child.classList.contains('title') && !child.classList.contains('songpicker'));
-      const icons = Array.from(document.querySelectorAll('.top .btn.icon')).map((button) => +button.getBoundingClientRect().width.toFixed(1));
+      const icons = Array.from(document.querySelectorAll('.top .btn.icon')).filter((button) => getComputedStyle(button).display !== 'none').map((button) => +button.getBoundingClientRect().width.toFixed(1));
       // controls on one row share a centre line to within a pixel; a wrapped one is ~30px below
       const centres = controls.map((child) => { const box = child.getBoundingClientRect(); return box.y + box.height / 2; }).sort((a, b) => a - b);
       const rows = centres.reduce((n, centre, i) => (i && centre - centres[i - 1] > 8 ? n + 1 : n), 1);
