@@ -12,8 +12,9 @@ in first.
   and Vite must not inline assets (`assetsInlineLimit: 0`).
 - Never surface the SF2 `ICMT` chunk anywhere public. It holds third-party personal data.
   `SF2_INFO_KEYS` in `web/src/contracts/catalog.ts` is the allowlist.
-- The tests are listed in `.github/workflows/ci.yml`. The Python is stdlib-only, except
-  `admin/server` at runtime.
+- The tests are listed in `.github/workflows/*.yml`, one workflow per area, each gated by `paths`.
+  A test that reads another folder needs that folder in its workflow's `paths`. The Python is
+  stdlib-only, except `admin/server` at runtime.
 
 ## render / catalog
 - `master_hash` (`render/sfr/jobs.py`) covers the song sha, variant, engine version, commit,

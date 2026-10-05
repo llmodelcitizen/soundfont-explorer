@@ -1,15 +1,20 @@
 # CI
 
-`ci.yml` runs on every push to `main` and on every pull request. It only checks the code. It never
-deploys anything.
+Each workflow runs on pushes to `main` and on pull requests, but only when files it checks have
+changed. Markdown-only changes run nothing. The workflows only check the code. They never deploy
+anything.
 
-| Job | What it checks |
-|---|---|
-| `python` | Unit tests for catalog, songs, sfr, the admin server and both Lambdas (Python 3.12) |
-| `web` | Typecheck, unit tests and build of the player (Node 22) |
-| `admin-web` | The same for the admin page |
-| `lint` | `shellcheck` on shell scripts, `hadolint` on `render/Dockerfile` |
-| `terraform` | `terraform fmt` and `validate` on `infra/` (Terraform 1.15.9) |
+| Workflow | What it checks | Runs when these change |
+|---|---|---|
+| `python.yml` | Unit tests for catalog, songs, sfr, the admin server and both Lambdas (Python 3.12) | `catalog/`, `songs/`, `render/`, `admin/{server,scripts,systemd}/`, the Lambdas, `web/test/proto/` |
+| `web.yml` | Typecheck, unit tests and build of the player (Node 22) | `web/`, `admin/web/src/storage.ts` |
+| `admin-web.yml` | The same for the admin page | `admin/web/` |
+| `lint.yml` | `shellcheck` on shell scripts, `hadolint` on `render/Dockerfile` | shell scripts, `render/Dockerfile` |
+| `terraform.yml` | `terraform fmt` and `validate` on `infra/` (Terraform 1.15.9) | `infra/` |
+
+Editing a workflow file always runs that workflow. If you add a test that reads files from another
+folder, add that folder to the workflow's `paths` list too, or the test won't run when that folder
+changes.
 
 Browser checks (smoke, geometry, screenshots) are not run in CI. Run them by hand (see
 [`web/`](../../web/README.md)).
