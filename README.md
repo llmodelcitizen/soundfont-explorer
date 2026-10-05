@@ -59,7 +59,7 @@ them side by side, mid-phrase. That's what this site does.
 
 | Source | What | Variants |
 |---|---|---|
-| [**500 Soundfonts Collection — Full GM Sets, SF2 Pack**](https://archive.org/details/500-soundfonts-full-gm-sets) (Internet Archive, uploaded by DoomFanatic, June 2022, 36.7 GB) | 500 GM-compatible SF2 files from the early 90s to 2022. 5 are byte-identical duplicates. | 495 |
+| [**500 Soundfonts Collection**](https://archive.org/details/500-soundfonts-full-gm-sets), uploaded by DoomFanatic | 500 GM-compatible SF2 files from the early 90s to 2022 | 495 |
 | libADLMIDI's embedded banks | 79 OPL instrument banks lifted from DOS games and drivers (AIL, DMX, HMI, Apogee, Fat Man…), on Nuked OPL3; plus OPL2, ESFM and CQM passes | 126 |
 | libOPNMIDI's `fm_banks/` | 7 OPN banks, each on YM2612 and YM2608 | 14 |
 | libEDMIDI | MSX OPLL, Konami SCC, and both layered | 3 |
