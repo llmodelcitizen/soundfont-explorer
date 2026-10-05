@@ -4,14 +4,15 @@
  * shows — at desktop and phone sizes.
  *
  *   --url=…          the running dev server (default http://127.0.0.1:5173/)
- *   --audio=none     the site behind it serves manifests but no audio (test/fixtures/site, which
- *                    is what CI runs): missing /a/ objects are then not console errors. Every
+ *   --audio=none     the site behind it serves manifests but no audio (test/fixtures/site):
+ *                    missing /a/ objects are then not console errors. Every
  *                    measurement here is layout, so nothing else changes.
  *
- * CI runs this against that fixture site (the `geometry` job). To run it by hand against real
- * audio instead:
+ * Not run in CI. The data server must honour Range requests, so use serve.py, not
+ * `python3 -m http.server`. Against the fixture site, pass --root web/test/fixtures/site and
+ * --audio=none; against real audio:
  *
- *   python3 -m http.server 8000 --directory out/public   # in one shell
+ *   python3 web/test/proto/serve.py --root out/public --port 8000   # in one shell
  *   cd web && npm run dev                                # in another
  *   cd web && npm run test:geometry [-- --url=http://localhost:5173/]
  *

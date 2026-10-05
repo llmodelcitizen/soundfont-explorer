@@ -10,7 +10,7 @@ s3://<admin-bucket>/library/FILES/, and uploads the document.
 Only MIDI-ish files (.mid/.midi/.rmi, any case) are ingested; the NSF/FRM/mp3 remnants in
 the import tree stay local. Every entry starts with the defaults (owner-supplied licence, no
 metadata) — this is the bulk first pass; per-track metadata is the Library UI's job, and the
-curated tracks are seeded by admin/scripts/migrate_library.py. The minted ids are cross-checked
+curated tracks are seeded by admin/scripts/seed_library.py. The minted ids are cross-checked
 against songs/songs.json before anything is uploaded: an id mismatch would orphan renders, so
 it is a hard error.
 
@@ -49,7 +49,8 @@ def admin_bucket() -> str:
         admin = json.load(open(out))["admin"]["value"]
         return admin["bucket"]
     except (OSError, KeyError, TypeError):
-        raise SystemExit(f"no admin outputs in {out} — apply with -var enable_admin=true and refresh it")
+        raise SystemExit(f"no admin outputs in {out} — set enable_admin = true in "
+                         "terraform.tfvars, apply, and refresh it")
 
 
 def published_import_ids() -> dict:
