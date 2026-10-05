@@ -52,8 +52,8 @@ and a file format that lets *anyone* load their own sampled instrument set into 
 clones, Yamaha XG imitations, console-flavoured kits, orchestral monsters, beautiful oddities.
 Software synths like FluidSynth keep them alive long after the cards are gone.
 
-So the same `.mid` file has hundreds of "correct" sounds, and no one has ever been able to hear
-them side by side, mid-phrase. That's what this site does.
+So the same `.mid` file has hundreds of "correct" sounds, and there has never been an easy way to
+hear them side by side, mid-phrase. That's what Soundfont Explorer sets out to do.
 
 ## Where the sounds come from
 
