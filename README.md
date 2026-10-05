@@ -9,6 +9,40 @@ OPLL/SCC (libEDMIDI), Gravis Ultrasound patches (TiMidity++/FreePats), and, with
 ROMs, Roland SC-55 (Nuked-SC55) and MT-32/CM-32L (Munt) — switching timbre instantly while the
 music keeps playing.
 
+## How it works
+
+Every variant is pre-rendered offline and loudness-matched: EBU R128 to −16 LUFS with a −1.5 dBTP
+ceiling, using pure linear gain, with reverb and chorus switched off wherever the synth allows.
+Each render is resampled to 48 kHz and encoded as Opus in two tiers:
+
+- 2 s "scrub" segments at 48 kbps, packed 24 variants per object so neighbours arrive together
+- 10 s "listen" segments at 96 kbps that crossfade in once you settle on a variant
+
+Each scrub segment carries a 120 ms lead-in and overlaps the next one by 20 ms of bit-identical
+audio, so seams and switches are short, sample-aligned crossfades on a single Web Audio timeline.
+A song is rendered once per variant, then cached by a hash of everything that shapes its sound.
+
+```
+admin library (MIDI) ─► songs/ canon ─┐
+                                      ├─► render/ sfr (Docker, every engine pinned)
+catalog/ variants.json ───────────────┘        │  render → loudness → Opus → packs + manifests
+                                               ▼
+                               S3 + CloudFront (infra/) ─► web/ player
+```
+
+Details: [`render/`](render/README.md) for the pipeline, [`web/`](web/README.md) for the player.
+
+| Directory | What |
+|---|---|
+| [`web/`](web/README.md) | TypeScript + Vite client: Web Audio scheduling, adaptive ↑/↓ policy, facets, themes (modern, Windows 95, Amiga Workbench 1.3) |
+| [`catalog/`](catalog/README.md) | SoundFont scanner, facets, FM-bank catalog, `variants.json` (the stable id space) |
+| [`songs/`](songs/README.md) | The canonicalizer and the licence table. Every song is a file in the admin library; the MIDIs themselves are not in the repository. |
+| [`render/`](render/README.md) | `Dockerfile` with every engine pinned; the `sfr` pipeline: `render → manifest → publish`; cloud runs on AWS Batch Spot |
+| [`admin/`](admin/README.md) | Throwaway EC2 admin app: MIDI library, render runs, publishing; GitHub login |
+| [`infra/`](infra/README.md) | Terraform: S3 + OAC + CloudFront (HTTP/2+3), ACM, Route 53, budgets, egress circuit breaker, render fleet, admin box |
+| [`scripts/`](scripts/README.md) | `overlay.sh`: links the private deployment files into the checkout |
+| [`.github/workflows/`](.github/workflows/README.md) | CI: unit tests, lint, Terraform validate |
+
 ## A score, not a sound
 
 A MIDI file is not a recording. It's a score: *note 60 on, channel 1, velocity 100, program 0.*
@@ -66,40 +100,6 @@ hear them side by side, mid-phrase. That's what Soundfont Explorer sets out to d
 The catalog keeps per-file provenance (`catalog/collections.json`), and the player shows each
 font's own SF2 metadata and licence notes. Song licences (Freedoom BSD-3, public domain, CC0, or
 owner-supplied) and their notices live in [`songs/`](songs/README.md).
-
-## How it works
-
-Every variant is pre-rendered offline and loudness-matched: EBU R128 to −16 LUFS with a −1.5 dBTP
-ceiling, using pure linear gain, with reverb and chorus switched off wherever the synth allows.
-Each render is resampled to 48 kHz and encoded as Opus in two tiers:
-
-- 2 s "scrub" segments at 48 kbps, packed 24 variants per object so neighbours arrive together
-- 10 s "listen" segments at 96 kbps that crossfade in once you settle on a variant
-
-Each scrub segment carries a 120 ms lead-in and overlaps the next one by 20 ms of bit-identical
-audio, so seams and switches are short, sample-aligned crossfades on a single Web Audio timeline.
-A song is rendered once per variant, then cached by a hash of everything that shapes its sound.
-
-```
-admin library (MIDI) ─► songs/ canon ─┐
-                                      ├─► render/ sfr (Docker, every engine pinned)
-catalog/ variants.json ───────────────┘        │  render → loudness → Opus → packs + manifests
-                                               ▼
-                               S3 + CloudFront (infra/) ─► web/ player
-```
-
-Details: [`render/`](render/README.md) for the pipeline, [`web/`](web/README.md) for the player.
-
-| Directory | What |
-|---|---|
-| [`web/`](web/README.md) | TypeScript + Vite client: Web Audio scheduling, adaptive ↑/↓ policy, facets, themes (modern, Windows 95, Amiga Workbench 1.3) |
-| [`catalog/`](catalog/README.md) | SoundFont scanner, facets, FM-bank catalog, `variants.json` (the stable id space) |
-| [`songs/`](songs/README.md) | The canonicalizer and the licence table. Every song is a file in the admin library; the MIDIs themselves are not in the repository. |
-| [`render/`](render/README.md) | `Dockerfile` with every engine pinned; the `sfr` pipeline: `render → manifest → publish`; cloud runs on AWS Batch Spot |
-| [`admin/`](admin/README.md) | Throwaway EC2 admin app: MIDI library, render runs, publishing; GitHub login |
-| [`infra/`](infra/README.md) | Terraform: S3 + OAC + CloudFront (HTTP/2+3), ACM, Route 53, budgets, egress circuit breaker, render fleet, admin box |
-| [`scripts/`](scripts/README.md) | `overlay.sh`: links the private deployment files into the checkout |
-| [`.github/workflows/`](.github/workflows/README.md) | CI: unit tests, lint, Terraform validate |
 
 ## Keys
 
