@@ -1,1 +1,1 @@
-Extra WOPN banks for opnmidiplay go here (see ../README.md). Each bank needs a licence file.
+Extra WOPN banks for opnmidiplay go here (see render/README.md "Extra FM banks"). Each bank needs a licence file.

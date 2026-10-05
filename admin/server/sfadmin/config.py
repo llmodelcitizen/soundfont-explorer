@@ -11,9 +11,9 @@ Environment contract:
 
 Secrets live in SSM SecureStrings under /soundfont-explorer/admin/ (github_client_id,
 github_client_secret, session_key, allowed_emails) — created by hand, never in Terraform
-state (docs/ADMIN.md). They are cached for SSM_TTL_S, not for the process lifetime: an
+state (admin/README.md "One-time setup"). They are cached for SSM_TTL_S, not for the process lifetime: an
 address removed from allowed_emails or a rotated session_key must take effect on the
-running box without a restart (docs/ADMIN.md "Revoking access").
+running box without a restart (admin/README.md "Revoking access").
 """
 from __future__ import annotations
 

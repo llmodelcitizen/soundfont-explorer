@@ -3,7 +3,7 @@
     timidity -c /etc/timidity/freepats.cfg -Ow2 -s 48000 -EFreverb=d -EFchorus=d -A 25 --preserve-silence \
              -o <tmp>/raw.wav /songs/<id>.mid
 
-All flags come from engines.json base_args. Three of them are load-bearing (docs/RENDER.md):
+All flags come from engines.json base_args. Three of them are load-bearing:
 `-c …freepats.cfg` (trixie's default cfg sources an absent file), `--preserve-silence`
 (otherwise leading silence is dropped and start calibration is wrong) and `-A 25`
 (the default -A 70 clips). Output is 24-bit (`-Ow2`; TiMidity has no float output) and

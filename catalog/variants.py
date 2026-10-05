@@ -732,8 +732,8 @@ def build(facets_doc: dict, scan_doc: dict | None, banks_doc: dict, passes_doc: 
             "note": "banks listed but enabled:false (not in the image: OPN2BankEditor-only files; or duplicates of a shipped bank)",
             "slugs": sorted(b["slug"] for b in opn_banks if not b.get("enabled")),
         },
-        "edmidi_dropped": {"ids": ["edm-psg"], "note": "libEDMIDI has no PSG voice (emu2149 is compiled but never attached); see render/edmidi-render/README.md"},
-        "adl_wopl": {"ids": ["adl-w-<sha256[:10]>"], "note": "extra full-GM .wopl from OPL3BankEditor with a license file (~5); none added yet (render/banks/README.md)"},
+        "edmidi_dropped": {"ids": ["edm-psg"], "note": "libEDMIDI has no PSG voice (emu2149 is compiled but never attached); see render/README.md 'edmidi-render'"},
+        "adl_wopl": {"ids": ["adl-w-<sha256[:10]>"], "note": "extra full-GM .wopl from OPL3BankEditor with a license file (~5); none added yet (render/README.md 'Extra FM banks')"},
     }
 
     return {

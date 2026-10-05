@@ -80,7 +80,7 @@ def ensure(midi_path: str, sha256: str) -> Job | None:
     if cached(sha256):
         return None
     if not os.path.exists(get_config().gm_sf2):
-        raise FileNotFoundError("no GM soundfont — upload assets/gm.sf2 (docs/ADMIN.md)")
+        raise FileNotFoundError("no GM soundfont — upload assets/gm.sf2 (admin/README.md)")
     with _active_lock:
         job = _active.get(sha256)
         if job is None:

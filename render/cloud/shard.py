@@ -1,6 +1,6 @@
 """One Batch array child: render a shard of songs, publish each as it completes, exit.
 
-Shape (docs/RENDER.md "Cloud runs"):
+Shape (render/README.md "Cloud runs"):
   - the shard's songs render as ONE queue, not song by song. order_jobs() is already
     font-major/biggest-first, so a single call keeps every SF2 hot across the shard's songs
     and pays the drain-to-zero tail once instead of once per song.

@@ -6,7 +6,7 @@
 #
 # Needs: aws CLI authenticated + the Session Manager plugin
 # (https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html).
-# What you'll see and where the rest lives: docs/ADMIN.md "Watching the box".
+# What you'll see and where the rest lives: admin/README.md "Watching the box".
 set -euo pipefail
 
 ID=$(aws ec2 describe-instances \
