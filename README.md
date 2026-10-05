@@ -22,14 +22,6 @@ Each scrub segment carries a 120 ms lead-in and overlaps the next one by 20 ms o
 audio, so seams and switches are short, sample-aligned crossfades on a single Web Audio timeline.
 A song is rendered once per variant, then cached by a hash of everything that shapes its sound.
 
-```
-admin library (MIDI) ─► songs/ canon ─┐
-                                      ├─► render/ sfr (Docker, every engine pinned)
-catalog/ variants.json ───────────────┘        │  render → loudness → Opus → packs + manifests
-                                               ▼
-                               S3 + CloudFront (infra/) ─► web/ player
-```
-
 | Directory | What |
 |---|---|
 | [`web/`](web/README.md) | TypeScript + Vite client: Web Audio scheduling, adaptive ↑/↓ policy, facets, themes (modern, Windows 95, Amiga Workbench 1.3) |
