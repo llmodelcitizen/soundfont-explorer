@@ -1,14 +1,13 @@
-# Soundfont Explorer
+# Eric's Soundfont Explorer
+
+Live at **https://soundfonts.ericq.com/** — 238 songs × ~560 variants ≈ 134,000 renders, served
+as a static site using S3 & CloudFront. Hold ↓ and the list scrubs instantaneously; the music never stops!
 
 **One MIDI, every synth.** Hear the same piece through nearly 500 SoundFonts and a shelf of emulated
 sound chips — OPL3/OPL2 (libADLMIDI, plus ESFM and CQM clone passes), OPN2/OPNA (libOPNMIDI),
 OPLL/SCC (libEDMIDI), Gravis Ultrasound patches (TiMidity++/FreePats), and, with owner-supplied
 ROMs, Roland SC-55 (Nuked-SC55) and MT-32/CM-32L (Munt) — switching timbre instantly while the
-music keeps playing. Hold ↓ and the list scrubs; the score never stops.
-
-Live: **https://soundfonts.ericq.com/** — 238 songs × ~560 variants ≈ 134,000 renders, served
-as static files from S3 + CloudFront. No servers. Hosting the static site (S3 storage + CloudFront
-delivery) cost about $7 in September 2026, its first full month.
+music keeps playing.
 
 ## A score, not a sound
 
