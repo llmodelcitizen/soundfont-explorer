@@ -54,8 +54,6 @@ Software synths like FluidSynth keep them alive long after the cards are gone.
 So the same `.mid` file has hundreds of "correct" sounds, and there has never been an easy way to
 hear them side by side, mid-phrase. That's what Soundfont Explorer sets out to do.
 
-## Where the sounds come from
-
 | Source | What | Variants |
 |---|---|---|
 | [**500 Soundfonts Collection**](https://archive.org/details/500-soundfonts-full-gm-sets), uploaded by DoomFanatic | 500 GM-compatible SF2 files from the early 90s to 2022 | 495 |
